@@ -19,10 +19,15 @@ Dann `http://localhost:8123` öffnen.
 | | Handy | PC |
 |---|---|---|
 | Waten | Stick unten links | W/A/S/D |
+| Umschauen | am Himmel oder Ufer ziehen | Rechtsklick ziehen oder Q/E |
 | Werfen | Finger aufs Wasser, Zielring schieben, loslassen | wie am Handy mit der Maus |
 | Rute führen | nach unten ziehen | Maus ziehen |
 | Anhieb | nach oben wischen oder ANHIEB | Leertaste / Rechtsklick |
 | Drill | nach unten ziehen = Druck, seitlich = Seitendruck | Maus ziehen oder Leertaste, A/D |
+
+## Sprachen
+
+Deutsch, Englisch und Italienisch – Auswahl auf dem Startbildschirm. Die Texte liegen in `js/i18n.js`.
 
 ## Technik
 

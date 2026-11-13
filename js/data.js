@@ -93,7 +93,7 @@ export const REVIERE = [
     species: { bachforelle: 5, regenbogen: 5, saibling: 1 }, sizeMul: 0.75, fishN: 12,
     clarity: [0, 1, 1], insects: ['baetis', 'stone', 'caddis'],
     quests: [
-      { id: 'r1', text: 'Fange 4 Fische aus Taschen hinter Steinen', test: s => s.pocket >= 4 },
+      { id: 'r1', text: 'Fange 4 Fische an Steinen – davor, daneben oder dahinter', test: s => s.pocket >= 4 },
       { id: 'r2', text: 'Fange eine Regenbogenforelle ab 36 cm', test: s => (s.spMax.regenbogen || 0) >= 36 },
       { id: 'r3', text: 'Fange einen Fisch mit 3,5-mm-Perle oder schwerer', test: s => s.heavy >= 1 },
     ],

@@ -1,4 +1,5 @@
 // Nymphmaniac – Spiellogik: Wurf, Drift, Biss, Drill, Fortschritt, UI
+import { T, LANGS, getLang, setLang, loc } from './i18n.js';
 import { World } from './world.js';
 import { SPECIES, FLIES, INSECTS, REVIERE, PAGES, BEADS, TIPPETS, LEVEL_UNLOCKS, MAX_LEVEL, xpNeed, CLARITY, LIGHTS } from './data.js';
 import { LANE_X, Z_MIN, Z_MAX } from './river.js';
@@ -14,12 +15,12 @@ const fmt = (n, d = 1) => n.toFixed(d).replace('.', ',');
 const KEY = 'nymphmaniac_v1';
 function newSave() {
   return { level: 1, xp: 0, material: 4, flies: { pt: 4, perdigon: 4, walt: 4 }, sel: { fly: 'pt', bead: 3.0, tippet: 0.14 },
-    unlocked: 1, revier: 0, quests: {}, log: {}, stats: {}, pages: ['intro'], tut: 0, set: { help: true, vib: true, sound: true, assist: true, gfx: true }, total: 0, started: false };
+    unlocked: 1, revier: 0, quests: {}, log: {}, stats: {}, pages: ['intro'], tut: 0, set: { help: true, vib: true, sound: true, assist: true, gfx: true, clear: false }, total: 0, started: false };
 }
 let save;
 try { save = JSON.parse(localStorage.getItem(KEY)); } catch (e) { save = null; }
 if (!save || !save.sel) save = newSave();
-save.set = Object.assign({ help: true, vib: true, sound: true, assist: true, gfx: true }, save.set);
+save.set = Object.assign({ help: true, vib: true, sound: true, assist: true, gfx: true, clear: false }, save.set);
 const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(save)); } catch (e) { /* privat */ } };
 const stats = id => save.stats[id] || (save.stats[id] = { n: 0, sp: {}, spMax: {}, maxLen: 0, matched: 0, pocket: 0, heavy: 0, fine: 0, big42: 0, old: 0 });
 const curFly = () => FLIES.find(f => f.id === save.sel.fly);
@@ -31,13 +32,15 @@ const canvas = $('gl');
 const world = new World(canvas);
 const sfx = new Sfx(); sfx.on = save.set.sound;
 if (!save.set.gfx) world.setQuality(false);
+world.setClearView(save.set.clear);
 let river, cond, fish = [], respawn = [];
 const S = {
-  mode: 'title', px: LANE_X, pz: 0, t: 0, joy: { x: 0, z: 0 }, face: 0, walk: 0, moveDir: 0, tip: { x: LANE_X - 0.6, z: -1.6 }, nymph: { x: 0, d: 0, z: 0 }, L: 4, s: 1, pullS: 0, g: 0, q: 1,
+  mode: 'title', yaw: 0, pitch: 0, px: LANE_X, pz: 0, t: 0, joy: { x: 0, z: 0 }, face: 0, walk: 0, moveDir: 0, tip: { x: LANE_X - 0.6, z: -1.6 }, nymph: { x: 0, d: 0, z: 0 }, L: 4, s: 1, pullS: 0, g: 0, q: 1,
   kick: 0, driftT: 0, onBottom: false, tickT: 0, bite: null, snag: false, snagT: 0, fight: null, hold: false, wade: null,
   cast: null, maxFrac: 0, swingT: 0, sinkRate: 0.2, snagHint: false, aim: null, press: 0, rodX: -0.5,
 };
-const groundY = () => 0.56 - clamp(river ? river.depthAt(S.px, S.pz) : 0.56, 0.22, 1.05);
+const groundY = () => 0.56 + (river ? clamp(river.heightAt(S.px, S.pz), -1.05, 1.2) : -0.56);
+const onLand = (x = S.px, z = S.pz) => Math.abs(x) >= river.halfW || river.depthAt(x, z) < 0.03;
 const hand = () => { const c = Math.cos(S.face), sn = Math.sin(S.face), lx = 0.2, lz = -0.4; return { x: S.px + lx * c + lz * sn, y: 0.8 + groundY(), z: S.pz - lx * sn + lz * c }; };
 function tip3() {
   const h = hand();
@@ -97,7 +100,7 @@ function checkOld(announce) {
   const lie = river.lies.find(l => l.big);
   if (!lie) return;
   fish.push(makeFish(lie, true));
-  if (announce) setTimeout(() => toast('Im tiefsten Teil des Gumpens bewegt sich ein großer Schatten …', 5000), 1500);
+  if (announce) setTimeout(() => toast(T('Im tiefsten Teil des Gumpens bewegt sich ein großer Schatten …'), 5000), 1500);
 }
 
 function flyMatch(fly, f) {
@@ -122,10 +125,10 @@ function castTarget(pt) {
 function doCast(pt) {
   if (S.mode !== 'idle' || S.wade) return;
   const fly = curFly();
-  if (!(save.flies[fly.id] > 0)) { toast('Keine ' + fly.name + ' mehr – öffne die Fliegendose.'); return; }
+  if (!(save.flies[fly.id] > 0)) { toast(T('Keine {0} mehr – öffne die Fliegendose.', fly.name)); return; }
   const h = hand(), ct = castTarget(pt);
   if (!ct) return;
-  if (!ct.ok) { toast('Dort ist kein Wasser.'); return; }
+  if (!ct.ok) { toast(T('Dort ist kein Wasser.')); return; }
   const { tx, tz, dx, dz } = ct;
   const l = Math.hypot(dx, dz);
   S.tip.x = h.x + dx / l * 2.6; S.tip.z = h.z + dz / l * 2.6;
@@ -185,7 +188,12 @@ function updateDrift(dt) {
   };
   S.s = constrain(true);
   if (!held) {
-    n.d = Math.min(bottom, n.d + S.sinkRate / (1 + 0.9 * v) * dt);
+    // Kontakt (Anzeige mittig) hält die Nymphe knapp über Grund in der Schwebe; nur lose Schnur lässt sie aufsetzen, Zug hebt sie
+    const sink = S.sinkRate / (1 + 0.9 * v), lift = Math.min(1.1, Math.max(0, S.pullS - 0.08) * 1.3);
+    const floor = S.g > -0.4 ? bottom - Math.min(0.25, bottom * 0.3) : bottom;
+    let nd = n.d + (sink - lift) * dt;
+    if (n.d <= floor) nd = Math.min(nd, floor); else nd = Math.max(floor, Math.min(nd, n.d - 0.3 * dt));
+    n.d = clamp(nd, 0, bottom);
     constrain(false);
     if (river.depthAt(n.x, n.z) < 0.05) return endDrift();
   }
@@ -207,14 +215,14 @@ function updateDrift(dt) {
   }
   if (S.snag) {
     S.snagT += dt; S.kick += (1 - S.kick) * Math.min(1, dt * 20);
-    if (S.snagT > 1.6 && !S.snagHint) { S.snagHint = true; toast('Hänger! ANHIEB drücken, um die Nymphe zu lösen.', 3500); }
+    if (S.snagT > 1.6 && !S.snagHint) { S.snagHint = true; toast(T('Hänger! ANHIEB drücken, um die Nymphe zu lösen.'), 3500); }
     return;
   }
   if (S.bite) {
     const b = S.bite; b.t += dt; S.kick += (1 - S.kick) * Math.min(1, dt * 22);
     if (b.t > b.win) {
       b.fish.wary = 22; S.bite = null; $('lupeWrap').classList.remove('bite');
-      toast(save.set.help ? 'Biss verpasst! Wenn der Sighter stoppt oder abtaucht: sofort ANHIEB.' : 'Da war etwas …');
+      toast(save.set.help ? T('Biss verpasst! Wenn der Sighter stoppt oder abtaucht: sofort ANHIEB.') : T('Da war etwas …'));
       updateTip();
     }
     return;
@@ -250,7 +258,7 @@ function startBite(f) {
 }
 function endDrift(silent) {
   if (!silent && S.mode === 'drift') {
-    if (S.maxFrac < 0.62 && S.driftT > 2) toast('Die Nymphe kam nicht auf Tiefe. Schwerere Perle wählen oder weiter stromauf einwerfen.', 4200);
+    if (S.maxFrac < 0.62 && S.driftT > 2) toast(T('Die Nymphe kam nicht auf Tiefe. Schwerere Perle wählen oder weiter stromauf einwerfen.'), 4200);
   }
   S.mode = 'idle'; S.bite = null; S.snag = false; S.s = 1; S.g = 0; S.kick = 0;
   $('lupeWrap').classList.remove('bite');
@@ -262,9 +270,9 @@ function loseFly(msg) {
   sfx.snap(); vibrate([30, 40, 30]);
   if (save.flies[id] === 0) {
     const other = FLIES.find(f => save.flies[f.id] > 0);
-    if (other) { save.sel.fly = other.id; msg += ' Neue Fliege: ' + other.name + '.'; world.setFlyLook(other.col, other.bead); }
-    else if (save.material < 2) { save.flies.pt = 2; save.sel.fly = 'pt'; msg += ' In der Westentasche findest du noch zwei Pheasant Tails von Opa.'; }
-    else msg += ' Binde dir neue in der Fliegendose.';
+    if (other) { save.sel.fly = other.id; msg += ' ' + T('Neue Fliege: {0}.', other.name); world.setFlyLook(other.col, other.bead); }
+    else if (save.material < 2) { save.flies.pt = 2; save.sel.fly = 'pt'; msg += ' ' + T('In der Westentasche findest du noch zwei Pheasant Tails von Opa.'); }
+    else msg += ' ' + T('Binde dir neue in der Fliegendose.');
   }
   toast(msg, 4200); persist();
 }
@@ -276,18 +284,18 @@ function strike() {
   if (S.bite) {
     const f = S.bite.fish;
     if (S.s < 0.8 && Math.random() < 0.55) {
-      f.wary = 20; toast('Zu viel lose Schnur – der Anhieb kam nicht durch.'); endDrift(true); return;
+      f.wary = 20; toast(T('Zu viel lose Schnur – der Anhieb kam nicht durch.')); endDrift(true); return;
     }
     startFight(f); return;
   }
   if (S.snag) {
     const lose = Math.random() < 0.16 + (save.sel.tippet <= 0.12 ? 0.14 : 0);
-    if (lose) loseFly('Abriss am Hänger – Fliege verloren.'); else toast('Hänger gelöst.');
+    if (lose) loseFly(T('Abriss am Hänger – Fliege verloren.')); else toast(T('Hänger gelöst.'));
     endDrift(true); return;
   }
   const n = S.nymph;
   for (const f of fish) if ((f.x - n.x) ** 2 + (f.z - n.z) ** 2 < 2.5) f.wary = Math.max(f.wary, 7);
-  if (S.kick > 0.15) toast('Nur ein Grundkontakt. Ticks sind kurz – ein Biss hält den Sighter fest.');
+  if (S.kick > 0.15) toast(T('Nur ein Grundkontakt. Ticks sind kurz – ein Biss hält den Sighter fest.'));
   endDrift();
 }
 
@@ -301,8 +309,8 @@ function startFight(f) {
     ang: Math.atan2(-(n.x - S.px), -(n.z - S.pz)), dist: Math.max(2, Math.hypot(n.x - S.px, n.z - S.pz)), jump: 0, jumpT: 2.5 + Math.random() * 3, landing: 0, reelT: 0 };
   world.splash(n.x, n.z, 1.2); sfx.splash(); vibrate([50, 40, 80]);
   if (save.tut < 4) save.tut = 3;
-  $('hud').classList.add('fighting'); $('strike').textContent = 'DRILL';
-  toast(f.old ? 'Die Rute biegt sich bis ins Handteil. DAS IST ER!' : 'Fisch hängt!', 1800);
+  $('hud').classList.add('fighting'); $('strike').textContent = T('DRILL');
+  toast(f.old ? T('Die Rute biegt sich bis ins Handteil. DAS IST ER!') : T('Fisch hängt!'), 1800);
   updateTip();
 }
 function fightPos() { const F = S.fight, w = river.halfW - 0.9; return { x: clamp(S.px - Math.sin(F.ang) * F.dist, -w, w), z: S.pz - Math.cos(F.ang) * F.dist }; }
@@ -331,7 +339,7 @@ function updateFight(dt) {
     if (F.ten > 0.28 && F.ten <= lim) F.stam -= dt * F.ten * 0.17 / F.str * (F.good ? 1.5 : 1);
     if (sp.jumps) {
       F.jumpT -= dt;
-      if (F.jumpT <= 0 && F.jump <= 0 && F.stam > 0.25) { F.jump = 0.7; F.jumpT = 4 + Math.random() * 5; world.splash(p.x, p.z, 1.4); sfx.splash(); toast('Sie springt – Druck raus!', 1200); }
+      if (F.jumpT <= 0 && F.jump <= 0 && F.stam > 0.25) { F.jump = 0.7; F.jumpT = 4 + Math.random() * 5; world.splash(p.x, p.z, 1.4); sfx.splash(); toast(T('Sie springt – Druck raus!'), 1200); }
       if (F.jump > 0) {
         F.jump -= dt;
         if (F.p > 0.45 && F.ten > 0.5 && Math.random() < dt * 0.9) return lostFish('jump');
@@ -342,7 +350,7 @@ function updateFight(dt) {
     if (F.ang > 1.3) { F.ang = 1.3; F.side = -1; } if (F.ang < -1.3) { F.ang = -1.3; F.side = 1; }
     F.dist = clamp(F.dist + (F.surge * 2.2 * (1 - 0.55 * F.p) - (0.1 + F.p) * (1.15 - F.stam * 0.6)) * dt, 1.6, 10.5);
     if (F.p > 0.3) { F.reelT -= dt; if (F.reelT <= 0) { F.reelT = 0.09; sfx.reel(); } }
-    if (F.stam <= 0) { F.landing = 0.001; toast('Kescher!', 1200); }
+    if (F.stam <= 0) { F.landing = 0.001; toast(T('Kescher!'), 1200); }
   }
   p = fightPos();
   const jy = F.jump > 0 ? Math.sin((0.7 - F.jump) / 0.7 * Math.PI) * 0.9 : 0;
@@ -352,14 +360,14 @@ function updateFight(dt) {
   f.mesh.rotation.x = jy > 0 ? -0.6 : 0; f.mesh.rotation.z = jy > 0 ? 0.5 : Math.sin(S.t * 3) * 0.5 * (1 - F.stam);
   world.animFish(f.mesh, S.t * (10 + F.surge * 14) + f.phase, 1.2 + F.surge * 2);
 }
-function endFightUI() { $('hud').classList.remove('fighting'); $('strike').textContent = 'ANHIEB'; S.hold = false; S.press = 0; S.fight = null; }
+function endFightUI() { $('hud').classList.remove('fighting'); $('strike').textContent = T('ANHIEB'); S.hold = false; S.press = 0; S.fight = null; }
 function lostFish(kind) {
   const f = S.fight.f;
   endFightUI();
   f.spooked = 80; f.mesh.visible = false; placeFish(f);
-  if (kind === 'snap') loseFly('Vorfach gerissen! Bei Fluchten den Druck rausnehmen.');
-  else if (kind === 'jump') { toast('Im Sprung ausgehakt. Beim Sprung nicht gegenhalten!', 3500); sfx.snap(); }
-  else { toast('Ausgeschlitzt – zu wenig Spannung. Schonhaken verzeihen keine lose Schnur.', 3800); sfx.snap(); }
+  if (kind === 'snap') loseFly(T('Vorfach gerissen! Bei Fluchten den Druck rausnehmen.'));
+  else if (kind === 'jump') { toast(T('Im Sprung ausgehakt. Beim Sprung nicht gegenhalten!'), 3500); sfx.snap(); }
+  else { toast(T('Ausgeschlitzt – zu wenig Spannung. Schonhaken verzeihen keine lose Schnur.'), 3800); sfx.snap(); }
   S.mode = 'idle'; restTip(); updateTip(); updateHUD();
 }
 
@@ -381,7 +389,7 @@ function landed(f) {
   st.n++; st.sp[f.species] = (st.sp[f.species] || 0) + 1;
   st.spMax[f.species] = Math.max(st.spMax[f.species] || 0, f.len); st.maxLen = Math.max(st.maxLen, f.len);
   if (cond.sampled && fly.imitates.includes(cond.i1)) st.matched++;
-  if (f.lie.type === 'Tasche') st.pocket++;
+  if (f.lie.rock) st.pocket++;
   if (save.sel.bead >= 3.5) st.heavy++;
   if (save.sel.tippet <= 0.12) st.fine++;
   if (f.len >= 42) st.big42++;
@@ -389,7 +397,7 @@ function landed(f) {
   const lg = save.log[f.species] || (save.log[f.species] = { n: 0, max: 0 });
   const rec = f.len > lg.max && lg.n > 0, first = lg.n === 0;
   lg.n++; lg.max = Math.max(lg.max, f.len); save.total++;
-  let xp = Math.round(f.len * sp.xp * (save.set.help ? 1 : 1.25) * (save.set.assist ? 1 : 1.15)) + (f.old ? 300 : 0);
+  let xp = Math.round(f.len * sp.xp * (save.set.help ? 1 : 1.25) * (save.set.assist ? 1 : 1.15)) + (f.old ? 300 : 0) + (save.set.clear ? 0 : 35);
   const mat = 1 + (f.len > 35 ? 1 : 0) + (f.len > 50 ? 1 : 0);
   save.material += mat;
   const done = [];
@@ -410,15 +418,15 @@ function landed(f) {
   if (f.old) sfx.fanfare(); else sfx.chime();
   vibrate([40, 60, 40, 60, 120]);
 
-  let h = `<div class="catch"><div class="kicker">${f.old ? 'Der Alte vom Smaragdgumpen' : first ? 'Neue Art im Fangbuch!' : rec ? 'Neuer persönlicher Rekord!' : 'Gefangen'}</div>
+  let h = `<div class="catch"><div class="kicker">${f.old ? T('Der Alte vom Smaragdgumpen') : first ? T('Neue Art im Fangbuch!') : rec ? T('Neuer persönlicher Rekord!') : T('Gefangen')}</div>
     <canvas id="catchCv" width="640" height="260"></canvas>
     <h2>${sp.name}</h2><div class="latin">${sp.latin}</div>
     <div class="big">${f.len} cm <span>· ${w >= 1000 ? fmt(w / 1000, 2) + ' kg' : w + ' g'}</span></div>
-    <div class="meta">${fly.name} · ${fmt(save.sel.bead)} mm · ${fmt(save.sel.tippet, 2)} mm · ${f.lie.type}</div>
-    <div class="chips"><span class="chip xp">+${xp} XP</span><span class="chip">+${mat} Bindematerial</span></div>`;
-  for (const q of done) h += `<div class="qdone">✓ Aufgabe erfüllt: ${q}</div>`;
-  for (const l of ups) h += `<div class="lvl">Stufe ${l}!${LEVEL_UNLOCKS[l] ? ' Neu: ' + LEVEL_UNLOCKS[l] : ''}</div>`;
-  h += `<button class="primary" data-act="release">Zurücksetzen</button></div>`;
+    <div class="meta">${fly.name} · ${fmt(save.sel.bead)} mm · ${fmt(save.sel.tippet, 2)} mm · ${T(f.lie.type)}</div>
+    <div class="chips"><span class="chip xp">+${xp} XP</span><span class="chip">+${mat} ${T('Bindematerial')}</span></div>`;
+  for (const q of done) h += `<div class="qdone">✓ ${T('Aufgabe erfüllt:')} ${q}</div>`;
+  for (const l of ups) h += `<div class="lvl">${T('Stufe {0}!', l)}${LEVEL_UNLOCKS[l] ? ' ' + T('Neu:') + ' ' + LEVEL_UNLOCKS[l] : ''}</div>`;
+  h += `<button class="primary" data-act="release">${T('Zurücksetzen')}</button></div>`;
   openModal(h, { lock: true });
   drawFish($('catchCv'), f.species, { seed: f.len * 13 + 1 });
   S.afterRelease = () => {
@@ -426,13 +434,13 @@ function landed(f) {
     world.splash(S.px - 0.6, S.pz - 0.6, 1); sfx.plop();
     checkOld(true);
     if (newPage) showPage(newPage, true);
-    else toast(pick(['Sie schwimmt davon.', 'Zurück im Fluss.', 'Petri Heil!', 'Ein Schwanzschlag – weg ist sie.']));
+    else toast(pick([T('Sie schwimmt davon.'), T('Zurück im Fluss.'), T('Petri Heil!'), T('Ein Schwanzschlag – weg ist sie.')]));
   };
 }
 
 // ---------- Waten & Stein ----------
-const K = { up: 0, down: 0, left: 0, right: 0 };
-const KEYMAP = { KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down', KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right' };
+const K = { up: 0, down: 0, left: 0, right: 0, tl: 0, tr: 0 };
+const KEYMAP = { KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down', KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right', KeyQ: 'tl', KeyE: 'tr' };
 let moveMsgT = 0;
 function updateMove(dt) {
   moveMsgT -= dt;
@@ -441,10 +449,12 @@ function updateMove(dt) {
   const ml = Math.hypot(mx, mz);
   if (ml < 0.12) return;
   if (ml > 1) { mx /= ml; mz /= ml; }
-  const f = Math.min(1, ml), sp = 1.3 * (1 - 0.42 * Math.min(1, river.depthAt(S.px, S.pz))) * dt;
+  { const c = Math.cos(S.yaw), sn = Math.sin(S.yaw), rx = mx * c + mz * sn; mz = -mx * sn + mz * c; mx = rx; }   // Stick relativ zur Blickrichtung
+  const f = Math.min(1, ml), sp = (onLand() ? 1.5 : 1.3 * (1 - 0.42 * Math.min(1, river.depthAt(S.px, S.pz)))) * dt;
   const ok = (x, z) => {
     const d = river.depthAt(x, z);
-    if (d < 0.14 || d > 1.05 || z < Z_MIN || z > Z_MAX) return false;
+    if (d > 1.05 || z < Z_MIN || z > Z_MAX) return false;
+    if (Math.abs(x) > river.halfW + 1.0 || river.heightAt(x, z) > 0.9) return false;   // höchstens 1 m Uferstreifen
     for (const k of river.rocks) if (Math.hypot(x - k.x, z - k.z) < k.r + 0.3) return false;
     return true;
   };
@@ -455,18 +465,19 @@ function updateMove(dt) {
   else if (moveMsgT <= 0) {
     moveMsgT = 3;
     const tx = S.px + mx * 0.4, tz = S.pz + mz * 0.4, d = river.depthAt(tx, tz);
-    toast(tz < Z_MIN ? 'Hier endet die Strecke – weiter oben ist Schongebiet.' : tz > Z_MAX ? 'Weiter unten ist die Brücke. Fisch stromauf!' : d > 1 ? 'Zu tief zum Waten.' : d < 0.14 ? 'Bleib im Wasser.' : 'Da liegt ein Fels im Weg.');
+    toast(tz < Z_MIN ? T('Hier endet die Strecke. Oben kannst du sie von vorn beginnen.') : tz > Z_MAX ? T('Weiter unten ist die Brücke. Fisch stromauf!') : d > 1 ? T('Zu tief zum Waten.') : Math.abs(tx) > river.halfW ? T('Weiter weg vom Wasser kommst du nicht an die Fische.') : T('Da liegt ein Fels im Weg.'));
   }
   if (ox === S.px && oz === S.pz) return;
   S.walk = f; S.moveDir = Math.atan2(-(S.px - ox), -(S.pz - oz));
   S.aim = null;
-  if (Math.random() < dt * 6 * f) world.splash(S.px + (Math.random() - 0.5) * 0.3, S.pz + 0.1, 0.3 + f * 0.25);
-  const rad = 1.5 + 1.3 * f; let spk = 0;
+  const land = onLand();
+  if (!land && Math.random() < dt * 6 * f) world.splash(S.px + (Math.random() - 0.5) * 0.3, S.pz + 0.1, 0.3 + f * 0.25);
+  const rad = land ? 0.5 + 0.4 * f : 1.5 + 1.3 * f; let spk = 0;   // am Ufer sieht und hört dich der Fisch kaum
   for (const fi of fish) {
     const d = Math.hypot(fi.x - S.px, fi.z - S.pz);
-    if (d < rad && fi.spooked <= 0) { fi.spooked = 70; spk++; } else if (d < rad + 2.5) fi.wary = Math.max(fi.wary, 5);
+    if (d < rad && fi.spooked <= 0) { fi.spooked = 70; spk++; } else if (d < rad + (land ? 0.8 : 2.5)) fi.wary = Math.max(fi.wary, 5);
   }
-  if (spk) toast('Fisch vergrämt! Langsam waten und Abstand zu den Standplätzen halten.', 3800);
+  if (spk) toast(T('Fisch vergrämt! Langsam waten und Abstand zu den Standplätzen halten.'), 3800);
   if (save.tut === 0 || save.tut === 1) { /* Tipp bleibt */ }
 }
 function kickSample() {
@@ -474,13 +485,13 @@ function kickSample() {
   cond.sampled = true;
   const a = INSECTS[cond.i1], b = INSECTS[cond.i2];
   const good = FLIES.filter(f => f.imitates.includes(cond.i1)).map(f => f.name + (save.level >= f.level ? '' : ' 🔒')).join(', ');
-  openModal(`<h2>Stein umgedreht</h2>
-    <p>Du hebst einen faustgroßen Stein aus der Strömung und drehst ihn um.</p>
-    <div class="sample"><b>Massenhaft ${a.name}</b><br><i>${a.hint}</i></div>
-    <div class="sample minor"><b>Vereinzelt ${b.name}</b><br><i>${b.hint}</i></div>
-    <p>Passende Muster: <b>${good}</b></p>
-    <p class="small">Wasser: ${CLARITY[cond.clarity]}. ${cond.clarity > 0 ? 'Bei angetrübtem Wasser dürfen Fliegen auffälliger sein (Hotspot).' : 'Bei klarem Wasser lieber natürlich und fein fischen.'}</p>
-    <button class="primary" data-act="close">Stein zurücklegen</button>`);
+  openModal(`<h2>${T('Stein umgedreht')}</h2>
+    <p>${T('Du hebst einen faustgroßen Stein aus der Strömung und drehst ihn um.')}</p>
+    <div class="sample"><b>${T('Massenhaft {0}', a.name)}</b><br><i>${a.hint}</i></div>
+    <div class="sample minor"><b>${T('Vereinzelt {0}', b.name)}</b><br><i>${b.hint}</i></div>
+    <p>${T('Passende Muster:')} <b>${good}</b></p>
+    <p class="small">${T('Wasser:')} ${CLARITY[cond.clarity]}. ${cond.clarity > 0 ? T('Bei angetrübtem Wasser dürfen Fliegen auffälliger sein (Hotspot).') : T('Bei klarem Wasser lieber natürlich und fein fischen.')}</p>
+    <button class="primary" data-act="close">${T('Stein zurücklegen')}</button>`);
   updateHUD();
 }
 
@@ -490,21 +501,24 @@ function toast(msg, ms = 2800) { const t = $('toast'); t.textContent = msg; t.cl
 function updateTip() {
   const el = $('tip'); let s = '';
   if (save.tut < 4) {
-    if (S.mode === 'idle') s = save.tut === 0 ? 'Finger aufs Wasser legen, Zielring stromauf schieben, loslassen = Wurf. Fische stehen hinter Steinen und in tiefen Rinnen.' : 'Neuer Wurf: Zielring setzen und loslassen. Mit dem Stick unten links watest du frei durch den Fluss – langsam, sonst flüchten die Fische.';
-    else if (S.mode === 'drift') s = S.bite ? 'Der Sighter stoppt – nach oben wischen oder ANHIEB drücken!' : 'Finger nach unten ziehen und die Rute mit der Drift führen. Ring am Sighter grün = Kontakt, blau = zu lose, rot = du ziehst.';
-    else if (S.mode === 'fight') s = 'Finger nach unten ziehen = Druck, je weiter desto mehr. Bei Fluchten nachgeben, nie ganz locker lassen. Seitlich ziehen = Seitendruck.';
+    if (S.mode === 'idle') s = save.tut === 0 ? T('Finger aufs Wasser legen, Zielring stromauf schieben, loslassen = Wurf. Fische stehen vor, neben und hinter Steinen, in Gumpen und tiefen Rinnen.') : T('Neuer Wurf: Zielring setzen und loslassen. Mit dem Stick unten links watest du frei durch den Fluss – langsam, sonst flüchten die Fische.');
+    else if (S.mode === 'drift') s = S.bite ? T('Der Sighter stoppt – nach oben wischen oder ANHIEB drücken!') : T('Finger nach unten ziehen und die Rute mit der Drift führen. Ring am Sighter grün = Kontakt, blau = zu lose, rot = du ziehst.');
+    else if (S.mode === 'fight') s = T('Finger nach unten ziehen = Druck, je weiter desto mehr. Bei Fluchten nachgeben, nie ganz locker lassen. Seitlich ziehen = Seitendruck.');
   }
+  if (tipGone.has(s)) s = '';
   el.textContent = s; el.classList.toggle('show', !!s);
 }
+const tipGone = new Set();   // weggedrückte Tipps bleiben für diese Sitzung aus
+$('tip').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); tipGone.add($('tip').textContent); updateTip(); });
 function updateHUD() {
   const rv = REVIERE[save.revier], fly = curFly();
   $('rvName').textContent = rv.name;
   $('rvCond').textContent = `${CLARITY[cond.clarity]} · ${cond.light.name}` + (cond.sampled ? ` · ${INSECTS[cond.i1].name}` : '');
   $('xpfill').style.width = (save.level >= MAX_LEVEL ? 100 : save.xp / xpNeed(save.level) * 100) + '%';
-  $('xptext').textContent = 'Stufe ' + save.level;
+  $('xptext').textContent = T('Stufe {0}', save.level);
   $('rig').innerHTML = `<b>${fly.name}</b> ×${save.flies[fly.id] || 0}<br>${fmt(save.sel.bead)} mm · ${fmt(save.sel.tippet, 2)} mm`;
   const open = rv.quests.filter(q => !save.quests[q.id]);
-  $('quest').textContent = open.length ? '◦ ' + open[0].text : '✓ Alle Aufgaben hier erfüllt';
+  $('quest').textContent = open.length ? '◦ ' + open[0].text : T('✓ Alle Aufgaben hier erfüllt');
 }
 
 let modalOpts = null;
@@ -522,19 +536,19 @@ function showPage(key, fresh) {
   const p = PAGES.find(p => p.key === key); if (!p) return;
   const idx = REVIERE.findIndex(r => r.id === key);
   let h = `<article class="paper"><div class="date">${p.date}</div><h2>${p.title}</h2>${p.text.map(t => `<p>${t}</p>`).join('')}</article>`;
-  if (fresh && idx > 0) h += `<div class="lvl">Neues Revier freigeschaltet: ${REVIERE[idx].name}</div><button class="primary" data-act="goto" data-i="${idx}">Zum Revier wandern</button><button class="ghost" data-act="close">Hier weiterfischen</button>`;
-  else h += `<button class="primary" data-act="close">${key === 'intro' && fresh ? 'Ans Wasser' : 'Schließen'}</button>`;
+  if (fresh && idx > 0) h += `<div class="lvl">${T('Neues Revier freigeschaltet:')} ${REVIERE[idx].name}</div><button class="primary" data-act="goto" data-i="${idx}">${T('Zum Revier wandern')}</button><button class="ghost" data-act="close">${T('Hier weiterfischen')}</button>`;
+  else h += `<button class="primary" data-act="close">${key === 'intro' && fresh ? T('Ans Wasser') : T('Schließen')}</button>`;
   openModal(h);
 }
 function showJournal(tab = 'rev') {
-  let h = `<h2>Tagebuch</h2><div class="tabs"><button data-act="jtab" data-t="rev" class="${tab === 'rev' ? 'on' : ''}">Reviere & Aufgaben</button><button data-act="jtab" data-t="pages" class="${tab === 'pages' ? 'on' : ''}">Opas Seiten</button></div>`;
+  let h = `<h2>${T('Tagebuch')}</h2><div class="tabs"><button data-act="jtab" data-t="rev" class="${tab === 'rev' ? 'on' : ''}">${T('Reviere & Aufgaben')}</button><button data-act="jtab" data-t="pages" class="${tab === 'pages' ? 'on' : ''}">${T('Opas Seiten')}</button></div>`;
   if (tab === 'rev') {
     REVIERE.forEach((rv, i) => {
       const locked = i >= save.unlocked, here = i === save.revier;
       h += `<div class="card ${locked ? 'locked' : ''}"><div class="row"><div><b>${locked ? '🔒 ' : ''}${rv.name}</b><div class="small">${rv.sub}</div></div>`;
-      if (!locked) h += here ? `<span class="chip">Du bist hier</span>` : `<button class="mini" data-act="goto" data-i="${i}">Hier fischen</button>`;
+      if (!locked) h += here ? `<span class="chip">${T('Du bist hier')}</span>` : `<button class="mini" data-act="goto" data-i="${i}">${T('Hier fischen')}</button>`;
       h += `</div>`;
-      if (locked) h += `<div class="small">Erfülle alle Aufgaben in „${REVIERE[i - 1].name}".</div>`;
+      if (locked) h += `<div class="small">${T('Erfülle alle Aufgaben in „{0}".', REVIERE[i - 1].name)}</div>`;
       else h += `<ul class="quests">${rv.quests.map(q => `<li class="${save.quests[q.id] ? 'ok' : ''}">${save.quests[q.id] ? '✓' : '○'} ${q.text}</li>`).join('')}</ul>`;
       h += `</div>`;
     });
@@ -547,44 +561,45 @@ function showJournal(tab = 'rev') {
   openModal(h);
 }
 function showBox() {
-  let h = `<h2>Fliegendose</h2><div class="small">Bindematerial: <b>${save.material}</b> · eine Fliege binden kostet 2</div><div class="flies">`;
+  let h = `<h2>${T('Fliegendose')}</h2><div class="small">${T('Bindematerial:')} <b>${save.material}</b> · ${T('eine Fliege binden kostet 2')}</div><div class="flies">`;
   for (const f of FLIES) {
     const locked = save.level < f.level, n = save.flies[f.id] || 0, sel = save.sel.fly === f.id;
-    h += `<div class="fly ${sel ? 'sel' : ''} ${locked ? 'locked' : ''}"><canvas width="96" height="96" data-fly="${f.id}"></canvas><div class="fi"><b>${f.name}</b> ${locked ? `<span class="chip">ab Stufe ${f.level}</span>` : `<span class="chip">×${n}</span>`}
-      <div class="small">${f.desc}</div><div class="small im">Imitiert: ${f.imitates.map(i => INSECTS[i].name).join(', ')}</div>`;
-    if (!locked) h += `<div class="row2"><button class="mini" data-act="selfly" data-id="${f.id}" ${n > 0 && !sel ? '' : 'disabled'}>${sel ? 'Angeknotet' : 'Anknoten'}</button><button class="mini" data-act="tie" data-id="${f.id}" ${save.material >= 2 ? '' : 'disabled'}>Binden (−2)</button></div>`;
+    h += `<div class="fly ${sel ? 'sel' : ''} ${locked ? 'locked' : ''}"><canvas width="96" height="96" data-fly="${f.id}"></canvas><div class="fi"><b>${f.name}</b> ${locked ? `<span class="chip">${T('ab Stufe {0}', f.level)}</span>` : `<span class="chip">×${n}</span>`}
+      <div class="small">${f.desc}</div><div class="small im">${T('Imitiert:')} ${f.imitates.map(i => INSECTS[i].name).join(', ')}</div>`;
+    if (!locked) h += `<div class="row2"><button class="mini" data-act="selfly" data-id="${f.id}" ${n > 0 && !sel ? '' : 'disabled'}>${sel ? T('Angeknotet') : T('Anknoten')}</button><button class="mini" data-act="tie" data-id="${f.id}" ${save.material >= 2 ? '' : 'disabled'}>${T('Binden (−2)')}</button></div>`;
     h += `</div></div>`;
   }
-  h += `</div><h3>Tungstenperle</h3><div class="seg">${BEADS.map(b => `<button data-act="bead" data-v="${b.mm}" class="${save.sel.bead === b.mm ? 'on' : ''}">${fmt(b.mm)} mm</button>`).join('')}</div>
-    <div class="small">Schwerer = schneller am Grund, aber mehr Hänger. Faustregel: so leicht wie möglich, so schwer wie nötig.</div>
-    <h3>Vorfachspitze</h3><div class="seg">${TIPPETS.map(t => `<button data-act="tippet" data-v="${t.d}" class="${save.sel.tippet === t.d ? 'on' : ''}" ${save.level < t.level ? 'disabled' : ''}>${fmt(t.d, 2)}${save.level < t.level ? ' 🔒' : ''}</button>`).join('')}</div>
-    <div class="small">Dünner = mehr Bisse und schnelleres Absinken, reißt aber früher.</div>
-    <button class="primary" data-act="close">Zurück ans Wasser</button>`;
+  h += `</div><h3>${T('Tungstenperle')}</h3><div class="seg">${BEADS.map(b => `<button data-act="bead" data-v="${b.mm}" class="${save.sel.bead === b.mm ? 'on' : ''}">${fmt(b.mm)} mm</button>`).join('')}</div>
+    <div class="small">${T('Schwerer = schneller am Grund, aber mehr Hänger. Faustregel: so leicht wie möglich, so schwer wie nötig.')}</div>
+    <h3>${T('Vorfachspitze')}</h3><div class="seg">${TIPPETS.map(t => `<button data-act="tippet" data-v="${t.d}" class="${save.sel.tippet === t.d ? 'on' : ''}" ${save.level < t.level ? 'disabled' : ''}>${fmt(t.d, 2)}${save.level < t.level ? ' 🔒' : ''}</button>`).join('')}</div>
+    <div class="small">${T('Dünner = mehr Bisse und schnelleres Absinken, reißt aber früher.')}</div>
+    <button class="primary" data-act="close">${T('Zurück ans Wasser')}</button>`;
   openModal(h);
   $('modalBody').querySelectorAll('canvas[data-fly]').forEach(c => drawFly(c, FLIES.find(f => f.id === c.dataset.fly)));
 }
 function showLog() {
-  let h = `<h2>Fangbuch</h2><div class="small">Gesamt: <b>${save.total}</b> Fische gefangen und zurückgesetzt</div>`;
+  let h = `<h2>${T('Fangbuch')}</h2><div class="small">${T('Gesamt:')} <b>${save.total}</b> ${T('Fische gefangen und zurückgesetzt')}</div>`;
   for (const id in SPECIES) {
     const sp = SPECIES[id], lg = save.log[id];
-    h += `<div class="card"><canvas width="420" height="150" data-sp="${id}" data-sil="${lg ? '' : '1'}"></canvas><div class="row"><div><b>${lg ? sp.name : '???'}</b><div class="small latin">${lg ? sp.latin : 'noch nicht gefangen'}</div></div>${lg ? `<div class="rec">${lg.max} cm<div class="small">${lg.n}× gefangen</div></div>` : ''}</div>${lg ? `<div class="small">${sp.note}</div>` : ''}</div>`;
+    h += `<div class="card"><canvas width="420" height="150" data-sp="${id}" data-sil="${lg ? '' : '1'}"></canvas><div class="row"><div><b>${lg ? sp.name : '???'}</b><div class="small latin">${lg ? sp.latin : T('noch nicht gefangen')}</div></div>${lg ? `<div class="rec">${lg.max} cm<div class="small">${lg.n}× ${T('gefangen')}</div></div>` : ''}</div>${lg ? `<div class="small">${sp.note}</div>` : ''}</div>`;
   }
   openModal(h);
   $('modalBody').querySelectorAll('canvas[data-sp]').forEach(c => drawFish(c, c.dataset.sp, { silhouette: !!c.dataset.sil }));
 }
 function showSettings() {
   const tg = (k, label, sub) => `<label class="toggle"><input type="checkbox" data-set="${k}" ${save.set[k] ? 'checked' : ''}><span><b>${label}</b><br><span class="small">${sub}</span></span></label>`;
-  openModal(`<h2>Einstellungen</h2>
-    ${tg('help', 'Bisshilfe', 'Lupe leuchtet und Handy vibriert beim Biss. Ohne Hilfe: +25 % XP.')}
-    ${tg('assist', 'Führungshilfe', 'Die Rute folgt der Drift ein Stück von selbst; in schnellem Wasser musst du nachhelfen. Ohne: +15 % XP.')}
-    ${tg('gfx', 'Hohe Grafikqualität', 'Schatten, Gras und volle Auflösung. Ausschalten, wenn es ruckelt.')}
-    ${tg('vib', 'Vibration', 'Haptik bei Biss und Drill (nur am Handy).')}
-    ${tg('sound', 'Ton', 'Flussrauschen und Effekte.')}
-    <h3>Steuerung</h3>
-    <p class="small"><b>Handy:</b> Finger aufs Wasser, Zielring schieben, loslassen = Wurf · nach unten ziehen = Rute führen · nach oben wischen (oder ANHIEB) = anschlagen · im Drill nach unten ziehen = Druck, seitlich = Seitendruck · Stick unten links = waten in alle Richtungen.</p>
-    <p class="small"><b>PC:</b> wie am Handy mit gedrückter Maustaste · Leertaste / Rechtsklick = Anhieb, im Drill halten = Druck · W/A/S/D = waten, im Drill A/D = Seitendruck · F = Fliegendose · T = Tagebuch.</p>
-    <button class="ghost danger" data-act="reset">Spielstand löschen</button>
-    <button class="primary" data-act="close">Schließen</button>`);
+  openModal(`<h2>${T('Einstellungen')}</h2>
+    ${tg('help', T('Bisshilfe'), T('Lupe leuchtet und Handy vibriert beim Biss. Ohne Hilfe: +25 % XP.'))}
+    ${tg('assist', T('Führungshilfe'), T('Die Rute folgt der Drift ein Stück von selbst; in schnellem Wasser musst du nachhelfen. Ohne: +15 % XP.'))}
+    ${tg('clear', T('Klare Sicht'), T('Blendet die Spiegelung auf dem Wasser aus, damit du die Fische besser siehst. Ohne: +35 XP pro Fisch.'))}
+    ${tg('gfx', T('Hohe Grafikqualität'), T('Schatten, Gras und volle Auflösung. Ausschalten, wenn es ruckelt.'))}
+    ${tg('vib', T('Vibration'), T('Haptik bei Biss und Drill (nur am Handy).'))}
+    ${tg('sound', T('Ton'), T('Flussrauschen und Effekte.'))}
+    <h3>${T('Steuerung')}</h3>
+    <p class="small">${T('<b>Handy:</b> Finger aufs Wasser, Zielring schieben, loslassen = Wurf · nach unten ziehen = Rute führen · nach oben wischen (oder ANHIEB) = anschlagen · im Drill nach unten ziehen = Druck, seitlich = Seitendruck · Stick unten links = waten · am Himmel oder Ufer ziehen = umschauen.')}</p>
+    <p class="small">${T('<b>PC:</b> wie am Handy mit gedrückter Maustaste · Leertaste / Rechtsklick = Anhieb, im Drill halten = Druck · W/A/S/D = waten, im Drill A/D = Seitendruck · Rechtsklick ziehen oder Q/E = umschauen · F = Fliegendose · T = Tagebuch.')}</p>
+    <button class="ghost danger" data-act="reset">${T('Spielstand löschen')}</button>
+    <button class="primary" data-act="close">${T('Schließen')}</button>`);
 }
 
 $('modalBody').addEventListener('click', e => {
@@ -598,11 +613,11 @@ $('modalBody').addEventListener('click', e => {
   else if (a === 'tie') { if (save.material >= 2) { save.material -= 2; save.flies[b.dataset.id] = (save.flies[b.dataset.id] || 0) + 1; sfx.tick(); persist(); const sc = $('modalBody').scrollTop; showBox(); $('modalBody').scrollTop = sc; updateHUD(); } }
   else if (a === 'bead') { save.sel.bead = +b.dataset.v; persist(); const sc = $('modalBody').scrollTop; showBox(); $('modalBody').scrollTop = sc; updateHUD(); }
   else if (a === 'tippet') { save.sel.tippet = +b.dataset.v; persist(); const sc = $('modalBody').scrollTop; showBox(); $('modalBody').scrollTop = sc; updateHUD(); }
-  else if (a === 'reset') { if (confirm('Wirklich den gesamten Spielstand löschen?')) { localStorage.removeItem(KEY); location.reload(); } }
+  else if (a === 'reset') { if (confirm(T('Wirklich den gesamten Spielstand löschen?'))) { localStorage.removeItem(KEY); location.reload(); } }
 });
 $('modalBody').addEventListener('change', e => {
   const k = e.target.dataset && e.target.dataset.set; if (!k) return;
-  save.set[k] = e.target.checked; if (k === 'sound') sfx.setOn(save.set.sound); if (k === 'gfx') world.setQuality(save.set.gfx); persist();
+  save.set[k] = e.target.checked; if (k === 'sound') sfx.setOn(save.set.sound); if (k === 'gfx') world.setQuality(save.set.gfx); if (k === 'clear') world.setClearView(save.set.clear); persist();
 });
 $('modalClose').addEventListener('click', closeModal);
 $('modal').addEventListener('pointerdown', e => { if (e.target === $('modal') && modalOpts && !modalOpts.lock) closeModal(); });
@@ -623,6 +638,7 @@ joy.addEventListener('pointerdown', e => { e.preventDefault(); sfx.start(); joyI
 joy.addEventListener('pointermove', e => { if (e.pointerId === joyId) joySet(e); });
 for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) joy.addEventListener(ev, () => { joyId = null; S.joy.x = S.joy.z = 0; knob.style.transform = ''; });
 $('btnStone').addEventListener('click', () => canMenu() && kickSample());
+$('btnRestart').addEventListener('click', () => { if (S.mode !== 'idle') return; S.yaw = 0; S.pitch = 0; enterRevier(save.revier); toast(T('Zurück am Einstieg. Die Fische stehen neu.'), 2600); });
 
 // Anhieb / Drill
 function pressDown() { sfx.start(); if (S.mode === 'fight') S.hold = true; else if (S.mode === 'drift') strike(); }
@@ -632,23 +648,38 @@ sb.addEventListener('pointerdown', e => { e.preventDefault(); sb.setPointerCaptu
 for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) sb.addEventListener(ev, () => { sb.classList.remove('down'); pressUp(); });
 
 // Zeiger auf der Wasserfläche: zielen, Rute führen, Wisch-Anhieb, analoger Drill
-const ptr = { id: null, x: 0, y: 0, ax: 0, ay: 0, hist: [] };
+const ptr = { id: null, x: 0, y: 0, ax: 0, ay: 0, hist: [], look: false };
+// Umschauen: Ziehen, das nicht auf befischbarem Wasser beginnt (Himmel, Ufer, weit weg), oder Rechtsklick-Ziehen
+function isLookStart(e) {
+  if (S.mode !== 'idle' && S.mode !== 'landed') return false;
+  if (e.button === 2) return true;
+  const pt = world.screenToWater(e.clientX, e.clientY);
+  return !pt || river.depthAt(pt.x, pt.z) < 0.05 || Math.hypot(pt.x - S.px, pt.z - S.pz) > 15 || pt.z < Z_MIN - 6 || pt.z > Z_MAX + 20;
+}
 function aimAt(cx, cy) { const pt = world.screenToWater(cx, cy); S.aim = pt ? castTarget(pt) : null; }
 canvas.addEventListener('pointerdown', e => {
   sfx.start();
-  if (modalOpen() || S.mode === 'title' || e.button === 2) return;
+  if (modalOpen() || S.mode === 'title') return;
+  const lk = isLookStart(e);
+  if (e.button === 2 && !lk) return;
   if (ptr.id !== null) { if (S.mode === 'drift') strike(); return; }
   ptr.id = e.pointerId; ptr.x = ptr.ax = e.clientX; ptr.y = ptr.ay = e.clientY; ptr.hist.length = 0;
   try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* */ }
-  if (S.mode === 'idle' && !S.wade) aimAt(e.clientX, e.clientY);
+  ptr.look = lk;
+  if (!lk && S.mode === 'idle' && !S.wade) aimAt(e.clientX, e.clientY);
 });
 canvas.addEventListener('pointermove', e => {
   if (e.pointerId !== ptr.id) return;
   const dx = e.clientX - ptr.x, dy = e.clientY - ptr.y; ptr.x = e.clientX; ptr.y = e.clientY;
-  if (S.mode === 'idle') { if (!S.wade) aimAt(e.clientX, e.clientY); }
+  if (ptr.look) {
+    const k = 3.2 / Math.min(window.innerWidth, 900), sg = e.pointerType === 'mouse' ? -1 : 1;   // Finger schiebt die Szene, Maus dreht den Blick
+    S.yaw += dx * k * sg; S.pitch = clamp(S.pitch + dy * k * 0.7 * sg, -0.12, 0.55);
+  }
+  else if (S.mode === 'idle') { if (!S.wade) aimAt(e.clientX, e.clientY); }
   else if (S.mode === 'drift') {
     const K = 3.6 / (Math.min(window.innerHeight, 900) * 0.42);
-    S.tip.x += dx * K; S.tip.z += dy * K;
+    const c = Math.cos(S.yaw), sn = Math.sin(S.yaw);
+    S.tip.x += (dx * c + dy * sn) * K; S.tip.z += (-dx * sn + dy * c) * K;
     const now = performance.now(), hs = ptr.hist;
     hs.push({ t: now, x: e.clientX, y: e.clientY });
     while (hs.length && now - hs[0].t > 150) hs.shift();
@@ -663,8 +694,9 @@ canvas.addEventListener('pointermove', e => {
 const ptrEnd = e => {
   if (e.pointerId !== ptr.id) return;
   ptr.id = null; S.press = 0;
+  if (ptr.look) { ptr.look = false; return; }
   const a = S.aim; S.aim = null;
-  if (S.mode === 'idle' && a && e.type === 'pointerup') { if (a.ok) doCast({ x: a.tx, z: a.tz }); else toast('Dort ist kein Wasser.'); }
+  if (S.mode === 'idle' && a && e.type === 'pointerup') { if (a.ok) doCast({ x: a.tx, z: a.tz }); else toast(T('Dort ist kein Wasser.')); }
 };
 canvas.addEventListener('pointerup', ptrEnd);
 canvas.addEventListener('pointercancel', ptrEnd);
@@ -712,6 +744,10 @@ function drawLupe() {
 }
 function updateGauges() {
   const drift = S.mode === 'drift';
+  $('btnRestart').classList.toggle('show', S.mode === 'idle' && S.pz < Z_MIN + 4 && !modalOpen());
+  $('read').classList.toggle('off', !drift);
+  $('gauge').classList.toggle('off', !drift);
+  $('strike').classList.toggle('off', !drift && S.mode !== 'fight');
   $('gMark').style.left = (50 + (drift ? S.g : 0) * 46) + '%';
   $('gauge').classList.toggle('bad', drift && Math.abs(S.g) > 0.4);
   const bottom = drift ? Math.max(0.06, river.depthAt(S.nymph.x, S.nymph.z)) : 1;
@@ -725,8 +761,9 @@ function updateGauges() {
     $('tFill').className = F.ten > lim ? 'red' : F.ten < 0.16 ? 'low' : F.ten > lim - 0.12 ? 'warn' : '';
     $('tLimit').style.left = lim * 100 + '%';
     $('sFill').style.width = clamp(F.stam, 0, 1) * 100 + '%';
-    $('fightHint').textContent = F.landing > 0 ? 'Kescher!' : F.jump > 0 ? 'Druck raus!' : ((F.p || 0) < 0.08 ? '▼ nach unten ziehen = Druck' : F.side > 0 ? 'Rute nach rechts ➡' : '⬅ Rute nach links');
-    $('fightHint').classList.toggle('good', !!F.good);
+    // Pfeil statt Text: im Drill schaut man auf den Fisch, nicht auf Wörter
+    const dir = F.landing > 0 ? '' : F.jump > 0 ? 'up' : (F.p || 0) < 0.08 ? 'down' : F.side > 0 ? 'right' : 'left';
+    $('fightArrow').className = dir + (F.good && (dir === 'left' || dir === 'right') ? ' good' : '');
   }
 }
 
@@ -793,6 +830,13 @@ function frame(now) {
     const k = T.y / (T.y + S.nymph.d + 1e-4);
     world.setEntry(T.x + (S.nymph.x - T.x) * k, T.z + (S.nymph.z - T.z) * k, S.bite && save.set.help ? 'bite' : Math.abs(S.g) < 0.4 ? 'ok' : S.g < 0 ? 'slack' : 'drag');
   } else world.setEntry(0, 0, null);
+  S.yaw += (K.tl - K.tr) * 1.7 * dt;
+  if (S.mode === 'fight') {   // im Drill dreht die Kamera zurück stromauf – links/rechts muss stimmen
+    S.yaw = ((S.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    const k = Math.min(1, dt * 4); S.yaw -= S.yaw * k; S.pitch -= S.pitch * k;
+    if (Math.abs(S.yaw) < 0.002) S.yaw = 0;
+  }
+  world.yaw = S.yaw; world.pitch = S.pitch;
   world.update(dt, S.t, S.px, S.pz, groundY(), focus);
   if (S.mode !== 'title') { drawLupe(); updateGauges(); }
 }
@@ -809,9 +853,33 @@ function startGame(fresh) {
   if (isNew) showPage('intro', true);
 }
 $('btnStart').addEventListener('click', () => startGame(false));
-$('btnNew').addEventListener('click', () => { if (!save.started || confirm('Neues Spiel beginnen? Der alte Spielstand geht verloren.')) startGame(true); });
-if (save.started) { $('btnStart').textContent = 'Weiterfischen'; $('btnNew').classList.remove('hidden'); }
-else $('btnStart').textContent = 'Ans Wasser';
+$('btnNew').addEventListener('click', () => { if (!save.started || confirm(T('Neues Spiel beginnen? Der alte Spielstand geht verloren.'))) startGame(true); });
+// ---------- Sprache ----------
+function applyLang() {
+  const set = (sel, de, i = 0) => { const el = document.querySelectorAll(sel)[i]; if (el) el.textContent = T(de); };
+  set('.tbox .pre', 'Ein Euro-Nymphing-Abenteuer'); set('.tbox .sub', 'Das Erbe der Smaragda');
+  set('.tbox p', 'Opas Rute. Opas Fliegendose. Fünf Strecken eines smaragdgrünen Flusses – und ein Fisch, den er nie landen konnte.');
+  set('#btnStart', save.started ? 'Weiterfischen' : 'Ans Wasser'); set('#btnNew', 'Neues Spiel');
+  set('#gauge .l', 'lose'); set('#gauge .c', 'Kontakt'); set('#gauge .r', 'Zug');
+  set('#fightUI .lab', 'Schnurspannung', 0); set('#fightUI .lab', 'Kraft des Fisches', 1);
+  set('#btnRestart', '↺ Strecke von vorn beginnen'); set('#joy small', 'waten'); set('#btnStone small', 'Stein');
+  set('#strike', S.mode === 'fight' ? 'DRILL' : 'ANHIEB');
+  document.title = 'Nymphmaniac – ' + T('Das Erbe der Smaragda');
+  for (const v of Object.values(SPECIES)) loc(v, 'name', 'note');
+  for (const v of Object.values(INSECTS)) loc(v, 'name', 'hint');
+  for (const f of FLIES) loc(f, 'name', 'desc');
+  for (const l of LIGHTS) loc(l, 'name');
+  for (const r of REVIERE) { loc(r, 'name', 'sub'); for (const q of r.quests) loc(q, 'text'); }
+  for (const pg of PAGES) loc(pg, 'title', 'date', 'text');
+  if (!applyLang.de) applyLang.de = { cl: [...CLARITY], lu: { ...LEVEL_UNLOCKS } };
+  applyLang.de.cl.forEach((x, i) => { CLARITY[i] = T(x); });
+  for (const k in applyLang.de.lu) LEVEL_UNLOCKS[k] = T(applyLang.de.lu[k]);
+  for (const b of document.querySelectorAll('#langs button')) b.classList.toggle('on', b.dataset.lang === getLang());
+  if (river) { updateHUD(); updateTip(); }
+}
+$('langs').innerHTML = LANGS.map(([id, name]) => `<button data-lang="${id}">${name}</button>`).join('');
+$('langs').addEventListener('click', e => { const b = e.target.closest('[data-lang]'); if (b) { setLang(b.dataset.lang); applyLang(); } });
+setLang(getLang()); applyLang();
 
 enterRevier(Math.min(save.revier, save.unlocked - 1));
 requestAnimationFrame(frame);

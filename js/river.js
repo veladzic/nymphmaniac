@@ -84,12 +84,25 @@ export function makeRiver(rv) {
   const far = (x, z) => lies.every(l => (l.x - x) ** 2 + (l.z - z) ** 2 > 2.2);
   for (const p of pools) {
     if (p.big) { lies.push({ x: p.x, z: p.z, type: 'Gumpen', big: true }); continue; }
+    // Gumpen: Einlauf und Auslauf – frei anwerfbar, kein Stein im Weg
     const x = p.x + 0.4, z = p.z - p.r * 0.2;
     if (valid(x, z) && far(x, z)) lies.push({ x, z, type: 'Gumpen' });
+    const x2 = p.x - 0.5, z2 = p.z + p.r * 0.55;
+    if (valid(x2, z2) && far(x2, z2)) lies.push({ x: x2, z: z2, type: 'Gumpen' });
   }
+  // Steine: nicht immer die Tasche dahinter – auch das Kissen davor und die Strömungskante daneben
   for (const k of rocks) {
-    const x = k.x, z = k.z + k.r * 2.1 + 0.3;
-    if (valid(x, z) && far(x, z)) lies.push({ x, z, type: 'Tasche' });
+    const side = rnd() < 0.5 ? -1 : 1;
+    const opts = [
+      { x: k.x, z: k.z + k.r * 2.1 + 0.3, type: 'Tasche' },
+      { x: k.x + side * 0.15, z: k.z - k.r - 0.75, type: 'Kissen' },
+      { x: k.x + side * (k.r + 0.7), z: k.z + k.r * 0.5, type: 'Kante' },
+    ];
+    const r = rnd(), first = r < 0.3 ? 0 : r < 0.62 ? 1 : 2;
+    for (let i = 0; i < 3; i++) {
+      const o = opts[(first + i) % 3];
+      if (valid(o.x, o.z) && far(o.x, o.z) && rocks.every(q => q === k || Math.hypot(o.x - q.x, o.z - q.z) > q.r + 0.45)) { lies.push({ ...o, rock: true }); break; }
+    }
   }
   for (let z = Z_MIN; z < Z_MAX - 4; z += 6) {
     const x = chan(z) + (rnd() < 0.5 ? -1 : 1) * (0.6 + rnd() * 0.9), zz = z + rnd() * 3;

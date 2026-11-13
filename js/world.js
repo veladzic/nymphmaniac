@@ -117,11 +117,27 @@ function leafTrunk(rnd) {
   for (let i = 0; i < uv.count; i++) uv.setY(i, uv.getY(i) * 2.5);
   return g;
 }
-function tuftGeo() {
+function tuftGeo(w = 0.78, h = 0.7) {
   const parts = [];
-  for (let i = 0; i < 3; i++) { const p = new THREE.PlaneGeometry(0.62, 0.5).translate(0, 0.24, 0).rotateY(i * Math.PI / 3); parts.push(p); }
+  for (let i = 0; i < 3; i++) { const p = new THREE.PlaneGeometry(w, h).translate(0, h * 0.48, 0).rotateY(i * Math.PI / 3); parts.push(p); }
   const g = mergeGeos(parts), n = g.attributes.normal;
   for (let i = 0; i < n.count; i++) n.setXYZ(i, 0, 1, 0);
+  return g;
+}
+// Farn: Wedel als gebogene Streifen rund um die Mitte
+function fernGeo(rnd) {
+  const P = [], N = [], U = [], I = [], SEG = 5, nf = 9;
+  for (let f = 0; f < nf; f++) {
+    const a = f / nf * 6.283 + rnd() * 0.5, L = 0.62 + rnd() * 0.3, lift = 0.5 + rnd() * 0.35, ca = Math.cos(a), sa = Math.sin(a), w = 0.085 + rnd() * 0.03, base = P.length / 3;
+    for (let k = 0; k <= SEG; k++) {
+      const t = k / SEG, r = L * (0.06 + t * 0.94), y = lift * Math.sin(t * 2.0) * (1 - t * 0.25);
+      for (const sd of [-1, 1]) { P.push(ca * r - sa * w * sd, y, sa * r + ca * w * sd); N.push(ca * 0.3, 1, sa * 0.3); U.push(sd * 0.5 + 0.5, t); }
+    }
+    for (let k = 0; k < SEG; k++) { const i = base + k * 2; I.push(i, i + 1, i + 2, i + 1, i + 3, i + 2); }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2)); g.setIndex(I);
   return g;
 }
 function rockGeo(k, wet) {
@@ -311,44 +327,84 @@ varying float vDepth; varying float vSpeed; varying float vFoam; varying float v
 void main(){ vDepth=aDepth; vSpeed=aSpeed; vFoam=aFoam; vBank=aBank; vec4 w=modelMatrix*vec4(position,1.); vW=w.xyz; gl_Position=projectionMatrix*viewMatrix*w; }`;
 const WATER_FS = `
 precision highp float;
-uniform sampler2D uN,uSkyT;
-uniform float uTime,uClear,uMurk,uFogNear,uFogFar,uSun,uRot,uGain;
+uniform sampler2D uN,uSkyT,uRefl,uScene,uDepthT;
+uniform float uTime,uClear,uMurk,uFogNear,uFogFar,uSun,uRot,uGain,uFx,uNear,uFar,uNoRefl;
 uniform vec3 uShallow,uDeep,uSkyTop,uSkyBot,uFog,uSunDir,uSunCol,uBankCol;
+uniform vec2 uInv; uniform vec4 uWader;
 varying float vDepth; varying float vSpeed; varying float vFoam; varying float vBank; varying vec3 vW;
 vec4 lay(vec2 p, float ph, vec2 o){
   vec2 q=vec2(p.x, p.y-vSpeed*ph*3.33);
   return texture2D(uN,q*vec2(0.17,0.085)+o)*0.55+texture2D(uN,q*vec2(0.53,0.29)+o*1.7)*0.45;
 }
+float linZ(float z){ float n=z*2.-1.; return 2.*uNear*uFar/(uFar+uNear-n*(uFar-uNear)); }
 void main(){
   float ph1=fract(uTime*0.3), ph2=fract(uTime*0.3+0.5), w2=abs(1.-2.*ph1);
   vec4 m=mix(lay(vW.xz,ph1,vec2(0.)), lay(vW.xz,ph2,vec2(0.37,0.61)), w2);
   vec4 fine=texture2D(uN, vW.xz*vec2(1.3,0.8)+vec2(0.,-uTime*(0.25+vSpeed*0.5)));
   float rough=0.22+clamp(vSpeed,0.,1.7)*0.62;
   vec2 nxz=((m.rg-0.5)*2.2+(fine.rg-0.5)*0.7)*rough;
+  // Bugwelle: Stauring um die Beine, Kielwasser-V und Schaumfahne stromab
+  vec2 wp=vW.xz-uWader.xy; float wr=length(wp), wk=0.;
+  if(uWader.z>0. && wr<6.){
+    float flow=(clamp(vSpeed,0.2,1.6)+uWader.w*0.9)*uWader.z;
+    float ring=sin(wr*24.-uTime*7.)*exp(-wr*2.4);
+    float arm=abs(wp.x)-(0.17+max(wp.y,0.)*0.4);
+    float vee=exp(-arm*arm*80.)*smoothstep(0.,0.3,wp.y)*exp(-wp.y*0.7);
+    float trail=exp(-wp.x*wp.x*26.)*smoothstep(0.05,0.4,wp.y)*exp(-wp.y*1.2);
+    float collar=exp(-pow((wr-0.24)/0.08,2.));
+    wk=(vee*0.8+trail*0.65+collar*0.9)*flow;
+    nxz+=(wp/(wr+1e-3))*ring*0.4*flow+vec2(sign(wp.x),0.)*vee*0.55*sin(wp.y*16.-uTime*6.)*flow;
+  }
   vec3 N=normalize(vec3(nxz.x,1.,nxz.y));
   vec3 V=normalize(cameraPosition-vW);
-  float fres=0.02+0.98*pow(1.-max(dot(N,V),0.),5.);
-  fres*=mix(1.,0.42,uClear);
+  float fres=0.02+0.98*pow(1.-max(dot(N,V),0.),mix(5.,3.6,step(0.5,uFx)));
+  fres*=mix(1.,0.42,uClear)*mix(1.,0.07,uNoRefl);
   vec3 R=reflect(-V,N); R.y=abs(R.y);
   vec3 sky=texture2D(uSkyT,vec2(atan(R.z,R.x)*0.15915494+0.5+uRot, asin(clamp(max(R.y,0.04),0.,1.))*0.31830989+0.5)).rgb*uGain;
-  float bank=clamp(vBank+(m.b-0.5)*0.5,0.,1.)*smoothstep(0.55,0.05,R.y);
-  vec3 refl=mix(sky,uBankCol,bank*0.85);
   float d=vDepth;
   vec3 body=mix(uShallow,uDeep,smoothstep(0.05,1.5,d));
   body=mix(body,vec3(0.26,0.23,0.12),uMurk*0.65);
-  float a=mix(0.34,0.93,smoothstep(0.0,1.5,d));
-  a=mix(a,0.97,uMurk*0.75);
-  a*=mix(1.,0.8,uClear);
-  vec3 col=mix(body,refl,clamp(fres*0.9+0.07,0.,1.));
-  col+=(nxz.x+nxz.y)*0.07*mix(vec3(1.),refl,0.5);
-  a=max(a,fres*0.92);
-  float sp=pow(max(dot(R,uSunDir),0.),220.)*3.5*uSun*mix(1.,0.5,uClear);
+  vec3 col; float a; float efoam=0.; vec3 refl;
+  if(uFx>0.5){
+    vec2 suv=gl_FragCoord.xy*uInv;
+    // echte Spiegelung: gespiegelte Kamera, Bild vertikal gekippt, mit der Wellennormale verzerrt
+    vec2 ruv=vec2(suv.x,1.-suv.y)+nxz*vec2(0.045,0.1);
+    refl=mix(texture2D(uRefl,clamp(ruv,0.002,0.998)).rgb,sky,0.18*rough);
+    // Lichtbrechung: Szene unter Wasser mit Versatz, Wasserdicke aus dem Tiefenpuffer
+    float fz=linZ(gl_FragCoord.z);
+    float t0=linZ(texture2D(uDepthT,suv).r)-fz;
+    vec2 duv=suv+nxz*0.04*clamp(t0,0.,1.);
+    float t1=linZ(texture2D(uDepthT,duv).r)-fz;
+    if(t1<0.){ duv=suv; t1=t0; }
+    vec3 sc=texture2D(uScene,clamp(duv,0.001,0.999)).rgb;
+    float th=clamp(t1,0.,9.);
+    vec3 ext=vec3(0.6,0.23,0.19)*mix(0.85,5.,uMurk)*mix(1.,0.72,uClear);
+    vec3 T=exp(-ext*th);
+    vec3 under=sc*T+body*(1.-T);
+    col=mix(under,refl,clamp(fres,0.,1.));
+    col+=(nxz.x+nxz.y)*0.05*refl;
+    a=1.;
+    float tv=t0*max(V.y,0.18);
+    efoam=smoothstep(0.11,0.012,tv)*step(0.,t0)*clamp(vSpeed*1.3,0.18,1.)*smoothstep(0.3,0.62,fine.b*0.6+m.a*0.6);
+  } else {
+    float bank=clamp(vBank+(m.b-0.5)*0.5,0.,1.)*smoothstep(0.55,0.05,R.y);
+    refl=mix(sky,uBankCol,bank*0.85);
+    a=mix(0.34,0.93,smoothstep(0.0,1.5,d));
+    a=mix(a,0.97,uMurk*0.75);
+    a*=mix(1.,0.8,uClear);
+    col=mix(body,refl,clamp(fres*0.9+0.07,0.,1.));
+    col+=(nxz.x+nxz.y)*0.07*mix(vec3(1.),refl,0.5);
+    a=max(a,fres*0.92);
+  }
+  float sp=pow(max(dot(R,uSunDir),0.),220.)*3.5*uSun*mix(1.,0.5,uClear)*mix(1.,0.25,uNoRefl);
   col+=uSunCol*sp; a=max(a,clamp(sp,0.,1.));
   float riffle=smoothstep(0.85,1.6,vSpeed)*smoothstep(0.52,0.72,m.b)*smoothstep(1.1,0.3,d);
   float foam=smoothstep(0.42,0.75,vFoam*1.15+(m.a-0.5)*1.1+(fine.b-0.5)*0.5)*step(0.02,vFoam);
   foam=max(foam,riffle*0.85);
+  foam=max(foam,efoam*0.9);
+  foam=max(foam,smoothstep(0.38,0.85,wk*1.1+(fine.b-0.5)*0.8)*0.85);
   col=mix(col,vec3(0.93,0.96,0.97)*(0.55+0.45*uSun),foam); a=max(a,foam*0.95);
-  a*=smoothstep(0.0,0.06,d);
+  if(uFx<0.5) a*=smoothstep(0.0,0.06,d);
   float ff=smoothstep(uFogNear,uFogFar,length(cameraPosition-vW));
   col=mix(col,uFog,ff);
   gl_FragColor=vec4(col,a);
@@ -402,8 +458,9 @@ export class World {
     this.noiseTex = makeNoiseTex();
     const TL = this.loader = new THREE.TextureLoader();
     const load = (f, srgb) => { const t = TL.load('assets/' + f); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; if (srgb) t.colorSpace = THREE.SRGBColorSpace; return t; };
+    const loadA = f => { const t = TL.load('assets/' + f); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };   // freigestellte Fotos (Poly Haven, CC0)
     this.tex = { grass: load('grass_d.jpg', 1), grassN: load('grass_n.jpg'), peb: load('peb_d.jpg', 1), pebN: load('peb_n.jpg'), cliff: load('cliff_d.jpg', 1), cliffN: load('cliff_n.jpg'),
-      rock: load('rock_d.jpg', 1), rockN: load('rock_n.jpg'), bark: load('bark_d.jpg', 1), barkN: load('bark_n.jpg'), tuft: tuftTex(), branch: branchTex(), leaf: leafTex() };
+      rock: load('rock_d.jpg', 1), rockN: load('rock_n.jpg'), bark: load('bark_d.jpg', 1), barkN: load('bark_n.jpg'), tuft: loadA('tuft.png'), branch: loadA('branch.png'), leaf: loadA('leaf.png'), fern: loadA('fern.png'), reed: loadA('reed.png') };
     this.skyTex = {};
     this.skyU = { uSky: { value: null }, uRot: { value: 0 }, uGain: { value: 1.2 }, uFogC: { value: new THREE.Color() } };
     this.sky = new THREE.Mesh(new THREE.SphereGeometry(900, 48, 24), new THREE.ShaderMaterial({
@@ -421,7 +478,12 @@ export class World {
       uN: { value: this.noiseTex }, uSkyT: this.skyU.uSky, uRot: this.skyU.uRot, uGain: this.skyU.uGain, uTime: this.timeU, uClear: { value: 0 }, uMurk: { value: 0 }, uSun: { value: 1 },
       uShallow: { value: new THREE.Color() }, uDeep: { value: new THREE.Color() }, uSkyTop: { value: new THREE.Color() }, uSkyBot: { value: new THREE.Color() },
       uFog: { value: new THREE.Color() }, uFogNear: { value: 25 }, uFogFar: { value: 230 }, uSunDir: { value: this.sunDir }, uSunCol: { value: new THREE.Color(1, 0.95, 0.85) }, uBankCol: { value: new THREE.Color() },
+      uRefl: { value: null }, uScene: { value: null }, uDepthT: { value: null }, uFx: { value: 0 }, uNear: { value: 0.1 }, uFar: { value: 1200 },
+      uNoRefl: { value: 0 }, uInv: { value: new THREE.Vector2(1, 1) }, uWader: { value: new THREE.Vector4(0, 0, 0, 0) },
     };
+    // Wasser-Effekte: Spiegelbild (gespiegelte Kamera) und Szene unter Wasser (Farbe + Tiefe) in eigene Ziele rendern
+    this.fxWater = true; this.mirror = new THREE.PerspectiveCamera(); this.clipUp = [new THREE.Plane(new THREE.Vector3(0, 1, 0), 0.04)]; this.noClip = [];
+    this._slow = 0;
     this.buildAngler();
     this.buildRig();
     this.buildFx();
@@ -433,7 +495,7 @@ export class World {
   }
 
   setQuality(hi) {
-    this.hi = hi;
+    this.hi = hi; this.fxWater = hi; this._slow = 0;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, hi ? (this.mobile ? 1.75 : 2) : 1.2));
     this.renderer.shadowMap.enabled = hi; this.sun.castShadow = hi;
     this.scene.traverse(o => { if (o.material) o.material.needsUpdate = true; });
@@ -451,6 +513,23 @@ export class World {
     this.camera.fov = Math.max(50, vf);
     this.camera.updateProjectionMatrix();
     this.portrait = asp < 1;
+    this.makeTargets();
+  }
+
+  makeTargets() {
+    const sz = this.renderer.getDrawingBufferSize(new THREE.Vector2()), U = this.waterU;
+    if (!U) return;
+    U.uInv.value.set(1 / sz.x, 1 / sz.y);
+    const ks = this.mobile ? 0.5 : 0.75, kr = this.mobile ? 0.35 : 0.5;
+    const mk = (k, depth) => {
+      const w = Math.max(64, Math.round(sz.x * k)), h = Math.max(64, Math.round(sz.y * k));
+      const rt = new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false });
+      if (depth) { rt.depthTexture = new THREE.DepthTexture(w, h); rt.depthTexture.minFilter = rt.depthTexture.magFilter = THREE.NearestFilter; }
+      return rt;
+    };
+    if (this.sceneRT) { this.sceneRT.dispose(); this.reflRT.dispose(); }
+    this.sceneRT = mk(ks, true); this.reflRT = mk(kr, false);
+    U.uScene.value = this.sceneRT.texture; U.uDepthT.value = this.sceneRT.depthTexture; U.uRefl.value = this.reflRT.texture;
   }
 
   buildAngler() {
@@ -676,7 +755,7 @@ export class World {
     this.bugs.visible = lid === 'morgen' || lid === 'abend';
 
     // Gelände
-    const NX = 116, NZ = 210, W = 84, Z0 = -150, Z1 = 28;
+    const NX = 116, NZ = 262, W = 84, Z0 = -150, Z1 = 72;
     const tg = new THREE.PlaneGeometry(1, 1, NX, NZ);
     const tp = tg.attributes.position, tuv = tg.attributes.uv;
     const cols = new Float32Array(tp.count * 3), wgt = new Float32Array(tp.count * 3);
@@ -746,7 +825,7 @@ export class World {
     this.env.add(new THREE.Mesh(bg, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 })));
 
     // Wasser
-    const WX = 64, WZ = 400;
+    const WX = 64, WZ = 500;
     const wg = new THREE.PlaneGeometry(rv.width + 0.4, Z1 - Z0, WX, WZ);
     wg.rotateX(-Math.PI / 2); wg.translate(0, 0, (Z0 + Z1) / 2);
     const wp = wg.attributes.position;
@@ -772,7 +851,7 @@ export class World {
     U.uFogNear.value = this.scene.fog.near; U.uFogFar.value = this.scene.fog.far; U.uMurk.value = murk; U.uSun.value = overcast ? 0.12 : sunK; U.uSunCol.value.copy(sunCol);
     U.uBankCol.value.copy(C(rv.cliff ? pal.rock : pal.grass)).multiplyScalar(0.32);
     const water = new THREE.Mesh(wg, new THREE.ShaderMaterial({ uniforms: U, vertexShader: WATER_VS, fragmentShader: WATER_FS, transparent: true, depthWrite: false }));
-    water.renderOrder = 2; this.env.add(water);
+    water.renderOrder = 2; this.env.add(water); this.water = water; this._needLayers = true;
 
     // Felsen
     const rockMat = new THREE.MeshStandardMaterial({ color: C(pal.rock).lerp(new THREE.Color(1, 1, 1), 0.55).multiplyScalar(1.5), roughness: 0.95, vertexColors: true, map: this.tex.rock, normalMap: this.tex.rockN, normalScale: new THREE.Vector2(1.3, 1.3) });
@@ -837,25 +916,45 @@ export class World {
       const q = bankSpot(0.9, 17, 1.7); if (!q || q.y < 0.3) return null;
       q.y -= 0.05; q.s = 0.7 + rnd() * 1.1; q.sy = 0.8 + rnd() * 0.4; q.c = shade(); return q;
     }), { color: true, depth: leafDepth });
-    // Grasbüschel
-    const gm = new THREE.MeshLambertMaterial({ map: this.tex.tuft, alphaTest: 0.45, side: THREE.DoubleSide });
-    gm.onBeforeCompile = s => {
-      s.uniforms.uTime = this.timeU;
-      s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTime;')
-        .replace('#include <begin_vertex>', '#include <begin_vertex>\n#ifdef USE_INSTANCING\ntransformed.x+=sin(uTime*1.8+instanceMatrix[3].x*0.9+instanceMatrix[3].z*0.6)*0.07*uv.y;\n#endif');
+    // Bodenbewuchs: Grasbueschel, Farne unter den Baeumen, hohes Gras an der Wasserkante
+    const sway = (tex, amp) => {
+      const m = new THREE.MeshLambertMaterial({ map: tex, alphaTest: 0.42, side: THREE.DoubleSide });
+      m.onBeforeCompile = sh => {
+        sh.uniforms.uTime = this.timeU;
+        sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTime;')
+          .replace('#include <begin_vertex>', '#include <begin_vertex>\n#ifdef USE_INSTANCING\ntransformed.x+=sin(uTime*1.8+instanceMatrix[3].x*0.9+instanceMatrix[3].z*0.6)*' + amp.toFixed(3) + '*uv.y*uv.y;\n#endif');
+      };
+      return m;
     };
-    const NG = this.mobile ? 2600 : 4800, grass = new THREE.InstancedMesh(tuftGeo(), gm, NG); let gk = 0;
-    for (let i = 0; i < NG * 5 && gk < NG; i++) {
-      const p = bankSpot(-0.4, 15, 1.9, -78); if (!p || p.y < 0.28 || (rv.cliff && p.y > 1.2)) continue;
-      const s = 0.7 + rnd() * 1.1;
-      dm.position.set(p.x, p.y - 0.03, p.z); dm.scale.set(s, s * (0.7 + rnd() * 0.9), s); dm.rotation.y = rnd() * 3; dm.updateMatrix(); grass.setMatrixAt(gk, dm.matrix);
-      const b = 0.75 + rnd() * 0.4; lc.copy(cGr).lerp(new THREE.Color(0.32, 0.3, 0.14), 0.35 + rnd() * 0.3).multiplyScalar(1.25 * b); lc.r *= tint[0] * (1 + rnd() * 0.2); lc.g *= tint[1]; lc.b *= tint[2]; grass.setColorAt(gk, lc); gk++;
-    }
-    grass.count = gk; grass.instanceMatrix.needsUpdate = true; if (grass.instanceColor) grass.instanceColor.needsUpdate = true;
-    grass.receiveShadow = true; grass.visible = this.hi; this.grass = grass; this.env.add(grass);
+    const veg = new THREE.Group();
+    const scatter = (geo, mat, n, place, sc, col) => {
+      const im = new THREE.InstancedMesh(geo, mat, n); let k = 0;
+      for (let i = 0; i < n * 6 && k < n; i++) {
+        const q = place(); if (!q) continue;
+        const sz = sc();
+        dm.position.set(q.x, q.y - 0.03, q.z); dm.scale.set(sz[0], sz[1], sz[0]); dm.rotation.y = rnd() * 6.3; dm.updateMatrix(); im.setMatrixAt(k, dm.matrix);
+        const bb = 0.8 + rnd() * 0.45; lc.setRGB(bb * col[0] * tint[0] * (0.95 + rnd() * 0.15), bb * col[1] * tint[1], bb * col[2] * tint[2] * (0.9 + rnd() * 0.2)); im.setColorAt(k, lc); k++;
+      }
+      im.count = k; im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true;
+      im.receiveShadow = true; veg.add(im); return im;
+    };
+    const mob = this.mobile ? 0.55 : 1;
+    scatter(tuftGeo(), sway(this.tex.tuft, 0.07), Math.round(4800 * mob), () => { const q = bankSpot(-0.4, 15, 1.9, -78); return !q || q.y < 0.28 || (rv.cliff && q.y > 1.2) ? null : q; },
+      () => { const z = 0.7 + rnd() * 1.1; return [z, z * (0.7 + rnd() * 0.8)]; }, [1.3, 1.36, 1.0]);
+    scatter(fernGeo(rnd), sway(this.tex.fern, 0.03), Math.round(520 * clamp(rv.trees + 0.3, 0.4, 1.2) * mob), () => { const q = bankSpot(0.7, 11, 1.5, -78); return !q || q.y < 0.3 || (rv.cliff && q.y > 1.6) ? null : q; },
+      () => { const z = 0.8 + rnd() * 0.9; return [z, z * (0.8 + rnd() * 0.5)]; }, [1.2, 1.3, 0.98]);
+    let rc = null;
+    scatter(tuftGeo(0.5, 0.92), sway(this.tex.reed, 0.09), rv.cliff ? 0 : Math.round(420 * mob), () => {   // in Horsten an ruhigen Uferstellen
+      if (!rc || rnd() < 0.12) { rc = bankSpot(-0.9, 0.5, 1, -78); if (rc && river.speedAt(rc.x - rc.side * 0.8, rc.z) > rv.speed * 0.55) rc = null; }
+      if (!rc) return null;
+      const x = rc.x + (rnd() - 0.5) * 1.6, z = rc.z + (rnd() - 0.5) * 3.2, h = river.heightAt(x, z);
+      return h < -0.1 || h > 0.22 ? null : { x, z, y: h };
+    }, () => { const z = 0.75 + rnd() * 0.6; return [z, z * (0.7 + rnd() * 0.5)]; }, [1.45, 1.5, 1.12]);
+    veg.visible = this.hi; this.grass = veg; this.env.add(veg);
     return river;
   }
 
+  setClearView(on) { this.waterU.uNoRefl.value = on ? 1 : 0; }   // Spiegelung ausblenden (Sichthilfe)
   setPolar(on) { this.waterU.uClear.value = on ? 1 : 0; }
 
   makeFish(len, species) {
@@ -864,7 +963,7 @@ export class World {
     const m = new THREE.Mesh(g, this.fishMat);
     m.userData.base = Float32Array.from(base.attributes.position.array);
     m.scale.setScalar(len / 100 * 1.15);
-    m.castShadow = true; m.frustumCulled = false;
+    m.castShadow = true; m.frustumCulled = false; m.layers.enable(1);
     this.fishGroup.add(m);
     return m;
   }
@@ -899,11 +998,16 @@ export class World {
     const kk = Math.min(1, dt * 3);
     this.camZ += (pz - this.camZ) * kk; this.camX += (px - this.camX) * kk;
     const cz = this.camZ, cxp = this.camX, por = this.portrait;
-    const cx = cxp + clamp(cxp * (por ? 0.13 : 0.42), -1.6, 1.6), cy = por ? 2.75 : 2.25, back = por ? 3.7 : 3.9;
-    this.camera.position.set(cx + Math.sin(t * 0.4) * 0.025, cy + Math.sin(t * 0.7) * 0.018, cz + back);
+    // Umschauen: yaw dreht Kamera und Blickpunkt um den Angler, pitch hebt/senkt den Blick
+    const yaw = this.yaw || 0, pit = this.pitch || 0, yc = Math.cos(yaw), ys = Math.sin(yaw), fw = Math.max(0, yc);
+    const ox = clamp(cxp * (por ? 0.13 : 0.42), -1.6, 1.6) * fw, cy = (por ? 2.75 : 2.25) - pit * 1.3, back = por ? 3.7 : 3.9;
+    const camX = cxp + ox * yc + back * ys, camZ = cz - ox * ys + back * yc;
+    const gh = this.river ? Math.max(0, this.river.heightAt(camX, camZ)) : 0;
+    this.camera.position.set(camX + Math.sin(t * 0.4) * 0.025, Math.max(cy, gh + 0.7) + Math.sin(t * 0.7) * 0.018, camZ);
     this._look = this._look || new THREE.Vector3(px - 2, 0.3, -4);
-    const lx = cxp - clamp(cxp * (por ? 0.42 : 0.68), -2.4, 2.4) + (focus ? (focus.x - cxp) * 0.12 : 0);
-    this._look.lerp(_d.set(lx, 0.45, cz - 4.6), kk);
+    const lo = (-clamp(cxp * (por ? 0.42 : 0.68), -2.4, 2.4) + (focus ? (focus.x - cxp) * 0.12 : 0)) * fw;
+    const turned = yaw !== this._yawPrev || pit !== this._pitPrev; this._yawPrev = yaw; this._pitPrev = pit;
+    this._look.lerp(_d.set(cxp + lo * yc - 4.6 * ys, 0.45 + pit * 7, cz - lo * ys - 4.6 * yc), turned ? Math.min(1, dt * 14) : kk);
     this.camera.lookAt(this._look);
     this.sky.position.copy(this.camera.position);
     // Sonne & Schatten folgen dem Angler
@@ -932,7 +1036,41 @@ export class World {
       });
       this.bugs.geometry.attributes.position.needsUpdate = true;
     }
-    this.renderer.render(this.scene, this.camera);
+    const R = this.renderer, U = this.waterU, cam = this.camera;
+    if (this._needLayers) {   // alles, was unter Wasser sichtbar sein kann, zusaetzlich auf Ebene 1
+      this._needLayers = false;
+      this.env.traverse(o => { if (o.isMesh && !o.isInstancedMesh && o !== this.water) o.layers.enable(1); });
+      for (const o of this.scene.children) if (o !== this.env && o !== this.sky) o.traverse(c => c.layers.enable(1));   // Angler, Rute, Schnur, Fische, Licht
+    }
+    // Bugwelle: Position des Anglers, ob er im Wasser steht, wie schnell er watet
+    const wet = this.river && Math.abs(px) < this.river.halfW && this.river.depthAt(px, pz) > 0.06 ? 1 : 0;
+    U.uWader.value.set(px, pz, wet, this.walkAmp || 0);
+    // Ruckelt es dauerhaft, die teuren Wasser-Durchgaenge abschalten
+    if (this.fxWater) { this._slow = dt > 0.042 ? this._slow + dt : Math.max(0, this._slow - dt * 2); if (this._slow > 4) this.fxWater = false; }
+    const fx = this.fxWater && this.water && this.sceneRT;
+    U.uFx.value = fx ? 1 : 0;
+    if (fx) {
+      U.uNear.value = cam.near; U.uFar.value = cam.far;
+      // 1) Szene unter Wasser: nur Ebene 1 (Grund, Steine, Fische, Angler) - Baeume und Gras braucht es dafuer nicht
+      this.water.visible = false; R.shadowMap.autoUpdate = false;
+      cam.layers.set(1); R.setRenderTarget(this.sceneRT); R.render(this.scene, cam); cam.layers.set(0);
+      // 2) Bild auf den Schirm (Schatten werden hier aktualisiert; Spiegelbild stammt vom vorigen Durchgang)
+      this.water.visible = true; R.shadowMap.autoUpdate = true;
+      R.setRenderTarget(null); R.render(this.scene, cam);
+      // 3) Spiegelbild fuer die naechsten Bilder: nur jedes zweite Bild, ohne Gras, nur ueber der Wasserlinie
+      if (((this._frame = (this._frame || 0) + 1) & 1) && U.uNoRefl.value < 0.5) {
+        const gv = this.grass ? this.grass.visible : false;
+        this.water.visible = false; R.shadowMap.autoUpdate = false;
+        if (this.grass) this.grass.visible = false;
+        const m = this.mirror; m.fov = cam.fov; m.aspect = cam.aspect; m.near = cam.near; m.far = cam.far; m.updateProjectionMatrix();
+        m.position.set(cam.position.x, -cam.position.y, cam.position.z); m.lookAt(this._look.x, -this._look.y, this._look.z);
+        R.clippingPlanes = this.clipUp;
+        R.setRenderTarget(this.reflRT); R.render(this.scene, m);
+        R.clippingPlanes = this.noClip; R.setRenderTarget(null);
+        if (this.grass) this.grass.visible = gv;
+        this.water.visible = true; R.shadowMap.autoUpdate = true;
+      }
+    } else R.render(this.scene, cam);
   }
 }
 const _c = new THREE.Color();
