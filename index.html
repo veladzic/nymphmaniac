@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0c2b29">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Nymphmaniac – Das Erbe der Smaragda</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div id="vig"></div>
+
+<div id="hud" class="hidden">
+  <div id="topbar">
+    <div id="revierInfo">
+      <b id="rvName"></b>
+      <span id="rvCond"></span>
+      <div id="xpbar"><div id="xpfill"></div></div>
+      <span id="xptext"></span>
+      <div id="quest"></div>
+    </div>
+    <div id="menuBtns">
+      <button id="btnJournal" aria-label="Tagebuch">📖</button>
+      <button id="btnBox" aria-label="Fliegendose">🎣</button>
+      <button id="btnLog" aria-label="Fangbuch">🐟</button>
+      <button id="btnSet" aria-label="Einstellungen">⚙️</button>
+    </div>
+  </div>
+
+  <div id="read">
+    <div id="depthG"><div id="depthZone"></div><div id="depthDot"></div><span id="depthTxt"></span></div>
+    <div id="lupeWrap"><canvas id="lupe" width="220" height="220"></canvas></div>
+  </div>
+  <div id="gauge">
+    <div class="zone"></div><div id="gMark"></div>
+    <span class="l">lose</span><span class="c">Kontakt</span><span class="r">Zug</span>
+  </div>
+
+  <div id="fightUI">
+    <div class="lab">Schnurspannung</div>
+    <div class="bar" id="tBar"><div id="tFill"></div><div id="tLimit"></div></div>
+    <div class="lab">Kraft des Fisches</div>
+    <div class="bar small"><div id="sFill"></div></div>
+    <div id="fightHint"></div>
+  </div>
+
+  <div id="toast"></div>
+  <div id="tip"></div>
+
+  <div id="leftBtns">
+    <div id="joy" aria-label="Waten"><div id="joyKnob"></div><small>waten</small></div>
+    <div class="col">
+      <button id="rig"></button>
+      <button id="btnStone" aria-label="Stein umdrehen">🪨<small>Stein</small></button>
+    </div>
+  </div>
+  <button id="strike">ANHIEB</button>
+</div>
+
+<div id="title">
+  <div class="tbox">
+    <div class="pre">Ein Euro-Nymphing-Abenteuer</div>
+    <h1>NYMPH<span>MANIAC</span></h1>
+    <div class="sub">Das Erbe der Smaragda</div>
+    <p>Opas Rute. Opas Fliegendose. Fünf Strecken eines smaragdgrünen Flusses – und ein Fisch, den er nie landen konnte.</p>
+    <button id="btnStart" class="primary">Ans Wasser</button>
+    <button id="btnNew" class="ghost hidden">Neues Spiel</button>
+  </div>
+</div>
+
+<div id="modal" class="hidden">
+  <div id="modalCard">
+    <button id="modalClose" aria-label="Schließen">✕</button>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
