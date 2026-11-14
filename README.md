@@ -33,5 +33,7 @@ Deutsch, Englisch und Italienisch – Auswahl auf dem Startbildschirm. Die Texte
 
 - [three.js](https://threejs.org) r160 (MIT), liegt unter `js/three.module.min.js`
 - Texturen und Himmelsbilder von [Poly Haven](https://polyhaven.com) (CC0), verkleinert unter `assets/`
+- Angler-Figur `Wood_Male_01` aus der [Microsoft Rocketbox Avatar Library](https://github.com/microsoft/Microsoft-Rocketbox) (MIT, siehe `assets/angler_LICENSE.md`), Texturen umgefärbt
+- FBX-Loader aus den Three.js-Beispielen (MIT) unter `js/vendor/`
 - Alles Weitere (Fluss, Bäume, Angler, Fische, Sound) wird im Code erzeugt
 - Der Spielstand liegt im `localStorage` des Browsers

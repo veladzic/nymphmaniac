@@ -132,8 +132,8 @@ function doCast(pt) {
   const { tx, tz, dx, dz } = ct;
   const l = Math.hypot(dx, dz);
   S.tip.x = h.x + dx / l * 2.6; S.tip.z = h.z + dz / l * 2.6;
-  const T = tip3();
-  S.cast = { t: 0, fx: T.x, fy: T.y - 1.2, fz: T.z + 0.6, tx, tz };
+  const TP = tip3();
+  S.cast = { t: 0, fx: TP.x, fy: TP.y - 1.2, fz: TP.z + 0.6, tx, tz };
   S.mode = 'cast';
   sfx.whip();
 }
@@ -141,8 +141,8 @@ function updateCast(dt) {
   const c = S.cast; c.t += dt / 0.6;
   if (c.t >= 1) {
     const n = S.nymph; n.x = c.tx; n.z = c.tz; n.d = 0.02;
-    const T = tip3();
-    S.L = Math.hypot(T.x - n.x, T.y, T.z - n.z) * 1.07;
+    const TP = tip3();
+    S.L = Math.hypot(TP.x - n.x, TP.y, TP.z - n.z) * 1.07;
     const tp = curTippet(), fly = curFly();
     S.sinkRate = curBead().sink * fly.sink * tp.sink;
     for (const f of fish) f.match = flyMatch(fly, f);
@@ -164,7 +164,7 @@ function updateDrift(dt) {
     const st = Math.min(1.4, 1.7 * (0.96 - S.s) * S.L) * dt;
     S.tip.x += ax / al * st; S.tip.z += az / al * st;
   }
-  const T = tip3();
+  const TP = tip3();
   const held = S.snag || S.bite;
   if (!held) {
     const frac = Math.min(1, n.d / bottom);
@@ -177,7 +177,7 @@ function updateDrift(dt) {
   }
   let pull = 0;
   const constrain = count => {
-    const dx = T.x - n.x, dy = T.y + n.d, dz = T.z - n.z, d = Math.hypot(dx, dy, dz);
+    const dx = TP.x - n.x, dy = TP.y + n.d, dz = TP.z - n.z, d = Math.hypot(dx, dy, dz);
     if (d > S.L) {
       const ex = d - S.L;
       if (held) { if (count) pull = 0.9; }
@@ -724,8 +724,8 @@ function drawLupe() {
   c.fillStyle = '#1c5f58'; c.fillRect(0, wy, W, W - wy);
   c.strokeStyle = 'rgba(255,255,255,.35)'; c.lineWidth = 2;
   for (let i = 0; i < 4; i++) { const x = ((S.t * 40 + i * 70) % 300) - 40; c.beginPath(); c.moveTo(x, wy + 4 + i * 14); c.lineTo(x + 26, wy + 4 + i * 14); c.stroke(); }
-  const drift = S.mode === 'drift', T = tip3(), n = S.nymph;
-  const a = drift ? clamp((T.z - n.z) / 4, -1, 1) : 0;
+  const drift = S.mode === 'drift', TP = tip3(), n = S.nymph;
+  const a = drift ? clamp((TP.z - n.z) / 4, -1, 1) : 0;
   const slack = drift ? clamp((0.97 - S.s) / 0.2, 0, 1) : (S.mode === 'fight' ? 0 : 0.5);
   const kick = S.mode === 'fight' ? 1 : S.kick;
   const jit = kick > 0.05 ? Math.sin(S.t * 70) * kick * 3 : 0;
@@ -805,30 +805,30 @@ function frame(now) {
   S.face += fd * Math.min(1, dt * (S.walk > 0.1 ? 6 : 3.5));
   if (S.mode === 'idle' || S.mode === 'title' || S.mode === 'landed') { if (Math.abs(fd) > 0.002 || S.walk > 0) restTip(); }
   else { const hn = hand(); S.tip.x += hn.x - hOld.x; S.tip.z += hn.z - hOld.z; }
-  world.poseAngler(dt, S.t, { px: S.px, pz: S.pz, gy: groundY(), face: S.face, walk: S.mode === 'idle' ? S.walk : 0, ten: S.fight ? S.fight.ten : 0, look, fight: S.mode === 'fight' });
+  world.poseAngler(dt, S.t, { px: S.px, pz: S.pz, gy: groundY(), face: S.face, walk: S.mode === 'idle' ? S.walk : 0, ten: S.fight ? S.fight.ten : 0, look, fight: S.mode === 'fight', track: S.mode === 'cast' || S.mode === 'drift' });
   world._fightGrip = S.mode === 'fight';
   // Rute & Schnur
-  const h = hand(), T = tip3();
-  if (S.strikeT > 0) { S.strikeT -= dt; T.y += 0.5; }
+  const h = hand(), TP = tip3();
+  if (S.strikeT > 0) { S.strikeT -= dt; TP.y += 0.5; }
   let target, s = 1, bend = 0.04, focus = null;
   if (S.mode === 'cast') {
     const c = S.cast, k = Math.min(1, c.t);
     target = { x: c.fx + (c.tx - c.fx) * k, y: c.fy + (0 - c.fy) * k + Math.sin(Math.PI * k) * 1.6, z: c.fz + (c.tz - c.fz) * k }; bend = 0.25 * (1 - k);
     const w = Math.sin(Math.PI * Math.min(1, k * 1.5)) * 0.75;   // Wurfbewegung: Rute schwingt zurück und nach vorn
-    T.x += (h.x + Math.sin(S.face) * 0.5 - T.x) * w; T.z += (h.z + Math.cos(S.face) * 0.5 - T.z) * w; T.y += (h.y + 2.95 - T.y) * w;
+    TP.x += (h.x + Math.sin(S.face) * 0.5 - TP.x) * w; TP.z += (h.z + Math.cos(S.face) * 0.5 - TP.z) * w; TP.y += (h.y + 2.95 - TP.y) * w;
   } else if (S.mode === 'drift') {
     target = { x: S.nymph.x, y: -S.nymph.d, z: S.nymph.z }; s = S.s; bend = 0.05 + Math.min(0.35, S.pullS * 0.3) + (S.bite || S.snag ? 0.25 : 0);
     focus = target;
   } else if (S.mode === 'fight') {
     const p = fightPos(); target = { x: p.x, y: -0.05, z: p.z }; bend = clamp(S.fight.ten, 0.1, 1); focus = p;
   } else {
-    target = { x: T.x + Math.sin(S.t * 1.3) * 0.06, y: Math.max(0.25, T.y - 1.9), z: T.z + 0.15 + Math.cos(S.t * 1.1) * 0.05 };
+    target = { x: TP.x + Math.sin(S.t * 1.3) * 0.06, y: Math.max(0.25, TP.y - 1.9), z: TP.z + 0.15 + Math.cos(S.t * 1.1) * 0.05 };
   }
-  world.setRig(h, T, target, s, bend);
+  world.setRig(h, TP, target, s, bend);
   world.setAim(S.mode === 'idle' ? S.aim : null);
   if (S.mode === 'drift') {
-    const k = T.y / (T.y + S.nymph.d + 1e-4);
-    world.setEntry(T.x + (S.nymph.x - T.x) * k, T.z + (S.nymph.z - T.z) * k, S.bite && save.set.help ? 'bite' : Math.abs(S.g) < 0.4 ? 'ok' : S.g < 0 ? 'slack' : 'drag');
+    const k = TP.y / (TP.y + S.nymph.d + 1e-4);
+    world.setEntry(TP.x + (S.nymph.x - TP.x) * k, TP.z + (S.nymph.z - TP.z) * k, S.bite && save.set.help ? 'bite' : Math.abs(S.g) < 0.4 ? 'ok' : S.g < 0 ? 'slack' : 'drag');
   } else world.setEntry(0, 0, null);
   S.yaw += (K.tl - K.tr) * 1.7 * dt;
   if (S.mode === 'fight') {   // im Drill dreht die Kamera zurück stromauf – links/rechts muss stimmen

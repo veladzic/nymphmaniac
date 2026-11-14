@@ -5,6 +5,23 @@ import { makeRiver, mulberry32, vnoise, LANE_X } from './river.js';
 const UP = new THREE.Vector3(0, 1, 0);
 const _d = new THREE.Vector3(), _a = new THREE.Vector3(), _b = new THREE.Vector3();
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion(), _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _XA = new THREE.Vector3(1, 0, 0);
+// Knochen aus der Ruhehaltung heraus um eine Welt-Achse drehen (relativ zum aktuell gestellten Elternknochen)
+function boneSwing(b, axisW, ang) {
+  b.parent.getWorldQuaternion(_q1);
+  _q2.setFromAxisAngle(axisW, ang).multiply(_q1).multiply(b.userData.rq);
+  b.quaternion.copy(_q1.invert()).multiply(_q2);
+  b.updateMatrixWorld(true);
+}
+// Knochen (Laengsachse = lokales +x) auf eine Welt-Richtung ausrichten, mit kuerzestem Weg aus der Ruhehaltung
+function boneAim(b, dirW) {
+  b.parent.getWorldQuaternion(_q1);
+  _q2.copy(_q1).multiply(b.userData.rq);
+  _v1.copy(_XA).applyQuaternion(_q2);
+  _q3.setFromUnitVectors(_v1, _v2.copy(dirW).normalize()).multiply(_q2);
+  b.quaternion.copy(_q1.invert()).multiply(_q3);
+  b.updateMatrixWorld(true);
+}
 const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 const fbm = (x, y) => vnoise(x, y) * 0.55 + vnoise(x * 2.1 + 5, y * 2.1) * 0.28 + vnoise(x * 4.3, y * 4.3 + 9) * 0.17;
 
@@ -418,7 +435,62 @@ void main(){
   vec2 uv=vec2(atan(d.z,d.x)*0.15915494+0.5+uRot, asin(clamp(d.y,-1.,1.))*0.31830989+0.5);
   vec3 col=texture2D(uSky,uv).rgb*uGain;
   col=mix(uFogC,col,smoothstep(-0.01,0.1,d.y));
-  gl_FragColor=vec4(col,1.);
+  gl_FragColor=vec4(col,0.);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}`;
+// ---------- Nachbearbeitung: Bloom, Sonnenstrahlen, Vignette ----------
+const POST_VS = 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.,1.); }';
+const BRIGHT_FS = `
+uniform sampler2D tD; uniform vec2 uPx; uniform float uThr; varying vec2 vUv;
+void main(){
+  vec4 c=(texture2D(tD,vUv+uPx*vec2(-1.,-1.))+texture2D(tD,vUv+uPx*vec2(1.,-1.))+texture2D(tD,vUv+uPx*vec2(-1.,1.))+texture2D(tD,vUv+uPx*vec2(1.,1.)))*0.25;
+  vec3 col=min(c.rgb,vec3(10.));
+  float l=max(col.r,max(col.g,col.b));
+  // rgb: was ueberstrahlt; a: freier, heller Himmel als Quelle der Sonnenstrahlen
+  gl_FragColor=vec4(col*smoothstep(uThr,uThr+0.7,l),(1.-clamp(c.a,0.,1.))*smoothstep(0.25,0.95,l));
+}`;
+const BLUR_FS = `
+uniform sampler2D tD; uniform vec2 uDir; varying vec2 vUv;
+void main(){
+  vec4 c=texture2D(tD,vUv)*0.227027;
+  c+=(texture2D(tD,vUv+uDir*1.384615)+texture2D(tD,vUv-uDir*1.384615))*0.316216;
+  c+=(texture2D(tD,vUv+uDir*3.230769)+texture2D(tD,vUv-uDir*3.230769))*0.070270;
+  gl_FragColor=c;
+}`;
+const RAYS_FS = `
+uniform sampler2D tD; uniform vec2 uSunPos; uniform float uAsp; uniform vec3 uCol; varying vec2 vUv;
+void main(){
+  vec2 st=(uSunPos-vUv)*(0.92/26.), p=vUv; float acc=0., w=1., ws=0.;
+  for(int i=0;i<26;i++){
+    p+=st;
+    vec2 q=(p-uSunPos)*vec2(uAsp,1.);
+    float inS=step(0.,p.x)*step(p.x,1.)*step(0.,p.y)*step(p.y,1.);
+    acc+=texture2D(tD,p).a*exp(-dot(q,q)*2.6)*w*inS; ws+=w; w*=0.965;
+  }
+  gl_FragColor=vec4(uCol*acc/ws,1.);
+}`;
+const FINAL_FS = `
+uniform sampler2D tD,tB1,tB2,tR; uniform float uBloom,uRays,uTime; varying vec2 vUv;
+void main(){
+  vec3 c=texture2D(tD,vUv).rgb;
+  c+=(texture2D(tB1,vUv).rgb*0.55+texture2D(tB2,vUv).rgb*0.45)*uBloom;
+  c+=texture2D(tR,vUv).rgb*uRays;
+  vec2 q=vUv-0.5; c*=1.-dot(q,q)*0.38;
+  gl_FragColor=vec4(c,1.);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+  gl_FragColor.rgb+=(fract(sin(dot(gl_FragCoord.xy+uTime*60.,vec2(12.9898,78.233)))*43758.5453)-0.5)/255.;
+}`;
+const MIST_VS = 'attribute float aK; varying float vK; varying vec3 vW; void main(){ vK=aK; vec4 w=modelMatrix*vec4(position,1.); vW=w.xyz; gl_Position=projectionMatrix*viewMatrix*w; }';
+const MIST_FS = `
+uniform sampler2D uN; uniform float uTime,uOp,uOff; uniform vec3 uCol; varying float vK; varying vec3 vW;
+void main(){
+  vec2 p=vW.xz*0.035+uOff;
+  float n=texture2D(uN,p+vec2(0.004,0.011)*uTime).r*0.6+texture2D(uN,p*2.3-vec2(0.007,-0.016)*uTime).r*0.4;
+  float dc=length(cameraPosition-vW);
+  float a=smoothstep(0.36,0.74,n)*uOp*vK*smoothstep(2.5,10.,dc)*(1.-smoothstep(110.,190.,dc));
+  gl_FragColor=vec4(uCol,a);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }`;
@@ -484,6 +556,17 @@ export class World {
     // Wasser-Effekte: Spiegelbild (gespiegelte Kamera) und Szene unter Wasser (Farbe + Tiefe) in eigene Ziele rendern
     this.fxWater = true; this.mirror = new THREE.PerspectiveCamera(); this.clipUp = [new THREE.Plane(new THREE.Vector3(0, 1, 0), 0.04)]; this.noClip = [];
     this._slow = 0;
+    // Nachbearbeitung
+    this.fxPost = true; this.rayK = 0.5;
+    this.pScene = new THREE.Scene(); this.pCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    this.pQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2)); this.pQuad.frustumCulled = false; this.pScene.add(this.pQuad);
+    const pm = (fs, u) => new THREE.ShaderMaterial({ uniforms: u, vertexShader: POST_VS, fragmentShader: fs, depthTest: false, depthWrite: false });
+    this.pm = {
+      bright: pm(BRIGHT_FS, { tD: { value: null }, uPx: { value: new THREE.Vector2() }, uThr: { value: 1.25 } }),
+      blur: pm(BLUR_FS, { tD: { value: null }, uDir: { value: new THREE.Vector2() } }),
+      rays: pm(RAYS_FS, { tD: { value: null }, uSunPos: { value: new THREE.Vector2(0.5, 0.8) }, uAsp: { value: 1 }, uCol: { value: new THREE.Color(1, 0.95, 0.85) } }),
+      final: pm(FINAL_FS, { tD: { value: null }, tB1: { value: null }, tB2: { value: null }, tR: { value: null }, uBloom: { value: 0.38 }, uRays: { value: 0 }, uTime: this.timeU }),
+    };
     this.buildAngler();
     this.buildRig();
     this.buildFx();
@@ -495,11 +578,12 @@ export class World {
   }
 
   setQuality(hi) {
-    this.hi = hi; this.fxWater = hi; this._slow = 0;
+    this.hi = hi; this.fxWater = hi; this.fxPost = hi; this._slow = 0;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, hi ? (this.mobile ? 1.75 : 2) : 1.2));
     this.renderer.shadowMap.enabled = hi; this.sun.castShadow = hi;
     this.scene.traverse(o => { if (o.material) o.material.needsUpdate = true; });
     if (this.grass) this.grass.visible = hi;
+    if (this.mist) this.mist.visible = hi;
     this.resize();
   }
 
@@ -530,69 +614,180 @@ export class World {
     if (this.sceneRT) { this.sceneRT.dispose(); this.reflRT.dispose(); }
     this.sceneRT = mk(ks, true); this.reflRT = mk(kr, false);
     U.uScene.value = this.sceneRT.texture; U.uDepthT.value = this.sceneRT.depthTexture; U.uRefl.value = this.reflRT.texture;
+    // Hauptbild (HDR, kantengeglaettet) und kleine Ziele fuer Bloom / Strahlen
+    if (this.mainRT) for (const t of [this.mainRT, ...this.pRT]) t.dispose();
+    const opt = { type: THREE.HalfFloatType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false };
+    this.mainRT = new THREE.WebGLRenderTarget(sz.x, sz.y, { ...opt, samples: 4 });
+    const q = k => new THREE.WebGLRenderTarget(Math.max(32, Math.round(sz.x / k)), Math.max(32, Math.round(sz.y / k)), { ...opt, depthBuffer: false });
+    this.pRT = [q(4), q(4), q(8), q(8), q(4)];   // hell, Zwischenbild, klein a/b, Strahlen
   }
 
   buildAngler() {
     const root = new THREE.Group(), body = new THREE.Group();
     body.position.y = -0.56; root.add(body);
+    // Stoffstruktur (Gewebe) als Relief fuer Kleidung
+    const weave = canvasTex(128, (c, S) => {
+      c.fillStyle = '#808080'; c.fillRect(0, 0, S, S);
+      for (let y = 0; y < S; y += 4) for (let x = 0; x < S; x += 4) {
+        const v = 110 + Math.floor(Math.random() * 50) + (((x + y) / 4) & 1 ? 26 : -26);
+        c.fillStyle = `rgb(${v},${v},${v})`; c.fillRect(x, y, 4, 4);
+      }
+    });
     const M = (c, r = 0.85, m = 0) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: m });
-    const wader = M(0x6b6a55, 0.75), jacket = M(0x3e525c, 0.9), skin = M(0xc8987a, 0.65), cap = M(0x5c6140, 0.95), pack = M(0x4a4a3c, 0.9),
-      wood = M(0x8a5a30, 0.55), boot = M(0x2e2a25, 0.9), dark = M(0x1c1c1c, 0.4), buff = M(0x8c4a38, 0.95), hair = M(0x3a2c20, 0.95), strap = M(0x2c2e28, 0.8);
+    const cloth = (c, r, rep = 7, bs = 1.4) => { const m = M(c, r); const t = weave.clone(); t.repeat.set(rep, rep); t.needsUpdate = true; m.bumpMap = t; m.bumpScale = bs; return m; };
+    const wader = cloth(0x77745c, 0.8, 9), waderWet = cloth(0x4a493a, 0.38, 9, 0.8), jacket = cloth(0x3d5560, 0.92, 8), fleece = cloth(0x33464f, 1, 5, 2.2),
+      skin = M(0xc59373, 0.62), cap = cloth(0x5a6040, 0.95, 6), pack = cloth(0x45463a, 0.9, 6), packLt = cloth(0x5d5e4e, 0.9, 6),
+      wood = M(0x8a5a30, 0.5), boot = M(0x3a352d, 0.85), rubber = M(0x191817, 0.7), dark = M(0x15171a, 0.25, 0.3), buff = cloth(0x8c4a38, 0.95, 5),
+      hair = M(0x35281d, 1), beard = M(0x54422f, 1), strap = M(0x26282a, 0.75), metal = M(0xb4b8bc, 0.3, 0.9), felt = M(0x8f8d80, 1), lace = M(0xb9b29a, 0.9), neo = M(0x2a2c2b, 0.95);
     const add = (par, geo, mat, x, y, z, rx = 0, ry = 0, rz = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.set(rx, ry, rz); m.castShadow = true; par.add(m); return m; };
-    // Beine mit Hüft- und Kniegelenk
+    const lathe = (pts, seg = 22) => new THREE.LatheGeometry(pts.map(q => new THREE.Vector2(q[0], q[1])), seg);
+    // Sohle: Fussumriss, Zehen zeigen nach -z
+    const soleShape = new THREE.Shape();
+    soleShape.moveTo(0, -0.1); soleShape.bezierCurveTo(0.042, -0.1, 0.046, -0.04, 0.042, 0.01); soleShape.bezierCurveTo(0.06, 0.07, 0.056, 0.165, 0, 0.17);
+    soleShape.bezierCurveTo(-0.056, 0.165, -0.06, 0.07, -0.042, 0.01); soleShape.bezierCurveTo(-0.046, -0.04, -0.042, -0.1, 0, -0.1);
+    const soleGeo = new THREE.ExtrudeGeometry(soleShape, { depth: 0.022, bevelEnabled: true, bevelSize: 0.005, bevelThickness: 0.005, bevelSegments: 2, curveSegments: 10 }).rotateX(-Math.PI / 2);
+    // Beine mit Hueft- und Kniegelenk
     this.legs = [-1, 1].map(sx => {
       const hip = new THREE.Group(); hip.position.set(sx * 0.1, 0.94, 0); body.add(hip);
-      add(hip, new THREE.CapsuleGeometry(0.082, 0.32, 5, 12), wader, 0, -0.22, 0);
+      add(hip, lathe([[0, -0.46], [0.066, -0.455], [0.074, -0.36], [0.088, -0.2], [0.097, -0.07], [0.092, 0.02], [0, 0.05]], 14), wader, 0, 0, 0).scale.set(1, 1, 1.08);   // Oberschenkel
       const knee = new THREE.Group(); knee.position.set(0, -0.45, 0); hip.add(knee);
-      add(knee, new THREE.SphereGeometry(0.072, 10, 8), wader, 0, 0, 0);
-      add(knee, new THREE.CapsuleGeometry(0.063, 0.31, 5, 12), wader, 0, -0.21, 0.005);
-      add(knee, new THREE.CapsuleGeometry(0.058, 0.15, 4, 10), boot, 0, -0.44, -0.055, Math.PI / 2);
-      add(knee, new THREE.BoxGeometry(0.105, 0.03, 0.27), dark, 0, -0.49, -0.05);
+      add(knee, new THREE.SphereGeometry(0.073, 12, 10), wader, 0, 0, -0.004);
+      add(knee, lathe([[0, -0.4], [0.056, -0.395], [0.058, -0.3], [0.07, -0.16], [0.076, -0.09], [0.07, -0.01], [0, 0.02]], 14), wader, 0, 0, 0.006).scale.set(1, 1, 1.1); // Wade
+      add(knee, lathe([[0.059, -0.31], [0.0605, -0.3], [0.068, -0.2], [0.0745, -0.13]], 14), waderWet, 0, 0, 0.006).scale.set(1, 1, 1.1);                                   // nasser Bereich ueber dem Schuh
+      add(knee, new THREE.CylinderGeometry(0.069, 0.079, 0.1, 14, 1, true), neo, 0, -0.355, 0.004);                                                                         // Gravel Guard
+      // Watschuh
+      add(knee, new THREE.CapsuleGeometry(0.062, 0.07, 4, 12), boot, 0, -0.415, 0.012).scale.set(1, 1, 1.1);                                                                // Schaft
+      add(knee, new THREE.SphereGeometry(1, 14, 10), boot, 0, -0.452, -0.062).scale.set(0.054, 0.042, 0.1);                                                                 // Rist
+      add(knee, new THREE.SphereGeometry(1, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), rubber, 0, -0.468, -0.128, -0.25).scale.set(0.054, 0.04, 0.05);                      // Zehenkappe
+      add(knee, new THREE.SphereGeometry(1, 10, 8), rubber, 0, -0.455, 0.07).scale.set(0.05, 0.04, 0.035);                                                                  // Fersenkappe
+      for (let k = 0; k < 4; k++) add(knee, new THREE.BoxGeometry(0.05 - k * 0.003, 0.006, 0.008), lace, 0, -0.418 - k * 0.012, -0.062 - k * 0.022, -0.45);                 // Schnuerung
+      add(knee, soleGeo, rubber, 0, -0.512, 0.02);
+      add(knee, soleGeo, felt, 0, -0.52, 0.02).scale.set(0.94, 0.4, 0.96);                                                                                                  // Filzsohle
       return { hip, knee, sx };
     });
-    // Rumpf (Rotationskörper, flachgedrückt)
-    const lathe = pts => new THREE.LatheGeometry(pts.map(q => new THREE.Vector2(q[0], q[1])), 22);
+    add(body, new THREE.SphereGeometry(1, 18, 12), wader, 0, 0.9, 0.008).scale.set(0.172, 0.105, 0.118);                                                                     // Becken
+    // Rumpf
     this.torso = new THREE.Group(); this.torso.position.y = 0.96; body.add(this.torso);
     const T = this.torso;
-    add(T, lathe([[0, -0.1], [0.13, -0.09], [0.168, -0.02], [0.176, 0.07], [0.168, 0.17], [0.184, 0.3], [0.2, 0.42], [0.185, 0.5], [0.1, 0.555], [0.055, 0.57], [0, 0.575]]), jacket, 0, 0, 0).scale.set(1.04, 1, 0.68);
-    add(T, lathe([[0, -0.11], [0.14, -0.1], [0.178, -0.02], [0.186, 0.07], [0.178, 0.17], [0.192, 0.3], [0.19, 0.335]]), wader, 0, 0, 0).scale.set(1.04, 1, 0.7);   // Wathose bis zur Brust
-    add(T, new THREE.CylinderGeometry(0.19, 0.188, 0.04, 20), strap, 0, 0.085, 0).scale.set(1.04, 1, 0.71);                                                       // Watgürtel
+    add(T, lathe([[0, -0.1], [0.13, -0.09], [0.166, -0.02], [0.172, 0.07], [0.166, 0.17], [0.182, 0.3], [0.2, 0.41], [0.196, 0.47], [0.15, 0.535], [0.085, 0.565], [0.06, 0.575], [0, 0.578]]), jacket, 0, 0, 0).scale.set(1.04, 1, 0.66);
+    add(T, new THREE.CapsuleGeometry(0.074, 0.29, 6, 14), jacket, 0, 0.482, 0.008, 0, 0, Math.PI / 2).scale.set(1, 1, 0.98);                                                // Schultern
+    add(T, new THREE.SphereGeometry(1, 14, 10), fleece, 0, 0.5, 0.088).scale.set(0.105, 0.07, 0.04);                                                                       // Kapuze im Nacken
+    add(T, new THREE.TorusGeometry(0.066, 0.02, 8, 18), fleece, 0, 0.585, 0.004, Math.PI / 2).scale.set(1, 0.9, 1);                                                         // Kragen
+    add(T, lathe([[0, -0.11], [0.14, -0.1], [0.176, -0.02], [0.183, 0.07], [0.176, 0.17], [0.19, 0.3], [0.192, 0.345], [0.184, 0.35]]), wader, 0, 0, 0).scale.set(1.04, 1, 0.685);   // Wathose bis zur Brust
+    add(T, new THREE.TorusGeometry(0.19, 0.008, 6, 28), strap, 0, 0.345, 0, Math.PI / 2).scale.set(1.04, 0.685, 1);                                                         // Saum
+    add(T, new THREE.CylinderGeometry(0.187, 0.185, 0.042, 22, 1, true), strap, 0, 0.085, 0).scale.set(1.045, 1, 0.7);                                                      // Watguertel
+    add(T, new THREE.BoxGeometry(0.05, 0.05, 0.014), rubber, 0, 0.085, -0.134);                                                                                             // Schnalle
     for (const sx of [-1, 1]) {
-      add(T, new THREE.BoxGeometry(0.036, 0.3, 0.02), strap, sx * 0.085, 0.44, -0.118, 0.2);
-      add(T, new THREE.BoxGeometry(0.036, 0.3, 0.02), strap, sx * 0.085, 0.44, 0.122, -0.2);
-      add(T, new THREE.SphereGeometry(0.08, 12, 10), jacket, sx * 0.212, 0.475, 0).scale.set(1, 0.9, 0.95);
+      add(T, new THREE.BoxGeometry(0.034, 0.26, 0.012), strap, sx * 0.085, 0.455, -0.112, 0.27);                                                                            // Traeger vorn
+      add(T, new THREE.BoxGeometry(0.04, 0.03, 0.016), metal, sx * 0.09, 0.345, -0.134);
+      add(T, new THREE.BoxGeometry(0.034, 0.36, 0.012), strap, sx * 0.03, 0.44, 0.128, -0.2, 0, sx * 0.42);                                                                 // Traeger hinten, gekreuzt
     }
-    add(T, new THREE.BoxGeometry(0.2, 0.13, 0.07), pack, 0, 0.3, -0.155);                       // Brusttasche
-    add(T, new THREE.BoxGeometry(0.16, 0.012, 0.075), strap, 0, 0.34, -0.157);
-    add(T, new THREE.CylinderGeometry(0.012, 0.012, 0.05, 6), M(0xb0b4b8, 0.3, 0.9), 0.075, 0.25, -0.2); // Zange / Tippetspule
-    add(T, new THREE.CapsuleGeometry(0.07, 0.24, 4, 10), pack, 0.02, 0.26, 0.165, 0, 0, 0.35).scale.set(1.5, 1, 0.75); // Sling-Pack
-    const hoop = add(T, new THREE.TorusGeometry(0.125, 0.011, 6, 24), wood, -0.07, 0.02, 0.2, 0.1, 0, 0.1); hoop.scale.set(0.85, 1.3, 1);
-    add(T, new THREE.CylinderGeometry(0.012, 0.015, 0.22, 6), wood, -0.085, 0.29, 0.185, 0.1, 0, 0.1);
-    const bag = add(T, new THREE.ConeGeometry(0.1, 0.22, 10, 2, true), new THREE.MeshBasicMaterial({ color: 0x151512, wireframe: true, transparent: true, opacity: 0.45 }), -0.07, -0.02, 0.26, -1.35); bag.castShadow = false;
+    // Brusttasche mit Zubehoer
+    const gear0 = T.children.length;
+    add(T, new THREE.CapsuleGeometry(0.052, 0.1, 4, 12), pack, 0, 0.275, -0.16, 0, 0, Math.PI / 2).scale.set(1.15, 1, 0.72);
+    add(T, new THREE.BoxGeometry(0.15, 0.006, 0.01), rubber, 0, 0.31, -0.198);                                                                                              // Reissverschluss
+    add(T, new THREE.BoxGeometry(0.06, 0.045, 0.012), packLt, -0.045, 0.262, -0.2);                                                                                         // Fliegenpatch
+    for (let k = 0; k < 3; k++) add(T, new THREE.CylinderGeometry(0.017, 0.017, 0.011, 12), k === 1 ? metal : M(0x2f6f9f, 0.5), 0.062, 0.225, -0.2 - k * 0.012, Math.PI / 2); // Tippetspulen
+    add(T, new THREE.CylinderGeometry(0.004, 0.004, 0.09, 5), metal, 0.1, 0.25, -0.17, 0, 0, 0.15);                                                                         // Zange
+    add(T, new THREE.BoxGeometry(0.034, 0.5, 0.012), strap, 0.035, 0.36, -0.118, 0.12, 0, -0.62);                                                                           // Sling-Gurt quer ueber die Brust
+    // Ruecken: Sling-Pack und Kescher am Magnet
+    add(T, new THREE.CapsuleGeometry(0.078, 0.2, 6, 14), pack, 0.03, 0.27, 0.158, 0, 0, 0.42).scale.set(1.25, 0.9, 0.62);
+    add(T, new THREE.CapsuleGeometry(0.05, 0.1, 4, 10), packLt, 0.035, 0.25, 0.2, 0, 0, 0.42).scale.set(1.15, 0.9, 0.42);                                                     // Aussentasche
+    // Kescher: Holzrahmen in Tropfenform, Griff mit Korkwicklung, gummiertes Netz; haengt am Magnet zwischen den Schulterblaettern
+    const net = new THREE.Group(); net.position.set(-0.115, 0.4, 0.15); net.rotation.set(-0.07, 0, 0.16); T.add(net);
+    const NW = 0.27, NL = 0.4, HL = 0.2;
+    const hoopAt = a => new THREE.Vector3(NW / 2 * Math.sin(a) * (1 - 0.35 * Math.cos(a)) / 1.06, -HL - NL * (1 - Math.cos(a)) / 2, 0);
+    const hoopPts = []; for (let k = 0; k < 40; k++) hoopPts.push(hoopAt(k / 40 * Math.PI * 2));
+    add(net, new THREE.TubeGeometry(new THREE.CatmullRomCurve3(hoopPts, true), 80, 0.0095, 8, true), wood, 0, 0, 0);
+    add(net, new THREE.CylinderGeometry(0.0125, 0.016, HL, 10), wood, 0, -HL / 2, 0);                                   // Griff
+    add(net, new THREE.CylinderGeometry(0.0175, 0.0175, 0.1, 12), M(0xb98f5e, 0.95), 0, -0.07, 0);                     // Korkwicklung
+    add(net, new THREE.SphereGeometry(0.02, 10, 8), wood, 0, -HL - 0.006, 0).scale.set(1.5, 1, 0.7);                   // Joch
+    add(net, new THREE.SphereGeometry(0.014, 10, 8), metal, 0, 0.004, 0);                                              // Magnetkappe
+    add(net, new THREE.TorusGeometry(0.012, 0.0025, 6, 14), metal, 0, 0.02, 0);                                        // Oese
+    // Netzsack: haengt vom Rahmen nach unten, Maschen als Textur
+    const meshTex = canvasTex(128, (c, S) => {
+      c.clearRect(0, 0, S, S); c.strokeStyle = '#1b211c'; c.lineWidth = 5;
+      for (let k = 0; k <= 4; k++) { c.beginPath(); c.moveTo(k * S / 4, 0); c.lineTo(k * S / 4, S); c.stroke(); c.beginPath(); c.moveTo(0, k * S / 4); c.lineTo(S, k * S / 4); c.stroke(); }
+    }, true);
+    meshTex.repeat.set(9, 5);
+    const NU = 32, NV = 10, bp = [], bu = [], bi = [], low = new THREE.Vector3(0, -HL - NL - 0.2, 0.035);
+    for (let v = 0; v <= NV; v++) for (let u = 0; u <= NU; u++) {
+      const t = v / NV, q = hoopAt(u / NU * Math.PI * 2), k = Math.pow(t, 1.4);
+      q.lerp(low, k); q.z += Math.sin(Math.PI * t) * 0.03 * (0.4 + 0.6 * Math.abs(Math.sin(u / NU * Math.PI * 2)));   // leicht bauchig
+      bp.push(q.x, q.y, q.z); bu.push(u / NU, t);
+    }
+    for (let v = 0; v < NV; v++) for (let u = 0; u < NU; u++) { const a = v * (NU + 1) + u, b = a + NU + 1; bi.push(a, b, a + 1, a + 1, b, b + 1); }
+    const bagGeo = new THREE.BufferGeometry(); bagGeo.setAttribute('position', new THREE.Float32BufferAttribute(bp, 3)); bagGeo.setAttribute('uv', new THREE.Float32BufferAttribute(bu, 2)); bagGeo.setIndex(bi); bagGeo.computeVertexNormals();
+    add(net, bagGeo, new THREE.MeshLambertMaterial({ map: meshTex, alphaTest: 0.5, side: THREE.DoubleSide }), 0, 0, 0);
+    for (let i = gear0; i < T.children.length; i++) { const c = T.children[i], keep = !(c.geometry && c.geometry.parameters.height === 0.5); c.traverse(m => { m.userData.gear = keep; }); }   // bleibt auch an der geladenen Figur sichtbar
     // Hals & Kopf
-    add(T, new THREE.CylinderGeometry(0.05, 0.058, 0.08, 12), skin, 0, 0.6, 0);
-    add(T, new THREE.CylinderGeometry(0.062, 0.07, 0.07, 12), buff, 0, 0.585, 0);
+    add(T, lathe([[0.066, 0.545], [0.056, 0.6], [0.05, 0.65]], 14), skin, 0, 0, 0.006);
+    add(T, new THREE.CylinderGeometry(0.058, 0.07, 0.075, 14, 1, true), buff, 0, 0.598, 0.004);
     this.head = new THREE.Group(); this.head.position.set(0, 0.7, -0.005); T.add(this.head);
     const Hd = this.head;
-    add(Hd, new THREE.SphereGeometry(0.098, 20, 16), skin, 0, 0, 0).scale.set(0.9, 1.1, 1.0);
-    add(Hd, new THREE.SphereGeometry(0.082, 14, 10), skin, 0, -0.05, -0.022).scale.set(0.82, 0.9, 0.95);                                   // Kiefer
-    add(Hd, new THREE.SphereGeometry(0.084, 14, 10), hair, 0, -0.058, -0.03).scale.set(0.84, 0.72, 0.9);                                    // Bart
-    add(Hd, new THREE.SphereGeometry(0.1, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.62), hair, 0, 0.002, 0.014).scale.set(0.92, 1.08, 1.0);    // Haare
-    add(Hd, new THREE.ConeGeometry(0.018, 0.045, 6), skin, 0, -0.012, -0.102, -1.25);                                                      // Nase
-    add(Hd, new THREE.BoxGeometry(0.155, 0.036, 0.022), dark, 0, 0.012, -0.088);                                                           // Polbrille
-    for (const sx of [-1, 1]) { add(Hd, new THREE.BoxGeometry(0.008, 0.012, 0.1), dark, sx * 0.082, 0.014, -0.04); add(Hd, new THREE.SphereGeometry(0.022, 8, 6), skin, sx * 0.088, -0.005, 0.0).scale.set(0.5, 1, 0.8); }
-    add(Hd, new THREE.SphereGeometry(0.103, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), cap, 0, 0.022, 0.0).scale.set(0.94, 1.02, 1.04);     // Kappe
-    add(Hd, new THREE.CylinderGeometry(0.088, 0.088, 0.012, 16, 1, false, Math.PI / 2, Math.PI), cap, 0, 0.03, -0.075, 0.12).scale.set(1, 1, 1.25); // Schirm
-    // Arme (IK in Weltkoordinaten)
-    const unit = new THREE.CylinderGeometry(1, 0.86, 1, 10), jg = new THREE.SphereGeometry(1, 10, 8);
+    add(Hd, new THREE.SphereGeometry(0.098, 22, 16), skin, 0, 0.004, 0.004).scale.set(0.9, 1.08, 1.02);                                         // Schaedel
+    add(Hd, new THREE.SphereGeometry(0.08, 16, 12), skin, 0, -0.05, -0.024).scale.set(0.84, 0.9, 0.95);                                         // Kiefer
+    add(Hd, new THREE.SphereGeometry(0.082, 16, 12), beard, 0, -0.062, -0.026).scale.set(0.85, 0.66, 0.92);                                       // Bart
+    add(Hd, new THREE.SphereGeometry(0.1, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.66), hair, 0, -0.004, 0.018).scale.set(0.93, 1.08, 1.0);       // Haare bis in den Nacken
+    add(Hd, new THREE.SphereGeometry(1, 8, 6), skin, 0, -0.016, -0.1).scale.set(0.014, 0.024, 0.02);                                            // Nase
+    for (const sx of [-1, 1]) {
+      add(Hd, new THREE.SphereGeometry(1, 12, 8), dark, sx * 0.038, 0.012, -0.086).scale.set(0.034, 0.022, 0.012);                              // Brillenglas
+      add(Hd, new THREE.BoxGeometry(0.006, 0.01, 0.105), dark, sx * 0.08, 0.016, -0.036);                                                       // Buegel
+      add(Hd, new THREE.SphereGeometry(1, 10, 8), skin, sx * 0.087, -0.006, 0.006).scale.set(0.011, 0.026, 0.017);                              // Ohr
+    }
+    add(Hd, new THREE.BoxGeometry(0.02, 0.006, 0.008), dark, 0, 0.018, -0.094);                                                                 // Brillensteg
+    add(Hd, new THREE.SphereGeometry(0.104, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.5), cap, 0, 0.024, 0.002).scale.set(0.95, 1.0, 1.05);        // Kappe
+    add(Hd, new THREE.TorusGeometry(0.1, 0.006, 6, 24), cap, 0, 0.026, 0.002, Math.PI / 2).scale.set(0.95, 1.05, 1);
+    add(Hd, new THREE.SphereGeometry(0.01, 8, 6), cap, 0, 0.128, 0.002);                                                                        // Knopf
+    add(Hd, new THREE.CylinderGeometry(0.09, 0.09, 0.008, 18, 1, false, Math.PI / 2, Math.PI), cap, 0, 0.03, -0.08, 0.16).scale.set(0.98, 1, 1.3);  // Schirm
+    // Arme (IK in Weltkoordinaten): Aermel mit Form, Haende als greifende Faust
+    const upGeo = lathe([[0.78, -0.5], [0.9, -0.3], [1.08, 0.05], [1.14, 0.32], [1.02, 0.5]], 12), foGeo = lathe([[0.74, -0.5], [0.8, -0.38], [0.98, -0.05], [1.14, 0.3], [1.06, 0.5]], 12), jg = new THREE.SphereGeometry(1, 12, 10);
     this.arms = [1, -1].map(sx => {
-      const a = { sx, up: new THREE.Mesh(unit, jacket), fo: new THREE.Mesh(unit, jacket), el: new THREE.Mesh(jg, jacket), hand: new THREE.Mesh(jg, skin), sh: new THREE.Vector3(), tg: new THREE.Vector3(), e: new THREE.Vector3() };
-      for (const m of [a.up, a.fo, a.el, a.hand]) { m.castShadow = true; m.frustumCulled = false; this.scene.add(m); }
-      a.el.scale.setScalar(0.05); a.hand.scale.set(0.043, 0.05, 0.043);
+      const hand = new THREE.Group();
+      add(hand, new THREE.CylinderGeometry(0.036, 0.033, 0.035, 12), fleece, 0, 0.062, 0);                       // Buendchen
+      add(hand, new THREE.CylinderGeometry(0.027, 0.024, 0.04, 10), skin, 0, 0.04, 0);                           // Handgelenk
+      add(hand, jg, skin, 0, 0, 0.004).scale.set(0.04, 0.046, 0.03);                                             // Handruecken
+      for (let k = 0; k < 4; k++) add(hand, new THREE.CapsuleGeometry(0.0105, 0.03, 3, 8), skin, 0, 0.022 - k * 0.02, -0.027, 0, 0, Math.PI / 2).scale.set(1, 1 - k * 0.06, 1.25);   // Finger um den Griff
+      add(hand, new THREE.CapsuleGeometry(0.012, 0.026, 3, 8), skin, sx * -0.03, 0.02, -0.012, 0.5, 0, sx * 0.5);   // Daumen
+      const a = { sx, up: new THREE.Mesh(upGeo, jacket), fo: new THREE.Mesh(foGeo, jacket), el: new THREE.Mesh(jg, jacket), sd: new THREE.Mesh(jg, jacket), hand, sh: new THREE.Vector3(), tg: new THREE.Vector3(), e: new THREE.Vector3() };
+      for (const m of [a.up, a.fo, a.el, a.sd]) { m.castShadow = true; m.frustumCulled = false; this.scene.add(m); }
+      hand.traverse(o => { o.frustumCulled = false; }); this.scene.add(hand);
+      a.el.scale.setScalar(0.046); a.sd.scale.setScalar(0.066);
       return a;
     });
     this.angler = root; this.body = body; this.walkPh = 0; this.walkAmp = 0;
     this.scene.add(root);
+    this.loadAnglerModel();
+  }
+
+  // Realistische Figur (Microsoft Rocketbox, MIT-Lizenz) laden; bis dahin - oder wenn das Laden scheitert - bleibt die gebaute Figur
+  loadAnglerModel() {
+    const mgr = new THREE.LoadingManager(); mgr.addHandler(/\.tga$/i, { setPath() { return this; }, load: () => new THREE.Texture() });   // TGA-Verweise der Datei ignorieren, Texturen kommen als JPG
+    import('./vendor/FBXLoader.js').then(({ FBXLoader }) => new FBXLoader(mgr).load('assets/angler.fbx', o => {
+      const tex = f => { const t = this.loader.load('assets/' + f); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };
+      const mats = [new THREE.MeshStandardMaterial({ map: tex('angler_body.jpg'), roughness: 0.9 }), new THREE.MeshStandardMaterial({ map: tex('angler_head.jpg'), roughness: 0.78 })];
+      const rm = [];
+      o.traverse(n => {
+        if (n.isLight) rm.push(n);
+        if (n.isSkinnedMesh) { n.material = mats; n.castShadow = true; n.frustumCulled = false; }
+        if (n.isBone) n.userData.rq = n.quaternion.clone();
+        n.layers.enable(1);
+      });
+      rm.forEach(n => n.parent.remove(n));
+      o.scale.setScalar(0.01); o.rotation.y = Math.PI; o.position.y = -0.56;   // cm -> m, Blick nach -z, Fuesse auf den Boden
+      this.angler.add(o);
+      const B = n => o.getObjectByName('Bip01_' + n);
+      const side = k => ({ up: B(k + '_UpperArm'), fo: B(k + '_Forearm'), hand: B(k + '_Hand'), thigh: B(k + '_Thigh'), calf: B(k + '_Calf'), foot: B(k + '_Foot') });
+      this.rig = { o, spine: B('Spine'), spine1: B('Spine1'), spine2: B('Spine2'), neck: B('Neck'), head: B('Head'), R: side('R'), L: side('L') };
+      // Finger zum Griff kruemmen
+      for (const k of ['R', 'L']) for (let f = 0; f < 5; f++) for (const j of ['', '1', '2']) {
+        const b = B(k + '_Finger' + f + j); if (!b) continue;
+        b.quaternion.copy(b.userData.rq).multiply(_q1.setFromAxisAngle(_v1.set(0, 0, 1), f === 0 ? (j === '' ? 0.2 : 0.4) : 0.95));
+      }
+      // gebaute Figur ausblenden, Ausruestung bleibt
+      this.body.traverse(m => { if (!m.isMesh) return; if (!m.userData.gear) m.visible = false; else if (m.parent === this.torso && m.position.z < 0) m.position.z += 0.045; });   // Brusttasche an die schmalere Brust ruecken
+      for (const a of this.arms) { for (const m of [a.up, a.fo, a.el, a.sd, a.hand]) m.visible = false; a.bones = a.sx > 0 ? this.rig.R : this.rig.L; }
+    }, undefined, () => {})).catch(() => {});
   }
 
   // st: {px,pz,gy,face,walk,ten,look,fight}
@@ -612,25 +807,53 @@ export class World {
     this.torso.rotation.set(lean - 0.05 * A + Math.sin(t * 1.3) * 0.008, Math.sin(ph) * 0.07 * A, Math.cos(ph) * 0.03 * A);
     this.torso.position.y = 0.96 + Math.sin(t * 1.3) * 0.004;
     let hy = 0;
-    if (st.look) hy = clamp(Math.atan2(-(st.look.x - st.px), -(st.look.z - st.pz)) - st.face, -0.9, 0.9);
+    let hp = 0;
+    const sg = st.track && this.sighter ? this.sighter[1].position : null;   // Schnur ist draussen: der Blick folgt dem Sighter, auch in der Hoehe
+    if (sg) {
+      const dx = sg.x - st.px, dz = sg.z - st.pz, yw = Math.atan2(-dx, -dz) - st.face;
+      hy = clamp(Math.atan2(Math.sin(yw), Math.cos(yw)), -1.1, 1.1);
+      hp = clamp(Math.atan2(sg.y - (st.gy + 1.05), Math.hypot(dx, dz)), -0.6, 0.7);
+    } else if (st.look) hy = clamp(Math.atan2(-(st.look.x - st.px), -(st.look.z - st.pz)) - st.face, -0.9, 0.9);
+    this._hp = (this._hp || 0) + (hp - (this._hp || 0)) * Math.min(1, dt * 6);
     this.head.rotation.y += (hy - this.head.rotation.y) * Math.min(1, dt * 6);
-    this.head.rotation.x = -lean * 0.6 + 0.06;
+    this.head.rotation.x = -lean * 0.6 + 0.06 + this._hp;
     g.updateMatrixWorld(true);
+    const rig = this.rig;
+    if (rig) {
+      const Xw = _a.set(1, 0, 0).applyQuaternion(g.quaternion), tr = this.torso.rotation;
+      rig.o.position.y = this.body.position.y;
+      boneSwing(rig.spine, Xw, tr.x * 0.4);
+      boneSwing(rig.spine1, Xw, tr.x * 0.6);
+      boneSwing(rig.spine2, UP, tr.y);
+      boneSwing(rig.neck, Xw, this.head.rotation.x * 0.4);
+      rig.head.parent.getWorldQuaternion(_q1);
+      _q2.setFromAxisAngle(UP, this.head.rotation.y).multiply(_q3.setFromAxisAngle(Xw, this.head.rotation.x * 0.6)).multiply(_q1).multiply(rig.head.userData.rq);
+      rig.head.quaternion.copy(_q1.invert()).multiply(_q2); rig.head.updateMatrixWorld(true);
+      for (const L of this.legs) {
+        const k = L.sx > 0 ? rig.R : rig.L;
+        boneSwing(k.thigh, Xw, L.hip.rotation.x);
+        boneSwing(k.calf, Xw, L.knee.rotation.x);
+        boneSwing(k.foot, Xw, -(L.hip.rotation.x + L.knee.rotation.x) * 0.6);
+      }
+    }
     for (const a of this.arms) {
       a.sh.set(a.sx * 0.225, 0.47, 0); this.torso.localToWorld(a.sh);
+      if (a.bones) a.bones.up.getWorldPosition(a.sh);
       if (a.sx < 0) { a.tg.set(-0.11, st.fight ? 0.36 : 0.16, st.fight ? -0.33 : -0.25); a.tg.x += Math.sin(ph) * 0.03 * A; this.torso.localToWorld(a.tg); }
     }
   }
   _arm(a, target) {
-    const S = a.sh, d = _d.subVectors(target, S), U = 0.3, F = 0.275, raw = d.length() || 1e-4, L = clamp(raw, 0.08, U + F - 0.004);
+    const S = a.sh, d = _d.subVectors(target, S), U = a.bones ? 0.286 : 0.3, F = a.bones ? 0.335 : 0.275,   // Skelett: Unterarm bis zur Griffmitte der Hand
+      raw = d.length() || 1e-4, L = clamp(raw, 0.08, U + F - 0.004);
     d.multiplyScalar(1 / raw);
     const x = (U * U - F * F + L * L) / (2 * L), h = Math.sqrt(Math.max(0, U * U - x * x));
     const pole = new THREE.Vector3(a.sx * 0.5, -1, 0.35).applyQuaternion(this.angler.quaternion);
     pole.addScaledVector(d, -pole.dot(d)).normalize();
     a.e.copy(S).addScaledVector(d, x).addScaledVector(pole, h);
     const hp = new THREE.Vector3().copy(S).addScaledVector(d, L);
-    placeSeg(a.up, a.e, S, 0.058); placeSeg(a.fo, hp, a.e, 0.046);
-    a.el.position.copy(a.e); a.hand.position.copy(hp);
+    placeSeg(a.up, a.e, S, 0.051); placeSeg(a.fo, hp, a.e, 0.042);
+    if (a.bones) { boneAim(a.bones.up, _b.subVectors(a.e, S)); boneAim(a.bones.fo, _b.subVectors(hp, a.e)); boneSwing(a.bones.hand, UP, 0); return; }
+    a.el.position.copy(a.e); a.sd.position.copy(S); a.hand.position.copy(hp); a.hand.quaternion.copy(a.fo.quaternion);
   }
 
   buildRig() {
@@ -853,6 +1076,21 @@ export class World {
     const water = new THREE.Mesh(wg, new THREE.ShaderMaterial({ uniforms: U, vertexShader: WATER_VS, fragmentShader: WATER_FS, transparent: true, depthWrite: false }));
     water.renderOrder = 2; this.env.add(water); this.water = water; this._needLayers = true;
 
+    // Dunst ueber dem Wasser: morgens dicht, abends und bei Bewoelkung ein Hauch
+    const mistK = lid === 'morgen' ? 1 : lid === 'abend' ? 0.45 : overcast ? 0.3 : 0;
+    this.mist = new THREE.Group(); this.mist.visible = this.hi; this.env.add(this.mist);
+    this.rayK = overcast ? 0 : lid === 'morgen' ? 1.0 : lid === 'abend' ? 0.85 : 0.4;
+    this.pm.rays.uniforms.uCol.value.copy(sunCol);
+    for (let L = 0; L < 3 && mistK > 0; L++) {
+      const y = 0.3 + L * 0.5, mg = new THREE.PlaneGeometry(rv.width + 24, Z1 - Z0, 20, 110).rotateX(-Math.PI / 2).translate(0, y, (Z0 + Z1) / 2);
+      const mp = mg.attributes.position, aK = new Float32Array(mp.count);
+      for (let i = 0; i < mp.count; i++) aK[i] = smooth(0.12, 0.5, -river.heightAt(mp.getX(i), mp.getZ(i)));   // nur ueber tieferem Wasser, sonst schneidet der Dunst Schilf und Ufer in Streifen
+      mg.setAttribute('aK', new THREE.BufferAttribute(aK, 1));
+      const mm = new THREE.Mesh(mg, new THREE.ShaderMaterial({ uniforms: { uN: { value: this.noiseTex }, uTime: this.timeU, uCol: { value: fog.clone().lerp(new THREE.Color(1, 1, 1), 0.25) }, uOp: { value: mistK * (0.36 - L * 0.07) }, uOff: { value: L * 0.37 } },
+        vertexShader: MIST_VS, fragmentShader: MIST_FS, transparent: true, depthWrite: false }));
+      mm.renderOrder = 3 + L; mm.userData.air = true; this.mist.add(mm);
+    }
+
     // Felsen
     const rockMat = new THREE.MeshStandardMaterial({ color: C(pal.rock).lerp(new THREE.Color(1, 1, 1), 0.55).multiplyScalar(1.5), roughness: 0.95, vertexColors: true, map: this.tex.rock, normalMap: this.tex.rockN, normalScale: new THREE.Vector2(1.3, 1.3) });
     const wetG = [0, 1, 2].map(k => rockGeo(k, true)), dryG = [3, 4, 5].map(k => rockGeo(k, false));
@@ -890,6 +1128,9 @@ export class World {
       im.castShadow = o.shadow !== false; if (o.depth) im.customDepthMaterial = o.depth;
       this.env.add(im); return im;
     };
+    const obst = this.obst = [];   // Baeume und Buesche als Kreise: die Kamera weicht ihnen aus
+    const block = (list, r) => { for (const q of list) obst.push({ x: q.x, z: q.z, r2: (r * q.s + 0.45) ** 2 }); return list; };
+    const clearOf = (q, r) => Math.abs(q.x) - river.halfW >= 1.2 + r * q.s + 0.45;   // der Angler (bis 1 m an Land) steht nie im Laub
     const spots = (n, place) => { const l = []; for (let i = 0; i < n * 4 && l.length < n; i++) { const q = place(); if (q) { q.ry = rnd() * 6.3; l.push(q); } } return l; };
     const bankSpot = (minO, maxO, pw, zMin = Z0 + 4) => {
       const side = rnd() < 0.5 ? -1 : 1, x = side * (river.halfW + minO + Math.pow(rnd(), pw) * (maxO - minO)), z = zMin + rnd() * (Z1 - zMin - 3);
@@ -905,17 +1146,17 @@ export class World {
     const leafShare = rv.cliff ? 0.08 : rv.id === 'wiese' || rv.id === 'aeschenzug' ? 0.5 : 0.25;
     const nT = Math.floor(300 * rv.trees * vk), nL = Math.floor(nT * leafShare), nC = nT - nL;
     for (let v = 0; v < 2; v++) {
-      const list = spots(Math.ceil(nC / 2), () => { const q = bankSpot(3.2, 40, 1.3); if (!q) return null; q.y -= 0.2; q.s = 1.0 + rnd() * 1.15; q.sy = 0.9 + rnd() * 0.4; q.c = shade(); return q; });
-      inst(spruceTrunk(), barkMat, list); inst(spruceGeo(rnd), needleMat, list, { color: true, depth: needleDepth });
+      const list = spots(Math.ceil(nC / 2), () => { const q = bankSpot(3.2, 40, 1.3); if (!q) return null; q.y -= 0.2; q.s = 1.0 + rnd() * 1.15; q.sy = 0.9 + rnd() * 0.4; q.c = shade(); return clearOf(q, 2.4) ? q : null; });
+      block(list, 2.4); inst(spruceTrunk(), barkMat, list); inst(spruceGeo(rnd), needleMat, list, { color: true, depth: needleDepth });
     }
     if (nL) for (let v = 0; v < 2; v++) {
-      const list = spots(Math.ceil(nL / 2), () => { const q = bankSpot(3.4, 32, 1.5); if (!q) return null; q.y -= 0.15; q.s = 1.0 + rnd() * 0.9; q.sy = 0.9 + rnd() * 0.3; q.c = shade(); return q; });
-      inst(leafTrunk(rnd), barkMat, list); inst(crownGeo(rnd, 2.2, 4.7, 90, 1.5), leafMat, list, { color: true, depth: leafDepth });
+      const list = spots(Math.ceil(nL / 2), () => { const q = bankSpot(3.4, 32, 1.5); if (!q) return null; q.y -= 0.15; q.s = 1.0 + rnd() * 0.9; q.sy = 0.9 + rnd() * 0.3; q.c = shade(); return clearOf(q, 2.0) ? q : null; });
+      block(list, 2.0); inst(leafTrunk(rnd), barkMat, list); inst(crownGeo(rnd, 2.2, 4.7, 90, 1.5), leafMat, list, { color: true, depth: leafDepth });
     }
-    inst(crownGeo(rnd, 0.72, 0.5, 18, 0.9), leafMat, spots(Math.floor(190 * clamp(rv.trees + 0.3, 0.4, 1.2) * vk), () => {
+    inst(crownGeo(rnd, 0.72, 0.5, 18, 0.9), leafMat, block(spots(Math.floor(190 * clamp(rv.trees + 0.3, 0.4, 1.2) * vk), () => {
       const q = bankSpot(0.9, 17, 1.7); if (!q || q.y < 0.3) return null;
-      q.y -= 0.05; q.s = 0.7 + rnd() * 1.1; q.sy = 0.8 + rnd() * 0.4; q.c = shade(); return q;
-    }), { color: true, depth: leafDepth });
+      q.y -= 0.05; q.s = 0.7 + rnd() * 1.1; q.sy = 0.8 + rnd() * 0.4; q.c = shade(); return clearOf(q, 1.1) ? q : null;
+    }), 1.1), { color: true, depth: leafDepth });
     // Bodenbewuchs: Grasbueschel, Farne unter den Baeumen, hohes Gras an der Wasserkante
     const sway = (tex, amp) => {
       const m = new THREE.MeshLambertMaterial({ map: tex, alphaTest: 0.42, side: THREE.DoubleSide });
@@ -1000,7 +1241,22 @@ export class World {
     const cz = this.camZ, cxp = this.camX, por = this.portrait;
     // Umschauen: yaw dreht Kamera und Blickpunkt um den Angler, pitch hebt/senkt den Blick
     const yaw = this.yaw || 0, pit = this.pitch || 0, yc = Math.cos(yaw), ys = Math.sin(yaw), fw = Math.max(0, yc);
-    const ox = clamp(cxp * (por ? 0.13 : 0.42), -1.6, 1.6) * fw, cy = (por ? 2.75 : 2.25) - pit * 1.3, back = por ? 3.7 : 3.9;
+    const ox = clamp(cxp * (por ? 0.13 : 0.42), -1.6, 1.6) * fw, cy = (por ? 2.75 : 2.25) - pit * 1.3, back0 = por ? 3.7 : 3.9;
+    // Steht hinter dem Angler ein Baum oder Busch, rueckt die Kamera naeher heran statt ins Laub zu geraten
+    let want = back0;
+    if (this.obst && this.obst.length) {
+      // Sichtlinie Angler -> Kamera: bis zum ersten Baum, der sie schneidet
+      for (const o of this.obst) {
+        const mx = cxp - o.x, mz = cz - o.z, c = mx * mx + mz * mz - o.r2;
+        if (c <= 0) { want = 0; break; }
+        const bb = mx * ys + mz * yc, disc = bb * bb - c;
+        if (bb < 0 && disc > 0) want = Math.min(want, -bb - Math.sqrt(disc) - 0.3);
+      }
+      want = Math.max(1.2, want);
+    }
+    if (this._back === undefined) this._back = back0;
+    this._back += (want - this._back) * Math.min(1, dt * (want < this._back ? 18 : 3));
+    const back = this._back;
     const camX = cxp + ox * yc + back * ys, camZ = cz - ox * ys + back * yc;
     const gh = this.river ? Math.max(0, this.river.heightAt(camX, camZ)) : 0;
     this.camera.position.set(camX + Math.sin(t * 0.4) * 0.025, Math.max(cy, gh + 0.7) + Math.sin(t * 0.7) * 0.018, camZ);
@@ -1039,14 +1295,18 @@ export class World {
     const R = this.renderer, U = this.waterU, cam = this.camera;
     if (this._needLayers) {   // alles, was unter Wasser sichtbar sein kann, zusaetzlich auf Ebene 1
       this._needLayers = false;
-      this.env.traverse(o => { if (o.isMesh && !o.isInstancedMesh && o !== this.water) o.layers.enable(1); });
+      this.env.traverse(o => { if (o.isMesh && !o.isInstancedMesh && o !== this.water && !o.userData.air) o.layers.enable(1); });
       for (const o of this.scene.children) if (o !== this.env && o !== this.sky) o.traverse(c => c.layers.enable(1));   // Angler, Rute, Schnur, Fische, Licht
     }
     // Bugwelle: Position des Anglers, ob er im Wasser steht, wie schnell er watet
     const wet = this.river && Math.abs(px) < this.river.halfW && this.river.depthAt(px, pz) > 0.06 ? 1 : 0;
     U.uWader.value.set(px, pz, wet, this.walkAmp || 0);
     // Ruckelt es dauerhaft, die teuren Wasser-Durchgaenge abschalten
-    if (this.fxWater) { this._slow = dt > 0.042 ? this._slow + dt : Math.max(0, this._slow - dt * 2); if (this._slow > 4) this.fxWater = false; }
+    if (this.fxWater || this.fxPost) {
+      this._slow = dt > 0.042 ? this._slow + dt : Math.max(0, this._slow - dt * 2);
+      if (this._slow > 4) { if (this.fxPost) { this.fxPost = false; this._slow = 0; } else this.fxWater = false; }   // erst die Nachbearbeitung, dann das Wasser
+    }
+    const post = this.fxPost && this.mainRT, out = post ? this.mainRT : null;
     const fx = this.fxWater && this.water && this.sceneRT;
     U.uFx.value = fx ? 1 : 0;
     if (fx) {
@@ -1056,7 +1316,7 @@ export class World {
       cam.layers.set(1); R.setRenderTarget(this.sceneRT); R.render(this.scene, cam); cam.layers.set(0);
       // 2) Bild auf den Schirm (Schatten werden hier aktualisiert; Spiegelbild stammt vom vorigen Durchgang)
       this.water.visible = true; R.shadowMap.autoUpdate = true;
-      R.setRenderTarget(null); R.render(this.scene, cam);
+      R.setRenderTarget(out); R.render(this.scene, cam);
       // 3) Spiegelbild fuer die naechsten Bilder: nur jedes zweite Bild, ohne Gras, nur ueber der Wasserlinie
       if (((this._frame = (this._frame || 0) + 1) & 1) && U.uNoRefl.value < 0.5) {
         const gv = this.grass ? this.grass.visible : false;
@@ -1070,7 +1330,35 @@ export class World {
         if (this.grass) this.grass.visible = gv;
         this.water.visible = true; R.shadowMap.autoUpdate = true;
       }
-    } else R.render(this.scene, cam);
+    } else { R.setRenderTarget(out); R.render(this.scene, cam); }
+    if (post) this.runPost();
+  }
+
+  // Bloom (zwei Stufen), Sonnenstrahlen aus dem freien Himmel, dann Tonwerte + Vignette auf den Schirm
+  runPost() {
+    const R = this.renderer, M = this.pm, T = this.pRT, cam = this.camera, q = this.pQuad;
+    const pass = (m, tex, to) => { m.uniforms.tD.value = tex; q.material = m; R.setRenderTarget(to); R.render(this.pScene, this.pCam); };
+    const blur = (a, b) => {
+      M.blur.uniforms.uDir.value.set(1 / a.width, 0); pass(M.blur, a.texture, b);
+      M.blur.uniforms.uDir.value.set(0, 1 / a.height); pass(M.blur, b.texture, a);
+    };
+    R.shadowMap.autoUpdate = false;
+    M.bright.uniforms.uPx.value.set(1 / this.mainRT.width, 1 / this.mainRT.height);
+    pass(M.bright, this.mainRT.texture, T[0]);
+    // Sonnenstrahlen: nur wenn die Sonne vor der Kamera steht
+    cam.getWorldDirection(_a);
+    const facing = _a.dot(this.sunDir), amt = this.rayK * this.waterU.uSun.value * clamp((facing - 0.05) / 0.4, 0, 1);
+    if (amt > 0.01) {
+      _b.copy(cam.position).addScaledVector(this.sunDir, 500).project(cam);
+      M.rays.uniforms.uSunPos.value.set(_b.x * 0.5 + 0.5, _b.y * 0.5 + 0.5); M.rays.uniforms.uAsp.value = cam.aspect;
+      pass(M.rays, T[0].texture, T[4]);
+    }
+    M.final.uniforms.uRays.value = amt > 0.01 ? amt * 0.9 : 0;
+    pass(M.blur, T[0].texture, T[2]);   // verkleinern (uDir vom letzten Bild, unkritisch)
+    blur(T[0], T[1]); blur(T[2], T[3]); blur(T[2], T[3]);
+    const F = M.final.uniforms; F.tB1.value = T[0].texture; F.tB2.value = T[2].texture; F.tR.value = T[4].texture;
+    pass(M.final, this.mainRT.texture, null);
+    R.shadowMap.autoUpdate = true;
   }
 }
 const _c = new THREE.Color();
