@@ -1,12 +1,12 @@
 // Kleiner WebAudio-Synth: Flussrauschen und Effekte, ohne Sounddateien
 export class Sfx {
-  constructor() { this.ctx = null; this.on = true; }
+  constructor() { this.ctx = null; this.on = true; this.vol = 1; }
   start() {
     if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     const ctx = this.ctx = new AC();
-    this.master = ctx.createGain(); this.master.gain.value = this.on ? 1 : 0; this.master.connect(ctx.destination);
+    this.master = ctx.createGain(); this.master.gain.value = this.on ? this.vol : 0; this.master.connect(ctx.destination);
     const len = ctx.sampleRate * 3, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
     let last = 0;
     for (let i = 0; i < len; i++) { const w = Math.random() * 2 - 1; last = (last + 0.05 * w) / 1.05; d[i] = last * 3 + w * 0.12; }
@@ -16,7 +16,8 @@ export class Sfx {
     this.riverGain = ctx.createGain(); this.riverGain.gain.value = 0.22;
     src.connect(f); f.connect(this.riverGain); this.riverGain.connect(this.master); src.start();
   }
-  setOn(v) { this.on = v; if (this.master) this.master.gain.value = v ? 1 : 0; }
+  setOn(v) { this.on = v; if (this.master) this.master.gain.value = v ? this.vol : 0; }
+  setVol(v) { this.vol = v; if (this.master) this.master.gain.value = this.on ? v : 0; }
   setRiver(speed) { if (this.riverGain) this.riverGain.gain.setTargetAtTime(0.12 + Math.min(0.3, speed * 0.2), this.ctx.currentTime, 0.5); }
   tone(f0, f1, dur, vol = 0.2, type = 'sine', delay = 0) {
     if (!this.ctx || !this.on) return;

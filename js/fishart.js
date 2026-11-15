@@ -106,6 +106,17 @@ export function drawFly(cv, fly) {
   const c = cv.getContext('2d'), W = cv.width, H = cv.height;
   c.clearRect(0, 0, W, H);
   c.save(); c.translate(W / 2, H / 2); c.scale(W / 100, W / 100);
+  if (fly.dry) {   // Trockenfliege: Haken, Koerper, Hechelkranz, Fluegel, Schwanzfibern
+    c.lineCap = 'round'; c.strokeStyle = '#2a2a2a'; c.lineWidth = 3;
+    c.beginPath(); c.moveTo(-24, 2); c.lineTo(16, 2); c.arc(16, 15, 13, -Math.PI / 2, Math.PI * 0.75); c.stroke();
+    c.strokeStyle = fly.col; c.lineWidth = 9; c.beginPath(); c.moveTo(-10, 2); c.lineTo(20, 2); c.stroke();
+    c.lineWidth = 1.4; c.beginPath(); for (const a of [-0.25, 0, 0.25]) { c.moveTo(22, 2); c.lineTo(42, 2 + a * 30); } c.stroke();
+    c.strokeStyle = fly.id === 'wulff' || fly.id === 'adams' ? '#6a4a2a' : '#8a6a3a'; c.lineWidth = 1.3;
+    c.beginPath(); for (let i = 0; i < 22; i++) { const a = i / 22 * 6.283; c.moveTo(-14, 2); c.lineTo(-14 + Math.cos(a) * 7, 2 + Math.sin(a) * 19); } c.stroke();
+    c.fillStyle = fly.id === 'elk' || fly.id === 'stimu' ? '#d8c08a' : '#f4f4f0';
+    c.beginPath(); if (fly.id === 'elk' || fly.id === 'stimu') { c.moveTo(-18, -2); c.quadraticCurveTo(6, -24, 30, -8); c.quadraticCurveTo(8, -6, -18, -2); } else { c.moveTo(-16, -2); c.lineTo(-22, -30); c.lineTo(-8, -30); c.closePath(); } c.fill();
+    c.restore(); return;
+  }
   c.strokeStyle = '#2a2a2a'; c.lineWidth = 3; c.lineCap = 'round';
   c.beginPath(); c.moveTo(-26, -6); c.lineTo(18, -6); c.arc(18, 8, 14, -Math.PI / 2, Math.PI * 0.75); c.stroke();
   c.beginPath(); c.moveTo(-12, -6); c.lineTo(22, -6);

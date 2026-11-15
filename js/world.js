@@ -858,26 +858,87 @@ export class World {
   }
 
   buildRig() {
-    const unit = new THREE.CylinderGeometry(1, 1, 1, 6);
+    const unit = new THREE.CylinderGeometry(1, 1, 1, 8);
+    const SM = (c, r, m = 0) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: m });
+    const add = (par, geo, mat, x = 0, y = 0, z = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; m.frustumCulled = false; par.add(m); return m; };
+    const lathe = pts => new THREE.LatheGeometry(pts.map(q => new THREE.Vector2(q[0], q[1])), 16);
+    // Blank: 14 Segmente, dunkles Graphit mit Lackglanz
     this.rodSegs = [];
-    const rodMat = new THREE.MeshStandardMaterial({ color: 0x23282c, roughness: 0.35, metalness: 0.3 });
-    const corkMat = new THREE.MeshStandardMaterial({ color: 0xc8a06c, roughness: 0.9 });
-    for (let i = 0; i < 14; i++) { const m = new THREE.Mesh(unit, i === 0 ? corkMat : rodMat); m.frustumCulled = false; m.castShadow = i < 6; this.scene.add(m); this.rodSegs.push(m); }
-    this.reel = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.028, 16).rotateZ(Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x8a9096, roughness: 0.3, metalness: 0.8 }));
-    this.reel.frustumCulled = false; this.scene.add(this.reel);
+    const blankMat = SM(0x1d2a25, 0.2, 0.35);
+    for (let i = 0; i < 14; i++) { const m = new THREE.Mesh(unit, blankMat); m.frustumCulled = false; m.castShadow = i < 7; this.scene.add(m); this.rodSegs.push(m); }
+    // Griffteil: Kampfknauf, Rollenhalter, Korkgriff (Achse = lokales y, Rolle haengt bei -z)
+    const cork = SM(0xc9a472, 0.95), seat = SM(0x2b3136, 0.35, 0.85), silver = SM(0xb8bdc2, 0.28, 0.9), wood = SM(0x6a4326, 0.45);
+    const hg = this.handle = new THREE.Group(); this.scene.add(hg);
+    add(hg, lathe([[0, -0.034], [0.013, -0.03], [0.0155, -0.014], [0.012, 0]]), cork);                                   // Kampfknauf
+    add(hg, new THREE.CylinderGeometry(0.0105, 0.0105, 0.086, 14), wood, 0, 0.043, 0);                                    // Rollenhalter mit Holzeinsatz
+    add(hg, new THREE.CylinderGeometry(0.0128, 0.0128, 0.012, 14), seat, 0, 0.008, 0);
+    add(hg, new THREE.CylinderGeometry(0.0128, 0.0128, 0.02, 14), seat, 0, 0.074, 0);
+    add(hg, new THREE.TorusGeometry(0.0128, 0.0018, 6, 16).rotateX(Math.PI / 2), silver, 0, 0.062, 0);
+    add(hg, lathe([[0.0118, 0.085], [0.0165, 0.098], [0.0172, 0.15], [0.0148, 0.2], [0.0162, 0.25], [0.0132, 0.287], [0.0085, 0.297]]), cork);   // Korkgriff (Half Wells)
+    for (let k = 0; k < 9; k++) add(hg, new THREE.TorusGeometry(0.0157 + (k === 2 || k === 7 ? 0.0012 : 0), 0.0005, 4, 14).rotateX(Math.PI / 2), SM(0x9a7a50, 1), 0, 0.1 + k * 0.022, 0);   // Korkringe
+    add(hg, new THREE.CylinderGeometry(0.0072, 0.0086, 0.01, 12), silver, 0, 0.302, 0);                                   // Abschlussring
+    // Rolle
+    const reel = new THREE.Group(); reel.position.set(0, 0.043, -0.05); hg.add(reel);
+    add(reel, new THREE.BoxGeometry(0.011, 0.07, 0.005), seat, 0, 0, 0.037);                                              // Rollenfuss
+    add(reel, new THREE.BoxGeometry(0.008, 0.012, 0.016), seat, 0, 0, 0.03);
+    const frameG = new THREE.TorusGeometry(0.041, 0.0032, 8, 28).rotateY(Math.PI / 2);
+    add(reel, frameG, seat, -0.0125, 0, 0); add(reel, frameG, seat, 0.0125, 0, 0);
+    for (let k = 0; k < 3; k++) { const a = k * 2.094 + 0.5; add(reel, new THREE.CylinderGeometry(0.0022, 0.0022, 0.025, 6).rotateZ(Math.PI / 2), seat, 0, Math.cos(a) * 0.041, Math.sin(a) * 0.041); }
+    add(reel, new THREE.CylinderGeometry(0.037, 0.037, 0.003, 24).rotateZ(Math.PI / 2), silver, 0.0118, 0, 0);            // Spulenflansch
+    add(reel, new THREE.CylinderGeometry(0.037, 0.037, 0.003, 24).rotateZ(Math.PI / 2), silver, -0.0118, 0, 0);
+    for (let k = 0; k < 8; k++) { const a = k * 0.785; add(reel, new THREE.CylinderGeometry(0.006, 0.006, 0.0036, 10).rotateZ(Math.PI / 2), seat, 0.0118, Math.cos(a) * 0.024, Math.sin(a) * 0.024); }   // Bohrungen
+    this.flyLineMat = SM(0xdff06a, 0.6);
+    add(reel, new THREE.CylinderGeometry(0.03, 0.03, 0.02, 20).rotateZ(Math.PI / 2), this.flyLineMat);                    // aufgespulte Schnur
+    add(reel, new THREE.CylinderGeometry(0.008, 0.008, 0.03, 10).rotateZ(Math.PI / 2), silver);
+    add(reel, new THREE.CylinderGeometry(0.0042, 0.005, 0.016, 8).rotateZ(Math.PI / 2), SM(0x1a1a1a, 0.6), 0.023, 0.024, 0.012);   // Kurbelknauf
+    // Ringe: ein Leitring, Schlangenringe, Spitzenring (Ringebene quer zur Rute)
+    this.guides = [];
+    const ringG = new THREE.TorusGeometry(1, 0.17, 5, 12).rotateX(Math.PI / 2);
+    for (const [i, r] of [[3, 0.0085], [5, 0.0058], [6, 0.0052], [7, 0.0048], [8, 0.0044], [9, 0.004], [10, 0.0037], [11, 0.0034], [12, 0.0031], [13, 0.0028], [14, 0.0026]]) {
+      const m = new THREE.Mesh(ringG, silver); m.frustumCulled = false; m.scale.setScalar(r); this.scene.add(m); this.guides.push({ m, i, r });
+    }
+    // Schnur: an der Rute entlang durch die Ringe, dann als dicke Flugschnur mit duennem Vorfach hinaus
+    this.leaderMat = new THREE.MeshStandardMaterial({ color: 0xe9e9da, roughness: 0.4, transparent: true, opacity: 0.6 });
+    this.inLine = []; for (let i = 0; i < 12; i++) { const m = new THREE.Mesh(unit, this.flyLineMat); m.frustumCulled = false; this.scene.add(m); this.inLine.push(m); }
     this.NL = 26;
+    this.lineSegs = []; for (let i = 0; i < this.NL - 1; i++) { const m = new THREE.Mesh(unit, this.flyLineMat); m.frustumCulled = false; this.scene.add(m); this.lineSegs.push(m); }
     const lg = new THREE.BufferGeometry();
     lg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(this.NL * 3), 3));
-    this.line = new THREE.Line(lg, new THREE.LineBasicMaterial({ color: 0xf6f4e0, transparent: true, opacity: 0.8 }));
+    this.line = new THREE.Line(lg, new THREE.LineBasicMaterial({ color: 0xf6f4e0, transparent: true, opacity: 0.6 }));   // haarfeine Linie, damit die Schnur auch in der Ferne sichtbar bleibt
     this.line.frustumCulled = false; this.scene.add(this.line);
+    this._lp = Array.from({ length: this.NL }, () => new THREE.Vector3());
     this.sighter = [0xff2f7a, 0xf8e71c, 0xff2f7a].map(c => { const m = new THREE.Mesh(unit, new THREE.MeshBasicMaterial({ color: c })); m.frustumCulled = false; this.scene.add(m); return m; });
+    this.rigMode = 'euro'; this.flyFrac = 0;
+
+    // ---- Nymphe: Jighaken, Tungstenperle, Kragen, geripptes Abdomen, Schwanzfibern, Beinchen. Oese zeigt nach +z (zur Schnur) ----
+    this.beadMat = SM(0xe0b040, 0.22, 0.95); this.bodyMat = SM(0x7a4a25, 0.85); this.hotMat = SM(0x3a2a1a, 0.7);
+    const hookMat = SM(0x25272a, 0.3, 0.9), wire = SM(0xb87333, 0.3, 0.9), fib = SM(0x4a3520, 0.9);
+    const hookPath = pts => new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(0, p[0], p[1]))), 24, 0.0032, 6, false);
     const ny = new THREE.Group();
-    this.beadMat = new THREE.MeshStandardMaterial({ color: 0xe0b040, roughness: 0.25, metalness: 0.9 });
-    this.bodyMat = new THREE.MeshStandardMaterial({ color: 0x7a4a25, roughness: 0.8 });
-    const bead = new THREE.Mesh(new THREE.SphereGeometry(0.026, 10, 8), this.beadMat);
-    const body = new THREE.Mesh(new THREE.SphereGeometry(0.02, 8, 6), this.bodyMat); body.scale.set(1, 1, 2.6); body.position.z = 0.05;
-    ny.add(bead, body); this.nymph = ny; this.scene.add(ny);
+    const bead = add(ny, new THREE.SphereGeometry(0.024, 14, 10), this.beadMat);
+    add(ny, hookPath([[0.02, 0.016], [0.006, 0.006], [0, -0.03], [0, -0.1], [-0.012, -0.128], [-0.04, -0.132], [-0.058, -0.105], [-0.05, -0.072]]), hookMat);
+    add(ny, new THREE.SphereGeometry(1, 10, 8), this.hotMat, 0, 0, -0.028).scale.set(0.02, 0.02, 0.016);                 // Kragen / Hotspot
+    add(ny, new THREE.CylinderGeometry(0.0185, 0.007, 0.085, 10).rotateX(Math.PI / 2), this.bodyMat, 0, 0, -0.078);       // Abdomen, zum Schwanz hin duenner
+    for (let k = 0; k < 6; k++) { const z = -0.045 - k * 0.013, r = 0.0182 - k * 0.0018; add(ny, new THREE.TorusGeometry(r, 0.0016, 4, 12), wire, 0, 0, z); }   // Drahtrippung
+    for (const a of [-0.3, 0, 0.3]) { const m = add(ny, new THREE.CylinderGeometry(0.0012, 0.0012, 0.06, 4).rotateX(Math.PI / 2), fib, Math.sin(a) * 0.03, 0.004, -0.145); m.rotation.y = a; }   // Schwanz
+    for (let k = 0; k < 6; k++) { const sx = k % 2 ? 1 : -1, m = add(ny, new THREE.CylinderGeometry(0.001, 0.001, 0.04, 4), fib, sx * 0.018, -0.014, -0.03 - (k >> 1) * 0.008); m.rotation.set(0.5, 0, sx * 1.0); }   // Beinchen
+    this.nymph = ny; this.beadMesh = bead; this.scene.add(ny);
+
+    // ---- Trockenfliege: Haken, schlanker Koerper, Hechelkranz, Fluegel, Schwanz ----
+    this.wingMat = SM(0xf4f4ee, 0.9); this.hackleMat = SM(0x6a4a2a, 0.95);
+    const dr = new THREE.Group();
+    add(dr, hookPath([[0.004, 0.012], [0, 0], [0, -0.085], [-0.012, -0.108], [-0.036, -0.11], [-0.05, -0.088], [-0.044, -0.064]]), hookMat);
+    add(dr, new THREE.CylinderGeometry(0.009, 0.0045, 0.075, 8).rotateX(Math.PI / 2), this.bodyMat, 0, 0.002, -0.05);
+    for (let k = 0; k < 18; k++) { const a = k / 18 * 6.283, m = add(dr, new THREE.CylinderGeometry(0.0009, 0.0009, 0.05, 3), this.hackleMat, Math.cos(a) * 0.025, 0.002 + Math.sin(a) * 0.025, -0.008 - (k % 3) * 0.004); m.rotation.z = a - Math.PI / 2; }   // Hechel
+    add(dr, new THREE.CylinderGeometry(0.004, 0.006, 0.05, 6), this.wingMat, 0, 0.03, -0.012);                             // Sichtfluegel
+    const wing = add(dr, new THREE.ConeGeometry(0.014, 0.085, 6).rotateX(-Math.PI / 2), this.wingMat, 0, 0.014, -0.05); wing.scale.set(1, 0.45, 1); this.elkWing = wing;
+    for (const a of [-0.25, 0, 0.25]) { const m = add(dr, new THREE.CylinderGeometry(0.0009, 0.0009, 0.055, 3).rotateX(Math.PI / 2), this.hackleMat, Math.sin(a) * 0.027, 0.004, -0.113); m.rotation.y = a; }
+    dr.visible = false; this.dryFly = dr; this.scene.add(dr);
+
+    this.indMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10), new THREE.MeshStandardMaterial({ color: 0xff7a1a, roughness: 0.7 }));   // schwimmender Bissanzeiger
+    this.indMesh.visible = false; this.indMesh.frustumCulled = false; this.scene.add(this.indMesh);
     this._pts = Array.from({ length: 15 }, () => new THREE.Vector3());
+    this._mB = new THREE.Matrix4(); this._vx = new THREE.Vector3(); this._vy = new THREE.Vector3(); this._vz = new THREE.Vector3();
   }
 
   buildFx() {
@@ -904,7 +965,36 @@ export class World {
     this.bugs.frustumCulled = false; this.scene.add(this.bugs);
   }
 
-  setFlyLook(body, bead) { this.bodyMat.color.set(body); this.beadMat.color.set(bead); }
+  setFlyLook(body, bead, hot, id) {
+    this.bodyMat.color.set(body); this.beadMat.color.set(bead); this.hotMat.color.set(hot || body);
+    if (hot) this.hotMat.color.multiplyScalar(1); else this.hotMat.color.multiplyScalar(0.6);
+    this.elkWing.visible = id === 'elk' || id === 'stimu';                       // Haarfluegel nach hinten statt Sichtfluegel
+    this.wingMat.color.set(id === 'elk' || id === 'stimu' ? '#d8c08a' : '#f4f4ee');
+  }
+  // Methode: Euro (Sighter in der Schnur), Indikator (Kugel auf dem Wasser) oder Trockenfliege (Fliege schwimmt)
+  setRigStyle(mode, col, size) {
+    this.rigMode = mode;
+    for (const m of this.sighter) m.visible = mode === 'euro';
+    const lc = mode === 'euro' ? 0xf0eedc : mode === 'dry' ? 0xcfe08a : 0xff9a3a;   // Mono / helle Trockenschnur / leuchtend orange Nymphenschnur
+    this.flyLineMat.color.setHex(lc); this.line.material.color.setHex(lc);
+    this.flyFrac = mode === 'euro' ? 0 : 0.62;                                   // Anteil dicke Flugschnur, der Rest ist Vorfach
+    this.indMesh.material.color.set(col || '#ff7a1a'); this.indMesh.scale.set(size || 0.05, (size || 0.05) * 0.85, size || 0.05);
+    this.nymph.visible = mode !== 'dry'; this.dryFly.visible = mode === 'dry';
+  }
+  setIndicator(p, y) {
+    const m = this.indMesh; m.visible = !!p;
+    if (!this.dropSeg) { this.dropSeg = new THREE.Mesh(this.lineSegs[0].geometry, this.leaderMat); this.dropSeg.frustumCulled = false; this.scene.add(this.dropSeg); }
+    this.dropSeg.visible = !!p;
+    if (p) { m.position.set(p.x, y, p.z); placeSeg(this.dropSeg, this.nymph.position, m.position, 0.0012); }   // Vorfach vom Indikator hinunter zur Nymphe
+  }
+
+  // Lokales Achsenkreuz an einem Rutenpunkt: y = Rutenachse, x = seitlich, z = oben (Rolle und Ringe sitzen bei -z)
+  _rodFrame(dir) {
+    const y = this._vy.copy(dir).normalize(), x = this._vx.crossVectors(y, UP);
+    if (x.lengthSq() < 1e-6) x.set(1, 0, 0); else x.normalize();
+    const z = this._vz.crossVectors(x, y);
+    return this._mB.makeBasis(x, y, z);
+  }
 
   // hand, tip, target: {x,y,z}; s = Spannung 0..1 (1 = straff); bend 0..1
   setRig(hand, tip, target, s, bend) {
@@ -914,25 +1004,60 @@ export class World {
     const perp = toT.addScaledVector(dir, -toT.dot(dir));
     if (perp.lengthSq() > 1e-6) perp.normalize();
     perp.multiplyScalar(bend * len * 0.45);
-    const P = this._pts, NSEG = 14;
+    const P = this._pts, NSEG = 14, rodR = i => 0.0072 - i * 0.00036;
     for (let i = 0; i <= NSEG; i++) { const t = i / NSEG; P[i].copy(H).addScaledVector(dir, len * (t - 0.06) * (1 - bend * 0.1 * t)).addScaledVector(perp, t * t * t * 0.4 + t * t * 0.6); }
-    for (let i = 0; i < NSEG; i++) placeSeg(this.rodSegs[i], P[i], P[i + 1], i === 0 ? 0.017 : 0.0125 - i * 0.0007);
-    this.reel.position.copy(P[0]).addScaledVector(dir, 0.04); this.reel.position.y -= 0.05;
+    for (let i = 0; i < NSEG; i++) placeSeg(this.rodSegs[i], P[i], P[i + 1], rodR(i));
+    // Griff und Rolle
+    const d0 = _d.subVectors(P[1], P[0]);
+    this.handle.position.copy(P[0]); this.handle.quaternion.setFromRotationMatrix(this._rodFrame(d0));
+    // Ringe und die Schnur durch die Ringe
+    const q0 = new THREE.Vector3(), q1 = new THREE.Vector3(), under = (i, out) => {
+      const a = Math.min(i, NSEG - 1); _d.subVectors(P[a + 1], P[a]); this._rodFrame(_d);
+      return out.copy(P[i]).addScaledVector(this._vz, -(rodR(Math.min(i, 13)) + 0.006));
+    };
+    for (const g of this.guides) {
+      const a = Math.min(g.i, NSEG - 1); _d.subVectors(P[a + 1], P[a]);
+      g.m.quaternion.setFromRotationMatrix(this._rodFrame(_d));
+      g.m.position.copy(P[g.i]).addScaledVector(this._vz, -(rodR(Math.min(g.i, 13)) + g.r));
+    }
+    const inR = this.rigMode === 'euro' ? 0.0011 : 0.0024;
+    for (let i = 0; i < 12; i++) { under(i + 2, q0); under(i + 3, q1); if (i === 0) { q0.copy(P[0]).addScaledVector(d0.subVectors(P[1], P[0]).normalize(), 0.06); this._rodFrame(d0); q0.addScaledVector(this._vz, -0.03); } placeSeg(this.inLine[i], q0, q1, inR); }
     this._arm(this.arms[0], H);
     if (this._fightGrip) this.arms[1].tg.copy(P[0]).addScaledVector(dir, 0.1).add(_d.set(0, -0.06, 0));
     this._arm(this.arms[1], this.arms[1].tg);
-    // Schnur
-    const tp = P[NSEG], pos = this.line.geometry.attributes.position, N = this.NL;
+    // Schnur von der Spitze zum Ziel
+    const tp = P[NSEG], N = this.NL, L = this._lp;
     const sag = Math.min(1.2, (1 - Math.min(1, s)) * 3.2);
-    const at = (t, out) => out.set(tp.x + (target.x - tp.x) * t, tp.y + (target.y - tp.y) * t - sag * 2 * t * (1 - t), tp.z + (target.z - tp.z) * t);
-    const v = new THREE.Vector3();
-    for (let i = 0; i < N; i++) { at(i / (N - 1), v); pos.setXYZ(i, v.x, v.y, v.z); }
-    pos.needsUpdate = true;
+    for (let i = 0; i < N; i++) { const t = i / (N - 1); L[i].set(tp.x + (target.x - tp.x) * t, tp.y + (target.y - tp.y) * t - sag * 2 * t * (1 - t), tp.z + (target.z - tp.z) * t); }
     let t0 = 0.62, t1 = 0.9;
     if (target.y < 0.05 && tp.y > 0.5) { const span = tp.y - target.y; t1 = (tp.y - 0.1) / span; t0 = Math.max(0.05, (tp.y - Math.min(tp.y - 0.1, 0.85)) / span); }
+    this._drawLine(t0, t1);
+  }
+
+  // Schnur als frei geformter Pfad (Wurfschlaufe): pts = Vector3-Liste von der Rutenspitze bis zur Fliege
+  setLinePath(pts) {
+    const N = this.NL, L = this._lp, M = pts.length - 1;
+    for (let i = 0; i < N; i++) { const f = i / (N - 1) * M, a = Math.min(M - 1, Math.floor(f)); L[i].copy(pts[a]).lerp(pts[a + 1], f - a); }
+    this._drawLine(0.66, 0.9);
+  }
+
+  _drawLine(t0, t1) {
+    const N = this.NL, L = this._lp, pos = this.line.geometry.attributes.position;
+    for (let i = 0; i < N; i++) pos.setXYZ(i, L[i].x, L[i].y, L[i].z);
+    pos.needsUpdate = true;
+    const cut = Math.round(this.flyFrac * (N - 1));
+    for (let i = 0; i < N - 1; i++) {
+      const m = this.lineSegs[i], fly = i < cut;
+      if (m.material !== (fly ? this.flyLineMat : this.leaderMat)) m.material = fly ? this.flyLineMat : this.leaderMat;
+      const k = fly ? 0 : (i - cut) / Math.max(1, N - 1 - cut);
+      placeSeg(m, L[i], L[i + 1], fly ? 0.0042 - 0.0012 * (i / Math.max(1, cut)) : 0.0019 - 0.0009 * k);   // Flugschnur verjuengt sich, Vorfach laeuft duenn aus
+    }
+    const at = (t, out) => { const f = clamp(t, 0, 1) * (N - 1), a = Math.min(N - 2, Math.floor(f)); return out.copy(L[a]).lerp(L[a + 1], f - a); };
     const q0 = new THREE.Vector3(), q1 = new THREE.Vector3();
-    for (let i = 0; i < 3; i++) { at(t0 + (t1 - t0) * i / 3, q0); at(t0 + (t1 - t0) * (i + 1) / 3, q1); placeSeg(this.sighter[i], q0, q1, 0.011); }
-    this.nymph.position.set(target.x, target.y, target.z);
+    for (let i = 0; i < 3; i++) { at(t0 + (t1 - t0) * i / 3, q0); at(t0 + (t1 - t0) * (i + 1) / 3, q1); placeSeg(this.sighter[i], q0, q1, 0.007); }
+    const e = L[N - 1], p = L[N - 3];
+    this.nymph.position.copy(e); if (e.distanceToSquared(p) > 1e-6) this.nymph.lookAt(p);                                 // Oese zeigt zur Schnur
+    this.dryFly.position.copy(e); this.dryFly.lookAt(p.x, e.y, p.z);                                                      // sitzt aufrecht auf dem Wasser
   }
 
   setAim(a) {

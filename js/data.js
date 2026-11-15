@@ -20,9 +20,9 @@ export const SPECIES = {
 };
 
 export const INSECTS = {
-  baetis: { name: 'Eintagsfliegenlarven', hint: 'schlank, olivbraun, drei Schwanzfäden' },
-  caddis: { name: 'Köcherfliegenlarven', hint: 'im Köcher aus Steinchen, grüner Kopf schaut heraus' },
-  stone: { name: 'Steinfliegenlarven', hint: 'groß, flach, zwei Schwanzfäden' },
+  baetis: { adult: "Eintagsfliegen", name: 'Eintagsfliegenlarven', hint: 'schlank, olivbraun, drei Schwanzfäden' },
+  caddis: { adult: "Köcherfliegen", name: 'Köcherfliegenlarven', hint: 'im Köcher aus Steinchen, grüner Kopf schaut heraus' },
+  stone: { adult: "Steinfliegen", name: 'Steinfliegenlarven', hint: 'groß, flach, zwei Schwanzfäden' },
   gammarus: { name: 'Bachflohkrebse', hint: 'grau-oliv, gekrümmt, wuseln seitlich davon' },
   worm: { name: 'Würmer', hint: 'vom Regen ausgespült' },
 };
@@ -50,6 +50,34 @@ export const FLIES = [
     desc: "Ein leuchtendes Fischei aus Chenille. Im kalten Wasser fressen Forellen den Laich der anderen." },
   { id: 'huchenjig', name: 'Huchen-Jig', level: 10, imitates: ['stone'], attractor: 0.6, sink: 1.3, col: '#2a2a2a', bead: '#3a3a3a', big: 0.6, loves: ['huchen'],
     desc: "Schwer, dunkel, lang wie ein Finger. Kein Imitat für Zaghafte – gebaut für den Kolk und das, was darin jagt." },
+  // Trockenfliegen: treiben auf der Oberflaeche, nur steigende Fische nehmen sie
+  { id: 'adams', dry: true, name: 'Parachute Adams', level: 1, imitates: ['baetis'], attractor: 0.1, sink: 1, col: '#8a8a86', bead: '#8a8a86',
+    desc: "Grauer Körper, weißer Sichtflügel. Die eine Trockenfliege, die fast jede schlüpfende Eintagsfliege abdeckt." },
+  { id: 'elk', dry: true, name: 'Elk Hair Caddis', level: 1, imitates: ['caddis'], attractor: 0.1, sink: 1, col: '#b89a60', bead: '#b89a60',
+    desc: "Flügel aus Hirschhaar, schwimmt wie ein Korken. Für Abende, an denen die Köcherfliegen über dem Wasser tanzen." },
+  { id: 'klink', dry: true, name: 'Klinkhåmer', level: 3, imitates: ['caddis', 'baetis'], attractor: 0.2, sink: 1, col: '#a8763a', bead: '#a8763a',
+    desc: "Der Körper hängt im Oberflächenfilm wie ein Insekt beim Schlüpfen. Für Fische, die knapp unter der Oberfläche fressen." },
+  { id: 'stimu', dry: true, name: 'Stimulator', level: 5, imitates: ['stone'], attractor: 0.4, sink: 1, col: '#d08a2a', bead: '#d08a2a', big: 0.3,
+    desc: "Groß, buschig, orange. Imitiert die erwachsene Steinfliege – ein Bissen, für den auch große Forellen hochkommen." },
+  { id: 'wulff', dry: true, name: 'Royal Wulff', level: 7, imitates: [], attractor: 0.9, sink: 1, col: '#b02a2a', bead: '#b02a2a',
+    desc: "Rot, Pfauengras, weiße Flügel. Imitiert nichts – und wird im schnellen Wasser trotzdem genommen, weil man sie einfach sieht." },
+];
+
+// Rig: Rute und Methode
+export const RIGS = [
+  { id: 'euro', name: "Euro-Nymphe", desc: "Nymphenrute 10′ #3. Kurze Schnur, hohe Rute, direkter Kontakt über den Sighter. Am genauesten auf kurze Distanz, bis etwa 7 m." },
+  { id: 'indi', name: "Indikator", desc: "Allroundrute 9′6″ #4. Die Nymphe hängt unter einem schwimmenden Bissanzeiger. Würfe bis 10 m, lose Schnur schadet nicht – aber die Tiefe stellst du selbst ein, und der Indikator muss die Perle tragen können." },
+  { id: 'dry', name: "Trockenfliege", desc: "Trockenfliegenrute 9′ #4. Die Fliege treibt auf der Oberfläche. Nur steigende Fische nehmen sie – achte auf die Ringe im Wasser. Würfe bis 12 m. In der Fliegendose siehst du mit dieser Rute nur Trockenfliegen." },
+];
+// Schwimmende Bissanzeiger. cap = Tragkraft (Perle x Fliege), sens = wie deutlich er Bisse zeigt,
+// splash = Scheuchradius beim Aufsetzen in m, drift = wie natuerlich die Nymphe darunter treibt
+export const INDICATORS = [
+  { id: 'nz', name: "New-Zealand-Wolle", col: '#f2f0e4', size: 0.05, cap: 0.30, sens: 1.3, splash: 0.5, drift: 1.0, desc: "Ein Büschel Schafwolle im Silikonschlauch. Landet wie eine Feder und zeigt jedes Zupfen – trägt aber nur leichte Nymphen." },
+  { id: 'palsa', name: "Palsa-Klebeschaum", col: '#ff7a1a', size: 0.036, cap: 0.24, sens: 1.2, splash: 0.6, drift: 0.97, desc: "Selbstklebender Schaumstreifen ums Vorfach. Winzig und unauffällig, trägt am wenigsten von allen." },
+  { id: 'loon', name: "Loon Biostrike (Knete)", col: '#ff3fa0', size: 0.04, cap: 0.36, sens: 1.15, splash: 0.7, drift: 0.98, desc: "Schwimmende Knetmasse, die du in beliebiger Größe aufs Vorfach rollst. Empfindlich und leise, mittlere Tragkraft." },
+  { id: 'airlock', name: "Airlock", col: '#c8f03a', size: 0.055, cap: 0.5, sens: 1.0, splash: 1.2, drift: 0.93, desc: "Schaumkörper mit Schraubmutter, schnell verstellbar. Solider Allrounder für mittlere Gewichte." },
+  { id: 'oros', name: "Oros (Styroporkugel)", col: '#ffd21a', size: 0.064, cap: 0.62, sens: 0.9, splash: 1.5, drift: 0.9, desc: "Zweiteilige Styroporkugel zum Zusammenschrauben. Trägt auch schwere Perlen, setzt aber hörbar auf." },
+  { id: 'thing', name: "Thingamabobber", col: '#ff4a2a', size: 0.072, cap: 0.85, sens: 0.8, splash: 2.0, drift: 0.86, desc: "Luftgefüllte Plastikkugel. Trägt alles und geht nie unter – klatscht aber aufs Wasser und zeigt feine Bisse schlecht." },
 ];
 
 export const BEADS = [

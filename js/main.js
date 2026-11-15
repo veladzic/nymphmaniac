@@ -1,8 +1,9 @@
 // Nymphmaniac – Spiellogik: Wurf, Drift, Biss, Drill, Fortschritt, UI
 import { T, LANGS, getLang, setLang, loc } from './i18n.js';
 import { World } from './world.js';
-import { SPECIES, FLIES, INSECTS, REVIERE, SEASONS, PAGES, BEADS, TIPPETS, LEVEL_UNLOCKS, MAX_LEVEL, xpNeed, CLARITY, LIGHTS } from './data.js';
+import { SPECIES, FLIES, INSECTS, REVIERE, SEASONS, RIGS, INDICATORS, PAGES, BEADS, TIPPETS, LEVEL_UNLOCKS, MAX_LEVEL, xpNeed, CLARITY, LIGHTS } from './data.js';
 import { LANE_X, Z_MIN, Z_MAX } from './river.js';
+import { Vector3 as THREE_V3 } from './three.module.min.js';
 import { drawFish, drawFly } from './fishart.js';
 import { Sfx } from './audio.js';
 
@@ -14,23 +15,29 @@ const fmt = (n, d = 1) => n.toFixed(d).replace('.', ',');
 // ---------- Spielstand ----------
 const KEY = 'nymphmaniac_v1';
 function newSave() {
-  return { level: 1, xp: 0, material: 4, flies: { pt: 4, perdigon: 4, walt: 4 }, sel: { fly: 'pt', bead: 3.0, tippet: 0.14 },
-    unlocked: 1, revier: 0, quests: {}, log: {}, stats: {}, pages: ['intro'], v: 2, tut: 0, set: { help: true, vib: true, sound: true, assist: true, gfx: true, clear: false }, total: 0, started: false };
+  return { level: 1, xp: 0, material: 4, flies: { pt: 4, perdigon: 4, walt: 4, adams: 4, elk: 4 }, sel: { fly: 'pt', dry: 'adams', bead: 3.0, tippet: 0.14 }, rig: { mode: 'euro', ind: 'nz', depth: 1.0 },
+    unlocked: 1, revier: 0, quests: {}, log: {}, stats: {}, pages: ['intro'], v: 2, tut: 0, set: { help: true, vib: true, sound: true, vol: 0.8, assist: true, gfx: true, clear: false }, total: 0, started: false };
 }
 let save;
 try { save = JSON.parse(localStorage.getItem(KEY)); } catch (e) { save = null; }
 if (!save || !save.sel) save = newSave();
-save.set = Object.assign({ help: true, vib: true, sound: true, assist: true, gfx: true, clear: false }, save.set);
+save.set = Object.assign({ help: true, vib: true, sound: true, vol: 0.8, assist: true, gfx: true, clear: false }, save.set);
+save.rig = Object.assign({ mode: 'euro', ind: 'nz', depth: 1.0 }, save.rig);
+if (!save.sel.dry) save.sel.dry = 'adams';
+for (const f of FLIES) if (f.dry && save.flies[f.id] === undefined && save.level >= f.level) save.flies[f.id] = 4;   // Trockenfliegen fuer alte Spielstaende
 const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(save)); } catch (e) { /* privat */ } };
 const stats = id => save.stats[id] || (save.stats[id] = { n: 0, sp: {}, spMax: {}, maxLen: 0, matched: 0, pocket: 0, heavy: 0, fine: 0, big42: 0, old: 0 });
-const curFly = () => FLIES.find(f => f.id === save.sel.fly);
+const rigMode = () => save.rig.mode, isDry = () => save.rig.mode === 'dry', isEuro = () => save.rig.mode === 'euro';
+const flyKey = () => isDry() ? 'dry' : 'fly';
+const curFly = () => FLIES.find(f => f.id === save.sel[flyKey()]) || FLIES[0];
+const curInd = () => INDICATORS.find(k => k.id === save.rig.ind) || INDICATORS[0];
 const curBead = () => BEADS.find(b => b.mm === save.sel.bead);
 const curTippet = () => TIPPETS.find(t => t.d === save.sel.tippet);
 
 // ---------- Welt & Zustand ----------
 const canvas = $('gl');
 const world = new World(canvas);
-const sfx = new Sfx(); sfx.on = save.set.sound;
+const sfx = new Sfx(); sfx.on = save.set.sound; sfx.vol = save.set.vol;
 if (!save.set.gfx) world.setQuality(false);
 world.setClearView(save.set.clear);
 let river, cond, fish = [], respawn = [];
@@ -39,6 +46,7 @@ const S = {
   kick: 0, driftT: 0, onBottom: false, tickT: 0, bite: null, snag: false, snagT: 0, fight: null, hold: false, wade: null,
   cast: null, maxFrac: 0, swingT: 0, sinkRate: 0.2, snagHint: false, aim: null, press: 0, rodX: -0.5,
 };
+function applyRig() { const f = curFly(), k = curInd(); world.setRigStyle(rigMode(), k.col, k.size); world.setFlyLook(f.col, isDry() ? f.col : f.bead, f.hot, f.id); }
 const groundY = () => 0.56 + (river ? clamp(river.heightAt(S.px, S.pz), -1.05, 1.2) : -0.56);
 const onLand = (x = S.px, z = S.pz) => Math.abs(river.off(x, z)) >= river.halfW || river.depthAt(x, z) < 0.03;
 const hand = () => { const c = Math.cos(S.face), sn = Math.sin(S.face), lx = 0.2, lz = -0.4; return { x: S.px + lx * c + lz * sn, y: 0.8 + groundY(), z: S.pz - lx * sn + lz * c }; };
@@ -72,7 +80,7 @@ function enterRevier(i) {
   if (S.mode !== 'title') S.mode = 'idle';
   restTip();
   sfx.setRiver(rv.speed);
-  const f = curFly(); world.setFlyLook(f.col, f.bead);
+  applyRig();
   updateHUD(); updateTip();
   persist();
 }
@@ -88,12 +96,12 @@ function makeFish(lie, old) {
     const bonus = lie.type === 'Gumpen' ? 0.18 : 0;
     len = Math.round(sp.min + (sp.max - sp.min) * clamp(Math.pow(Math.random(), 1.9) * rv.sizeMul + bonus * Math.random() + rv.sizeMul * 0.12, 0, 1));
   }
-  const f = { lie, x: lie.x, z: lie.z, species, len, wary: 0, spooked: 0, old: !!old, phase: Math.random() * 6, match: 1 };
+  const f = { lie, x: lie.x, z: lie.z, species, len, wary: 0, spooked: 0, old: !!old, phase: Math.random() * 6, match: 1, rise: !old && Math.random() < 0.22, riseT: 8 + Math.random() * 45, ringT: 1 + Math.random() * 3 };
   f.mesh = world.makeFish(len, species);
   placeFish(f);
   return f;
 }
-function placeFish(f) { f.ry = Math.atan(river.dcx(f.z)); f.mesh.position.set(f.x, -Math.max(0.2, river.depthAt(f.x, f.z) - 0.12), f.z); f.mesh.rotation.set(0, f.ry, 0); }   // Kopf gegen die Stroemung
+function placeFish(f) { f.ry = Math.atan(river.dcx(f.z)); f.by = -Math.max(0.2, river.depthAt(f.x, f.z) - 0.12); f.mesh.position.set(f.x, f.rise ? -0.16 : f.by, f.z); f.mesh.rotation.set(0, f.ry, 0); }   // Kopf gegen die Stroemung
 function checkOld(announce) {
   const rv = REVIERE[save.revier];
   if (rv.id !== 'gumpen' || !save.quests.g1 || !save.quests.g2 || fish.some(f => f.old)) return;
@@ -117,7 +125,7 @@ function castTarget(pt) {
   const h = hand();
   let dx = pt.x - h.x, dz = pt.z - h.z, d = Math.hypot(dx, dz);
   if (d < 0.4) return null;
-  const dd = clamp(d, 2.6, 7.6); dx *= dd / d; dz *= dd / d;
+  const dd = clamp(d, 2.6, isEuro() ? 7.6 : isDry() ? 12 : 10.5); dx *= dd / d; dz *= dd / d;   // mit Flugschnur geht es weiter hinaus
   if (dz > 1.0) dz = 1.0;
   const tx = h.x + dx, tz = h.z + dz;
   return { tx, tz, dx, dz, ok: river.depthAt(tx, tz) >= 0.1 };
@@ -133,12 +141,48 @@ function doCast(pt) {
   const l = Math.hypot(dx, dz);
   S.tip.x = h.x + dx / l * 2.6; S.tip.z = h.z + dz / l * 2.6;
   const TP = tip3();
-  S.cast = { t: 0, fx: TP.x, fy: TP.y - 1.2, fz: TP.z + 0.6, tx, tz };
+  // Wurfablauf: Rueckschwung, bei der Trockenfliege ein bis zwei Leerwuerfe (zufaellig), dann ablegen
+  const rm = rigMode(), nFalse = rm === 'dry' ? 1 + (Math.random() < 0.5 ? 1 : 0) : 0, st = [];
+  st.push({ dir: -1, dur: rm === 'euro' ? 0.26 : 0.4 });
+  for (let i = 0; i < nFalse; i++) { st.push({ dir: 1, dur: 0.38 }); st.push({ dir: -1, dur: 0.4 }); }
+  st.push({ dir: 1, dur: rm === 'euro' ? 0.44 : 0.56, fin: true });
+  const full = Math.hypot(tx - TP.x, tz - TP.z, TP.y);
+  st.forEach((q, i) => { q.len = Math.max(2.2, full * (rm === 'euro' ? 1 : 0.45 + 0.55 * (i + 1) / st.length)); });   // beim Leerwurf wird Schnur verlaengert
+  S.cast = { t: 0, T: st.reduce((a, q) => a + q.dur, 0), st, k: -1, ux: dx / l, uz: dz / l, tx, tz, loop: rm === 'euro' ? 0.3 : rm === 'dry' ? 0.5 : 0.85, hang: { x: TP.x, y: Math.max(0.3, TP.y - 1.9), z: TP.z } };
   S.mode = 'cast';
-  sfx.whip();
+}
+// Haltung von Rute und Schnur waehrend des Wurfs. Jeder Schlag bewegt die Rute zwischen 10 und 1 Uhr;
+// die Schnur rollt als Schlaufe ab: das untere Bein liegt schon gestreckt, das obere holt noch auf.
+const _cpts = Array.from({ length: 22 }, () => new THREE_V3());
+function castPose(h, TP0) {
+  const c = S.cast, tt = Math.min(c.t, 1) * c.T;
+  let acc = 0, k = 0;
+  while (k < c.st.length - 1 && tt > acc + c.st[k].dur) { acc += c.st[k].dur; k++; }
+  const st = c.st[k], p = clamp((tt - acc) / st.dur, 0, 1), sm = x => { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); };
+  if (c.k !== k) { c.k = k; sfx.whip(); }
+  const RL = 3.05, thF = 0.92, thB = 1.92;                      // Stopp vorn (10 Uhr) und hinten (1 Uhr), Winkel ueber der Waagrechten
+  const a0 = k === 0 ? 0.7 : st.dir > 0 ? thB : thF, a1 = st.dir > 0 ? thF : thB, th = a0 + (a1 - a0) * sm(p / 0.6);
+  const tip = { x: h.x + c.ux * Math.cos(th) * RL, y: h.y + Math.sin(th) * RL, z: h.z + c.uz * Math.cos(th) * RL };
+  const land = st.fin ? sm((p - 0.5) / 0.5) : 0;
+  if (land > 0) { tip.x += (TP0.x - tip.x) * land; tip.y += (TP0.y - tip.y) * land; tip.z += (TP0.z - tip.z) * land; }   // Rute senkt sich beim Ablegen in die Drifthaltung
+  // Flugrichtung der Schnur: Rueckwurf leicht ansteigend, Leerwurf ueber dem Wasser, letzter Wurf auf das Ziel
+  const el = st.dir < 0 ? 0.3 : st.fin ? -0.12 : 0.1, ce = Math.cos(el) * st.dir;
+  const d = { x: c.ux * ce, y: Math.sin(el), z: c.uz * ce };
+  const Lc = st.len, xn = Lc * Math.pow(p, 1.35), hL = c.loop * (1 - p * p * p), N = _cpts.length;
+  const first = k === 0 ? 1 - sm(p * 1.6) : 0;                   // am Anfang haengt die Fliege noch unter der Rutenspitze
+  for (let i = 0; i < N; i++) {
+    const f = i / (N - 1), sl = Lc * f, q = _cpts[i];
+    if (sl <= xn) q.set(tip.x + d.x * sl, tip.y + d.y * sl - 0.25 * f * (1 - f), tip.z + d.z * sl);
+    else { const r = sl - xn, o = xn - r + 0.2 * Math.sin(Math.PI * clamp(r / 0.7, 0, 1)); q.set(tip.x + d.x * o, tip.y + d.y * o + hL * (1 - Math.exp(-r / 0.32)), tip.z + d.z * o); }
+    if (first > 0) { q.x += (tip.x + (c.hang.x - tip.x) * f - q.x) * first; q.y += (tip.y + (c.hang.y - tip.y) * f - q.y) * first; q.z += (tip.z + (c.hang.z - tip.z) * f - q.z) * first; }
+    if (land > 0) { const sy = tip.y * (1 - f) - 0.5 * f * (1 - f) * (1 - land); q.x += (tip.x + (c.tx - tip.x) * f - q.x) * land; q.y += (Math.max(0.02, sy) - q.y) * land; q.z += (tip.z + (c.tz - tip.z) * f - q.z) * land; }
+    if (q.y < 0.04) q.y = 0.04;
+  }
+  const load = Math.sin(Math.PI * clamp(p / 0.62, 0, 1));        // die Rute laedt sich gegen die Schnur auf
+  return { tip, pts: _cpts, bend: 0.06 + 0.3 * load, pull: { x: tip.x - d.x * 3, y: tip.y - d.y * 3 - 0.5, z: tip.z - d.z * 3 } };
 }
 function updateCast(dt) {
-  const c = S.cast; c.t += dt / 0.6;
+  const c = S.cast; c.t += dt / c.T;
   if (c.t >= 1) {
     const n = S.nymph; n.x = c.tx; n.z = c.tz; n.d = 0.02;
     const TP = tip3();
@@ -146,6 +190,14 @@ function updateCast(dt) {
     const tp = curTippet(), fly = curFly();
     S.sinkRate = curBead().sink * fly.sink * tp.sink;
     for (const f of fish) f.match = flyMatch(fly, f);
+    S.indSunk = false; S.indLow = false;
+    if (rigMode() === 'indi') {   // traegt der Indikator die Nymphe? Und wie laut setzt er auf?
+      const k = curInd(), load = curBead().sink * fly.sink;
+      S.indSunk = load > k.cap; S.indLow = !S.indSunk && load > k.cap * 0.85;
+      for (const f of fish) if (Math.hypot(f.x - n.x, f.z - n.z) < k.splash) f.wary = Math.max(f.wary, 9);
+      if (S.indSunk) toast(T("Der Indikator säuft ab – die Perle ist zu schwer für ihn. Nimm einen tragfähigeren oder eine leichtere Perle."), 4200);
+    }
+    if (isDry()) n.d = 0;
     S.mode = 'drift'; S.driftT = 0; S.bite = null; S.snag = false; S.snagHint = false; S.onBottom = false; S.maxFrac = 0; S.swingT = 0; S.pullS = 0; S.g = 0; S.kick = 0; S.tickT = 0.3;
     world.splash(n.x, n.z, 0.5); sfx.plop();
     if (save.tut < 2) { save.tut = Math.max(save.tut, 1); }
@@ -159,15 +211,20 @@ function updateDrift(dt) {
   S.driftT += dt;
   const bottom = Math.max(0.06, river.depthAt(n.x, n.z));
   const v = river.speedAt(n.x, n.z);
-  if (save.set.assist && !S.bite && !S.snag && S.s < 0.96 && S.pullS < 0.05) {
+  if (save.set.assist && !S.bite && !S.snag) {
     const T0 = tip3(), ax = T0.x - n.x, az = T0.z - n.z, al = Math.hypot(ax, az) || 1;
-    const st = Math.min(1.4, 1.7 * (0.96 - S.s) * S.L) * dt;
+    let st = 0;
+    if (isEuro()) { if (S.s < 0.96 && S.pullS < 0.05) st = Math.min(1.4, 1.7 * (0.96 - S.s) * Math.min(S.L, 4.5)) * dt; }
+    // Indikator / Trockenfliege: lose Schnur ist erlaubt. Nur sehr lose Schnur sanft aufnehmen, bei Zug nachgeben - unabhaengig von der Schnurlaenge, sonst zittert die Rute bei weiten Wuerfen
+    else if (S.pullS > 0.05) st = -Math.min(1.0, S.pullS * 2.5) * dt;
+    else if (S.s < 0.72) st = Math.min(0.7, 2.2 * (0.72 - S.s)) * dt;
     S.tip.x += ax / al * st; S.tip.z += az / al * st;
   }
   const TP = tip3();
   const held = S.snag || S.bite;
+  const euro = isEuro(), dry = isDry(), indi = !euro && !dry;
   if (!held) {
-    const frac = Math.min(1, n.d / bottom);
+    const frac = euro ? Math.min(1, n.d / bottom) : 0;   // Indikator und Trockenfliege treiben mit der Oberflaeche
     let vz = Math.max(0.16, v * (1 - 0.5 * frac)); if (S.onBottom) vz *= 0.75;
     n.z += vz * dt; n.x += river.dcx(n.z) * vz * dt;   // die Stroemung folgt dem Flusslauf
     for (const k of river.rocks) {
@@ -177,11 +234,11 @@ function updateDrift(dt) {
   }
   let pull = 0;
   const constrain = count => {
-    const dx = TP.x - n.x, dy = TP.y + n.d, dz = TP.z - n.z, d = Math.hypot(dx, dy, dz);
+    const dx = TP.x - n.x, dy = TP.y + (euro ? n.d : 0), dz = TP.z - n.z, d = Math.hypot(dx, dy, dz);
     if (d > S.L) {
       const ex = d - S.L;
       if (held) { if (count) pull = 0.9; }
-      else { n.x += dx / d * ex; n.z += dz / d * ex; n.d = Math.max(0, n.d - dy / d * ex); if (count) pull = ex / dt; }
+      else { n.x += dx / d * ex; n.z += dz / d * ex; if (euro) n.d = Math.max(0, n.d - dy / d * ex); if (count) pull = ex / dt; }
       return 1;
     }
     return d / S.L;
@@ -193,6 +250,8 @@ function updateDrift(dt) {
     const floor = S.g > -0.4 ? bottom - Math.min(0.25, bottom * 0.3) : bottom;
     let nd = n.d + (sink - lift) * dt;
     if (n.d <= floor) nd = Math.min(nd, floor); else nd = Math.max(floor, Math.min(nd, n.d - 0.3 * dt));
+    if (dry) nd = 0;                                                                   // schwimmt
+    else if (indi) nd = Math.min(n.d + (sink - lift * 0.5) * dt, Math.min(save.rig.depth, bottom));   // haengt in der eingestellten Tiefe unter dem Indikator
     n.d = clamp(nd, 0, bottom);
     constrain(false);
     if (river.depthAt(n.x, n.z) < 0.05) return endDrift();
@@ -202,6 +261,7 @@ function updateDrift(dt) {
   S.g += (g - S.g) * Math.min(1, dt * 10);
   const ag = Math.abs(S.g);
   S.q = ag < 0.4 ? 1 : Math.max(0.1, 1 - (ag - 0.4) / 0.6 * 0.9);
+  if (!euro) S.q = (S.g > 0.4 ? S.q : 1) * (indi ? curInd().drift : 1);   // lose Schnur schadet hier nicht, nur Zug (Furchen)
   S.onBottom = !S.snag && n.d >= bottom - 0.03;
   S.maxFrac = Math.max(S.maxFrac, n.d / bottom);
 
@@ -233,14 +293,15 @@ function updateDrift(dt) {
   if (S.driftT > 0.5) {
     for (const f of fish) {
       if (f.wary > 0 || f.spooked > 0) continue;
-      const fx = f.x - n.x, fz = f.z - n.z, R = 0.7 + f.len / 100 * 0.6;
+      if (!!f.rise !== dry) continue;   // steigende Fische nur auf Trockenfliege, alle anderen nur auf die Nymphe
+      const fx = f.x - n.x, fz = f.z - n.z, R = dry ? 0.85 + f.len / 100 * 0.5 : 0.7 + f.len / 100 * 0.6;   // steigende Fische fressen aus einer Bahn von knapp einem Meter
       if (fx * fx + fz * fz > R * R) continue;
       const zone = 0.28 + 0.14 * cond.light.act + (f.len > 45 ? 0.06 : 0);
-      if (bottom - n.d > zone) continue;
+      if (!dry && bottom - n.d > zone) continue;
       if (f.old && (f.match < 1.0 || S.q < 0.9)) continue;
       const sp = SPECIES[f.species], tp = curTippet();
       const take = 1 + (tp.take - 1) * (0.5 + sp.shy) * (1 - cond.clarity * 0.4);
-      const rate = 1.5 * f.match * S.q * S.q * cond.light.act * take * (1.15 - sp.shy * 0.3);
+      const rate = (dry ? 2.2 : indi ? 1.35 : 1.5) * f.match * S.q * S.q * cond.light.act * take * (1.15 - sp.shy * 0.3);
       if (Math.random() < rate * dt) { startBite(f); return; }
     }
   }
@@ -251,6 +312,8 @@ function updateDrift(dt) {
 function startBite(f) {
   const sp = SPECIES[f.species];
   S.bite = { fish: f, t: 0, win: (0.95 - sp.shy * 0.3) * (save.set.help ? 1.2 : 1) + (save.revier === 0 ? 0.3 : 0) };
+  if (rigMode() === 'indi') S.bite.win *= curInd().sens * (S.indSunk ? 0.35 : S.indLow ? 0.8 : 1);   // je nach Indikator sieht man den Biss besser oder schlechter
+  if (isDry()) { S.bite.win *= 1.1; world.splash(S.nymph.x, S.nymph.z, 0.7); sfx.plop(); }                // der Fisch nimmt sichtbar an der Oberflaeche
   sfx.bite();
   if (save.set.help) { vibrate(60); $('lupeWrap').classList.add('bite'); }
   if (save.tut < 3) save.tut = 2;
@@ -258,19 +321,21 @@ function startBite(f) {
 }
 function endDrift(silent) {
   if (!silent && S.mode === 'drift') {
-    if (S.maxFrac < 0.62 && S.driftT > 2) toast(T('Die Nymphe kam nicht auf Tiefe. Schwerere Perle wählen oder weiter stromauf einwerfen.'), 4200);
+    if (isEuro()) { if (S.maxFrac < 0.62 && S.driftT > 2) toast(T('Die Nymphe kam nicht auf Tiefe. Schwerere Perle wählen oder weiter stromauf einwerfen.'), 4200); }
+    else if (rigMode() === 'indi' && S.maxFrac < 0.62 && S.driftT > 2) toast(T("Die Nymphe trieb zu hoch über dem Grund. Stell im Rig die Tiefe unter dem Indikator größer ein."), 4200);
   }
   S.mode = 'idle'; S.bite = null; S.snag = false; S.s = 1; S.g = 0; S.kick = 0;
   $('lupeWrap').classList.remove('bite');
   restTip(); updateTip(); updateHUD();
 }
 function loseFly(msg) {
-  const id = save.sel.fly;
+  const key = flyKey(), id = save.sel[key];
   save.flies[id] = Math.max(0, (save.flies[id] || 0) - 1);
   sfx.snap(); vibrate([30, 40, 30]);
   if (save.flies[id] === 0) {
-    const other = FLIES.find(f => save.flies[f.id] > 0);
-    if (other) { save.sel.fly = other.id; msg += ' ' + T('Neue Fliege: {0}.', other.name); world.setFlyLook(other.col, other.bead); }
+    const other = FLIES.find(f => !!f.dry === isDry() && save.flies[f.id] > 0);
+    if (other) { save.sel[key] = other.id; msg += ' ' + T('Neue Fliege: {0}.', other.name); applyRig(); }
+    else if (save.material < 2 && isDry()) { save.flies.adams = 2; save.sel.dry = 'adams'; msg += ' ' + T("Im Hutband stecken noch zwei Adams von Opa."); }
     else if (save.material < 2) { save.flies.pt = 2; save.sel.fly = 'pt'; msg += ' ' + T('In der Westentasche findest du noch zwei Pheasant Tails von Opa.'); }
     else msg += ' ' + T('Binde dir neue in der Fliegendose.');
   }
@@ -283,7 +348,7 @@ function strike() {
   S.strikeT = 0.25;
   if (S.bite) {
     const f = S.bite.fish;
-    if (S.s < 0.8 && Math.random() < 0.55) {
+    if (isEuro() ? S.s < 0.8 && Math.random() < 0.55 : S.s < 0.6 && Math.random() < 0.45) {
       f.wary = 20; toast(T('Zu viel lose Schnur – der Anhieb kam nicht durch.')); endDrift(true); return;
     }
     startFight(f); return;
@@ -295,7 +360,7 @@ function strike() {
   }
   const n = S.nymph;
   for (const f of fish) if ((f.x - n.x) ** 2 + (f.z - n.z) ** 2 < 2.5) f.wary = Math.max(f.wary, 7);
-  if (S.kick > 0.15) toast(T('Nur ein Grundkontakt. Ticks sind kurz – ein Biss hält den Sighter fest.'));
+  if (S.kick > 0.15 && isEuro()) toast(T('Nur ein Grundkontakt. Ticks sind kurz – ein Biss hält den Sighter fest.'));
   endDrift();
 }
 
@@ -391,11 +456,11 @@ function landed(f) {
   st.spMax[f.species] = Math.max(st.spMax[f.species] || 0, f.len); st.maxLen = Math.max(st.maxLen, f.len);
   if (cond.sampled && fly.imitates.includes(cond.i1)) st.matched++;
   if (f.lie.rock) st.pocket++;
-  if (save.sel.bead >= 3.5) st.heavy++;
+  if (save.sel.bead >= 3.5 && !isDry()) st.heavy++;   // Perlen-Aufgaben zaehlen nur, wenn wirklich eine Perle am Vorfach ist
   if (save.sel.tippet <= 0.12) st.fine++;
   if (f.len >= 42) st.big42++;
   const inc = k => { st[k] = (st[k] || 0) + 1; };
-  if (save.sel.bead <= 2.5) inc('light');
+  if (save.sel.bead <= 2.5 && !isDry()) inc('light');
   if (f.lie.type === 'Gumpen') inc('pool');
   if (cond.clarity >= 1) inc('murky');
   if (fly.attractor >= 0.5) inc('attr');
@@ -403,7 +468,7 @@ function landed(f) {
   if (f.len >= 50) inc('big50');
   if (f.len >= 55) inc('big55');
   inc('lt_' + f.lie.type);                                   // Standplatz: Tasche, Kissen, Kante, Rinne, Gumpen
-  if (save.sel.bead >= 4) inc('tung4');
+  if (save.sel.bead >= 4 && !isDry()) inc('tung4');
   if (fly.attractor <= 0.1) inc('natural');
   if (cond.light.id === 'morgen' || cond.light.id === 'abend') inc('dusk');
   st.sumLen = (st.sumLen || 0) + f.len;
@@ -500,12 +565,16 @@ function kickSample() {
   if (S.mode !== 'idle') return;
   cond.sampled = true;
   const a = INSECTS[cond.i1], b = INSECTS[cond.i2];
-  const good = FLIES.filter(f => f.imitates.includes(cond.i1)).map(f => f.name + (save.level >= f.level ? '' : ' 🔒')).join(', ');
+  const pat = (dry, ins) => FLIES.filter(f => !!f.dry === dry && f.imitates.includes(ins)).map(f => f.name + (save.level >= f.level ? '' : ' 🔒')).join(', ');
+  const good = pat(false, cond.i1);
+  // Trockenfliegen imitieren das erwachsene Insekt derselben Art: aus Larven unter dem Stein werden die Fliegen ueber dem Wasser
+  const goodDry = pat(true, cond.i1) || (pat(true, cond.i2) ? T("{0} (für die {1}; das häufigste Futter hier schlüpft nicht)", pat(true, cond.i2), INSECTS[cond.i2].name) : T("keine – dieses Futter lebt nur unter Wasser"));
   openModal(`<h2>${T('Stein umgedreht')}</h2>
     <p>${T('Du hebst einen faustgroßen Stein aus der Strömung und drehst ihn um.')}</p>
     <div class="sample"><b>${T('Massenhaft {0}', a.name)}</b><br><i>${a.hint}</i></div>
     <div class="sample minor"><b>${T('Vereinzelt {0}', b.name)}</b><br><i>${b.hint}</i></div>
-    <p>${T('Passende Muster:')} <b>${good}</b></p>
+    <p>${T("Passende Nymphen:")} <b>${good}</b><br>${T("Passende Trockenfliegen:")} <b>${goodDry}</b></p>
+    <p class="small">${T("Aus den Larven unter dem Stein schlüpfen die Fliegen über dem Wasser. Steigende Fische fressen genau diese – nimm die Trockenfliege zur selben Insektenart.")}</p>
     <p class="small">${T('Wasser:')} ${CLARITY[cond.clarity]}. ${cond.clarity > 0 ? T('Bei angetrübtem Wasser dürfen Fliegen auffälliger sein (Hotspot).') : T('Bei klarem Wasser lieber natürlich und fein fischen.')}</p>
     <button class="primary" data-act="close">${T('Stein zurücklegen')}</button>`);
   updateHUD();
@@ -532,7 +601,8 @@ function updateHUD() {
   $('rvCond').textContent = `${CLARITY[cond.clarity]} · ${cond.light.name}` + (cond.sampled ? ` · ${INSECTS[cond.i1].name}` : '');
   $('xpfill').style.width = (save.level >= MAX_LEVEL ? 100 : save.xp / xpNeed(save.level) * 100) + '%';
   $('xptext').textContent = T('Stufe {0}', save.level);
-  $('rig').innerHTML = `<b>${fly.name}</b> ×${save.flies[fly.id] || 0}<br>${fmt(save.sel.bead)} mm · ${fmt(save.sel.tippet, 2)} mm`;
+  const rm = rigMode();
+  $('rig').innerHTML = `<b>${fly.name}</b> ×${save.flies[fly.id] || 0}<br>` + (rm === 'dry' ? `${T(RIGS[2].name)} · ${fmt(save.sel.tippet, 2)} mm` : rm === 'indi' ? `${T(curInd().name)} · ${fmt(save.rig.depth)} m · ${fmt(save.sel.bead)} mm` : `${fmt(save.sel.bead)} mm · ${fmt(save.sel.tippet, 2)} mm`);
   const open = rv.quests.filter(q => !save.quests[q.id]);
   $('quest').textContent = open.length ? '◦ ' + open[0].text : T('✓ Alle Aufgaben hier erfüllt');
 }
@@ -580,21 +650,42 @@ function showJournal(tab = 'rev') {
   openModal(h);
 }
 function showBox() {
-  let h = `<h2>${T('Fliegendose')}</h2><div class="small">${T('Bindematerial:')} <b>${save.material}</b> · ${T('eine Fliege binden kostet 2')}</div><div class="flies">`;
-  for (const f of FLIES) {
-    const locked = save.level < f.level, n = save.flies[f.id] || 0, sel = save.sel.fly === f.id;
+  const dryBox = isDry();
+  let h = `<h2>${T('Fliegendose')} · ${dryBox ? T("Trockenfliegen") : T("Nymphen")}</h2><div class="small">${T('Bindematerial:')} <b>${save.material}</b> · ${T('eine Fliege binden kostet 2')}</div><div class="flies">`;
+  for (const f of FLIES.filter(f => !!f.dry === dryBox)) {
+    const locked = save.level < f.level, n = save.flies[f.id] || 0, sel = curFly().id === f.id;
     h += `<div class="fly ${sel ? 'sel' : ''} ${locked ? 'locked' : ''}"><canvas width="96" height="96" data-fly="${f.id}"></canvas><div class="fi"><b>${f.name}</b> ${locked ? `<span class="chip">${T('ab Stufe {0}', f.level)}</span>` : `<span class="chip">×${n}</span>`}
-      <div class="small">${f.desc}</div><div class="small im">${T('Imitiert:')} ${f.imitates.map(i => INSECTS[i].name).join(', ')}</div>`;
+      <div class="small">${f.desc}</div><div class="small im">${T('Imitiert:')} ${f.imitates.length ? f.imitates.map(i => f.dry && INSECTS[i].adult ? T(INSECTS[i].adult) : INSECTS[i].name).join(', ') : T("nichts Bestimmtes – eine Reizfliege")}</div>`;
     if (!locked) h += `<div class="row2"><button class="mini" data-act="selfly" data-id="${f.id}" ${n > 0 && !sel ? '' : 'disabled'}>${sel ? T('Angeknotet') : T('Anknoten')}</button><button class="mini" data-act="tie" data-id="${f.id}" ${save.material >= 2 ? '' : 'disabled'}>${T('Binden (−2)')}</button></div>`;
     h += `</div></div>`;
   }
-  h += `</div><h3>${T('Tungstenperle')}</h3><div class="seg">${BEADS.map(b => `<button data-act="bead" data-v="${b.mm}" class="${save.sel.bead === b.mm ? 'on' : ''}">${fmt(b.mm)} mm</button>`).join('')}</div>
-    <div class="small">${T('Schwerer = schneller am Grund, aber mehr Hänger. Faustregel: so leicht wie möglich, so schwer wie nötig.')}</div>
-    <h3>${T('Vorfachspitze')}</h3><div class="seg">${TIPPETS.map(t => `<button data-act="tippet" data-v="${t.d}" class="${save.sel.tippet === t.d ? 'on' : ''}" ${save.level < t.level ? 'disabled' : ''}>${fmt(t.d, 2)}${save.level < t.level ? ' 🔒' : ''}</button>`).join('')}</div>
+  h += `</div>`;
+  if (!dryBox) h += `<h3>${T('Tungstenperle')}</h3><div class="seg">${BEADS.map(b => `<button data-act="bead" data-v="${b.mm}" class="${save.sel.bead === b.mm ? 'on' : ''}">${fmt(b.mm)} mm</button>`).join('')}</div>
+    <div class="small">${T('Schwerer = schneller am Grund, aber mehr Hänger. Faustregel: so leicht wie möglich, so schwer wie nötig.')}</div>`;
+  h += `<h3>${T('Vorfachspitze')}</h3><div class="seg">${TIPPETS.map(t => `<button data-act="tippet" data-v="${t.d}" class="${save.sel.tippet === t.d ? 'on' : ''}" ${save.level < t.level ? 'disabled' : ''}>${fmt(t.d, 2)}${save.level < t.level ? ' 🔒' : ''}</button>`).join('')}</div>
     <div class="small">${T('Dünner = mehr Bisse und schnelleres Absinken, reißt aber früher.')}</div>
     <button class="primary" data-act="close">${T('Zurück ans Wasser')}</button>`;
   openModal(h);
   $('modalBody').querySelectorAll('canvas[data-fly]').forEach(c => drawFly(c, FLIES.find(f => f.id === c.dataset.fly)));
+}
+function showRig() {
+  const rm = rigMode(), rg = RIGS.find(r => r.id === rm), fly = curFly();
+  const bar = (label, v) => `<div class="bar"><span>${label}</span><i><b style="width:${Math.round(clamp(v, 0.06, 1) * 100)}%"></b></i></div>`;
+  let h = `<h2>Rig</h2><h3>${T("Rute & Methode")}</h3><div class="seg">${RIGS.map(r => `<button data-act="rigmode" data-v="${r.id}" class="${rm === r.id ? 'on' : ''}">${T(r.name)}</button>`).join('')}</div><div class="small">${T(rg.desc)}</div>`;
+  if (rm === 'indi') {
+    const load = curBead().sink * fly.sink;
+    h += `<h3>${T("Indikator")}</h3><div class="small">${T("Aktuelle Last: {0}-mm-Perle an {1}.", fmt(save.sel.bead), fly.name)}</div><div class="inds">`;
+    for (const k of INDICATORS) {
+      const st = load > k.cap ? 2 : load > k.cap * 0.85 ? 1 : 0, sel = save.rig.ind === k.id;
+      h += `<div class="ind ${sel ? 'sel' : ''}"><span class="dot" style="background:${k.col}"></span><div class="fi"><b>${T(k.name)}</b> <span class="chip ${['ok', 'warn', 'bad'][st]}">${[T("trägt"), T("liegt tief"), T("säuft ab")][st]}</span>
+        <div class="small">${T(k.desc)}</div><div class="bars">${bar(T("Tragkraft"), k.cap / 0.85)}${bar(T("Empfindlichkeit"), (k.sens - 0.7) / 0.6)}${bar(T("Leises Aufsetzen"), 1 - (k.splash - 0.4) / 1.7)}</div>
+        <button class="mini" data-act="ind" data-id="${k.id}" ${sel ? 'disabled' : ''}>${sel ? T("Montiert") : T("Montieren")}</button></div></div>`;
+    }
+    h += `</div><h3>${T("Tiefe unter dem Indikator")}: <span id="depV">${fmt(save.rig.depth)} m</span></h3><input type="range" id="depR" min="0.3" max="2.6" step="0.1" value="${save.rig.depth}">
+      <div class="small">${T("Faustregel: etwa so tief wie das Wasser an der Stelle. Zu kurz – die Nymphe treibt über die Fische hinweg. Zu lang – sie schleift am Grund und bleibt hängen. Die Wassertiefe zeigt dir die Anzeige oben rechts während der Drift.")}</div>`;
+  }
+  h += `<button class="ghost" data-act="box">${rm === 'dry' ? T("Trockenfliege wählen") : T("Fliege, Perle und Vorfach wählen")}</button><button class="primary" data-act="close">${T('Zurück ans Wasser')}</button>`;
+  openModal(h);
 }
 function showLog() {
   let h = `<h2>${T('Fangbuch')}</h2><div class="small">${T('Gesamt:')} <b>${save.total}</b> ${T('Fische gefangen und zurückgesetzt')}</div>`;
@@ -614,6 +705,7 @@ function showSettings() {
     ${tg('gfx', T('Hohe Grafikqualität'), T('Schatten, Gras und volle Auflösung. Ausschalten, wenn es ruckelt.'))}
     ${tg('vib', T('Vibration'), T('Haptik bei Biss und Drill (nur am Handy).'))}
     ${tg('sound', T('Ton'), T('Flussrauschen und Effekte.'))}
+    <label class="slider"><b>${T("Lautstärke")}</b> <span id="volV">${Math.round(save.set.vol * 100)} %</span><input type="range" id="volR" min="0" max="100" step="5" value="${Math.round(save.set.vol * 100)}"></label>
     <h3>${T('Steuerung')}</h3>
     <p class="small">${T('<b>Handy:</b> Finger aufs Wasser, Zielring schieben, loslassen = Wurf · nach unten ziehen = Rute führen · nach oben wischen (oder ANHIEB) = anschlagen · im Drill nach unten ziehen = Druck, seitlich = Seitendruck · Stick unten links = waten · am Himmel oder Ufer ziehen = umschauen.')}</p>
     <p class="small">${T('<b>PC:</b> wie am Handy mit gedrückter Maustaste · Leertaste / Rechtsklick = Anhieb, im Drill halten = Druck · W/A/S/D = waten, im Drill A/D = Seitendruck · Rechtsklick ziehen oder Q/E = umschauen · F = Fliegendose · T = Tagebuch.')}</p>
@@ -628,7 +720,11 @@ $('modalBody').addEventListener('click', e => {
   else if (a === 'release') { closeModal(); const f = S.afterRelease; S.afterRelease = null; f && f(); }
   else if (a === 'goto') { closeModal(); enterRevier(+b.dataset.i); toast(REVIERE[save.revier].name + ' – ' + REVIERE[save.revier].sub); if (b.dataset.p) showPage(REVIERE[save.revier].id, false); }
   else if (a === 'jtab') showJournal(b.dataset.t);
-  else if (a === 'selfly') { save.sel.fly = b.dataset.id; const f = curFly(); world.setFlyLook(f.col, f.bead); persist(); showBox(); updateHUD(); }
+  else if (a === 'selfly') { save.sel[flyKey()] = b.dataset.id; applyRig(); persist(); showBox(); updateHUD(); }
+  else if (a === 'rigmode') { save.rig.mode = b.dataset.v; applyRig(); persist(); showRig(); updateHUD(); updateTip(); }
+  else if (a === 'ind') { save.rig.ind = b.dataset.id; applyRig(); persist(); const sc = $('modalBody').scrollTop; showRig(); $('modalBody').scrollTop = sc; updateHUD(); }
+  else if (a === 'box') showBox();
+  else if (a === 'rig') showRig();
   else if (a === 'tie') { if (save.material >= 2) { save.material -= 2; save.flies[b.dataset.id] = (save.flies[b.dataset.id] || 0) + 1; sfx.tick(); persist(); const sc = $('modalBody').scrollTop; showBox(); $('modalBody').scrollTop = sc; updateHUD(); } }
   else if (a === 'bead') { save.sel.bead = +b.dataset.v; persist(); const sc = $('modalBody').scrollTop; showBox(); $('modalBody').scrollTop = sc; updateHUD(); }
   else if (a === 'tippet') { save.sel.tippet = +b.dataset.v; persist(); const sc = $('modalBody').scrollTop; showBox(); $('modalBody').scrollTop = sc; updateHUD(); }
@@ -638,12 +734,18 @@ $('modalBody').addEventListener('change', e => {
   const k = e.target.dataset && e.target.dataset.set; if (!k) return;
   save.set[k] = e.target.checked; if (k === 'sound') sfx.setOn(save.set.sound); if (k === 'gfx') world.setQuality(save.set.gfx); if (k === 'clear') world.setClearView(save.set.clear); persist();
 });
+$('modalBody').addEventListener('input', e => {   // Schieberegler: Lautstaerke und Indikatortiefe
+  const el = e.target;
+  if (el.id === 'volR') { save.set.vol = +el.value / 100; sfx.setVol(save.set.vol); $('volV').textContent = el.value + ' %'; if (save.set.sound) sfx.tick(); persist(); }
+  else if (el.id === 'depR') { save.rig.depth = +el.value; $('depV').textContent = fmt(save.rig.depth) + ' m'; persist(); updateHUD(); }
+});
 $('modalClose').addEventListener('click', closeModal);
 $('modal').addEventListener('pointerdown', e => { if (e.target === $('modal') && modalOpts && !modalOpts.lock) closeModal(); });
 const canMenu = () => S.mode === 'idle' && !modalOpen();
 $('btnJournal').addEventListener('click', () => canMenu() && showJournal());
 $('btnBox').addEventListener('click', () => canMenu() && showBox());
-$('rig').addEventListener('click', () => canMenu() && showBox());
+$('btnRig').addEventListener('click', () => canMenu() && showRig());
+$('rig').addEventListener('click', () => canMenu() && showRig());
 $('btnLog').addEventListener('click', () => canMenu() && showLog());
 $('btnSet').addEventListener('click', () => canMenu() && showSettings());
 const joy = $('joy'), knob = $('joyKnob'); let joyId = null;
@@ -727,6 +829,7 @@ window.addEventListener('keydown', e => {
   if (e.code === 'Space') { e.preventDefault(); pressDown(); }
   else if (KEYMAP[e.code]) { const k = KEYMAP[e.code]; K[k] = 1; if (S.mode === 'fight') { if (k === 'left') S.rodX = -1.6; if (k === 'right') S.rodX = 1.6; } }
   else if (e.code === 'KeyF') canMenu() && showBox();
+  else if (e.code === 'KeyR') canMenu() && showRig();
   else if (e.code === 'KeyT') canMenu() && showJournal();
 });
 window.addEventListener('keyup', e => { if (e.code === 'Space') pressUp(); if (KEYMAP[e.code]) K[KEYMAP[e.code]] = 0; });
@@ -756,7 +859,12 @@ function drawLupe() {
     c.strokeStyle = col; c.lineWidth = lw; c.lineCap = 'butt'; c.stroke();
   };
   seg(0, 1.25, 'rgba(240,240,220,.8)', 2);
-  seg(0.28 + off, 0.5 + off, '#ff2f7a', 8); seg(0.5 + off, 0.72 + off, '#f8e71c', 8); seg(0.72 + off, 0.92 + off, '#ff2f7a', 8);
+  if (isEuro()) { seg(0.28 + off, 0.5 + off, '#ff2f7a', 8); seg(0.5 + off, 0.72 + off, '#f8e71c', 8); seg(0.72 + off, 0.92 + off, '#ff2f7a', 8); }
+  else if (drift) {   // Bissanzeiger bzw. Trockenfliege: taucht beim Biss ab
+    const dryL = isDry(), r = dryL ? 5 : 6 + curInd().size * 110, yy = wy - r * 0.45 + kick * (r * 2.2) + (S.indSunk ? r * 1.6 : S.indLow ? r * 0.5 : 0);
+    c.fillStyle = dryL ? curFly().col : curInd().col; c.beginPath(); c.arc(xe, yy, r, 0, 7); c.fill();
+    if (dryL) { c.strokeStyle = '#f4f4f0'; c.lineWidth = 3; c.beginPath(); c.moveTo(xe, yy - 3); c.lineTo(xe - 3, yy - 15); c.stroke(); }
+  }
   c.fillStyle = 'rgba(28,95,88,.72)'; c.fillRect(0, wy, W, W - wy);
   c.strokeStyle = 'rgba(255,255,255,.6)'; c.lineWidth = 2; c.beginPath(); c.arc(xe, wy, 6 + kick * 8, Math.PI, 0); c.stroke();
   c.restore();
@@ -803,6 +911,19 @@ function frame(now) {
       if (f.spooked > 0) { f.spooked -= dt; f.mesh.visible = false; if (f.spooked <= 0) { f.mesh.visible = true; placeFish(f); } continue; }
       if (S.fight && S.fight.f === f) continue;
       f.mesh.visible = true;
+      // Steigen: jeder Fisch kommt von Zeit zu Zeit an die Oberflaeche und frisst dort - dann nimmt er nur Trockenfliegen
+      if (!f.old) {
+        f.riseT -= dt;
+        if (f.riseT <= 0) {
+          f.rise = !f.rise; f.riseT = f.rise ? 25 + Math.random() * 25 : (45 + Math.random() * 70) / cond.light.act; f.ringT = 0.6;
+          if (f.rise && !S.riseHint && !isDry() && S.mode === 'idle' && save.tut >= 4 && Math.hypot(f.x - S.px, f.z - S.pz) < 13) { S.riseHint = true; toast(T("Ein Fisch steigt! Steigende Fische nehmen nur die Trockenfliege – wechsle im Rig die Rute."), 5200); }
+        }
+        if (f.rise) {
+          f.ringT -= dt;
+          if (f.ringT <= 0) { f.ringT = 2.5 + Math.random() * 4.5; const dd = Math.hypot(f.x - S.px, f.z - S.pz); if (dd < 24) world.splash(f.x, f.z, 0.42); if (dd < 8) sfx.tick(); }
+        }
+        f.mesh.position.y += ((f.rise ? -0.16 : (f.by === undefined ? -0.3 : f.by)) - f.mesh.position.y) * Math.min(1, dt * 1.6);
+      }
       f.mesh.rotation.y = (f.ry || 0) + Math.sin(S.t * 0.9 + f.phase) * 0.1;
       f.mesh.position.x = f.x + Math.sin(S.t * 0.7 + f.phase) * 0.12;
       if (Math.abs(f.z - S.pz) < 14) world.animFish(f.mesh, S.t * 5 + f.phase, 1);
@@ -829,14 +950,12 @@ function frame(now) {
   // Rute & Schnur
   const h = hand(), TP = tip3();
   if (S.strikeT > 0) { S.strikeT -= dt; TP.y += 0.5; }
-  let target, s = 1, bend = 0.04, focus = null;
+  let target, s = 1, bend = 0.04, focus = null, linePath = null;
   if (S.mode === 'cast') {
-    const c = S.cast, k = Math.min(1, c.t);
-    target = { x: c.fx + (c.tx - c.fx) * k, y: c.fy + (0 - c.fy) * k + Math.sin(Math.PI * k) * 1.6, z: c.fz + (c.tz - c.fz) * k }; bend = 0.25 * (1 - k);
-    const w = Math.sin(Math.PI * Math.min(1, k * 1.5)) * 0.75;   // Wurfbewegung: Rute schwingt zurück und nach vorn
-    TP.x += (h.x + Math.sin(S.face) * 0.5 - TP.x) * w; TP.z += (h.z + Math.cos(S.face) * 0.5 - TP.z) * w; TP.y += (h.y + 2.95 - TP.y) * w;
+    const cp = castPose(h, TP);
+    TP.x = cp.tip.x; TP.y = cp.tip.y; TP.z = cp.tip.z; target = cp.pull; bend = cp.bend; linePath = cp.pts;
   } else if (S.mode === 'drift') {
-    target = { x: S.nymph.x, y: -S.nymph.d, z: S.nymph.z }; s = S.s; bend = 0.05 + Math.min(0.35, S.pullS * 0.3) + (S.bite || S.snag ? 0.25 : 0);
+    target = { x: S.nymph.x, y: isEuro() ? -S.nymph.d : 0.02, z: S.nymph.z }; s = S.s; bend = 0.05 + Math.min(0.35, S.pullS * 0.3) + (S.bite || S.snag ? 0.25 : 0);
     focus = target;
   } else if (S.mode === 'fight') {
     const p = fightPos(); target = { x: p.x, y: -0.05, z: p.z }; bend = clamp(S.fight.ten, 0.1, 1); focus = p;
@@ -844,9 +963,13 @@ function frame(now) {
     target = { x: TP.x + Math.sin(S.t * 1.3) * 0.06, y: Math.max(0.25, TP.y - 1.9), z: TP.z + 0.15 + Math.cos(S.t * 1.1) * 0.05 };
   }
   world.setRig(h, TP, target, s, bend);
+  if (linePath) world.setLinePath(linePath);
+  { const ind = rigMode() === 'indi' && S.mode === 'drift';
+    if (ind) world.nymph.position.set(S.nymph.x, -S.nymph.d, S.nymph.z);
+    world.setIndicator(ind ? S.nymph : null, S.bite || S.snag ? -0.06 : S.indSunk ? -0.05 : (S.indLow ? 0.005 : 0.03) + Math.sin(S.t * 5) * 0.006 - S.kick * 0.04); }
   world.setAim(S.mode === 'idle' ? S.aim : null);
   if (S.mode === 'drift') {
-    const k = TP.y / (TP.y + S.nymph.d + 1e-4);
+    const k = isEuro() ? TP.y / (TP.y + S.nymph.d + 1e-4) : 1;
     world.setEntry(TP.x + (S.nymph.x - TP.x) * k, TP.z + (S.nymph.z - TP.z) * k, S.bite && save.set.help ? 'bite' : Math.abs(S.g) < 0.4 ? 'ok' : S.g < 0 ? 'slack' : 'drag');
   } else world.setEntry(0, 0, null);
   S.yaw += (K.tl - K.tr) * 1.7 * dt;
@@ -913,6 +1036,7 @@ $('langs').addEventListener('click', e => { const b = e.target.closest('[data-la
   }
   if (ch) persist();
 })();
+applyRig();
 setLang(getLang()); applyLang();
 
 enterRevier(Math.min(save.revier, save.unlocked - 1));
