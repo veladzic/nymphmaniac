@@ -116,6 +116,19 @@ export const REVIERE = [
     ],
   },
   {
+    id: 'muehlbach', season: 1, name: "Der Mühlbach", sub: "Schmal und verwachsen",
+    seed: 29, width: 8.5, depth: 0.6, speed: 0.7, rocks: 14, rockSize: 0.4, pools: 3, poolDepth: 0.45, bend: [4.5, 0.075],
+    bankSlope: 0.25, bankMax: 2.4, trees: 0.9, leafShare: 0.7,
+    pal: { grass: 0x6f9c48, rock: 0x8a8880, gravel: 0xb4a88c, bed: 0x3e5e4c, shallow: 0x88dcc2, deep: 0x1e8070, skyTop: 0x4a98e0, skyBot: 0xd6eef8, fog: 0xcce6ee },
+    species: { bachforelle: 7, saibling: 2, aesche: 1 }, sizeMul: 0.65, fishN: 10,
+    clarity: [0, 0, 1], insects: ['baetis', 'caddis', 'gammarus'],
+    quests: [
+      { id: 'b1', text: "Fange 3 Fische in Gumpen", test: s => (s.pool || 0) >= 3 },
+      { id: 'b2', text: "Fange 2 verschiedene Arten", test: s => Object.keys(s.sp).length >= 2 },
+      { id: 'b3', text: "Lande 3 Fische in Folge, ohne einen zu verlieren", test: s => (s.best || 0) >= 3 },
+    ],
+  },
+  {
     id: 'aeschenzug', season: 1, bend: [6.5, 0.04], name: 'Der Äschenzug', sub: 'Feines Zeug',
     seed: 37, width: 13, depth: 1.05, speed: 0.75, rocks: 10, rockSize: 0.45, pools: 3, poolDepth: 0.5,
     bankSlope: 0.14, bankMax: 2.0, trees: 0.35,
@@ -126,6 +139,19 @@ export const REVIERE = [
       { id: 'a1', text: 'Fange 3 Äschen', test: s => (s.sp.aesche || 0) >= 3 },
       { id: 'a2', text: 'Fange eine Äsche ab 40 cm', test: s => (s.spMax.aesche || 0) >= 40 },
       { id: 'a3', text: 'Fange einen Fisch am 0,12er Vorfach oder feiner', test: s => s.fine >= 1 },
+    ],
+  },
+  {
+    id: 'kiesbank', season: 1, name: "Die Kiesbank", sub: "Flach und klar",
+    seed: 43, width: 15, depth: 0.6, speed: 0.65, rocks: 6, rockSize: 0.35, pools: 2, poolDepth: 0.5, bend: [7, 0.04],
+    bankSlope: 0.1, bankMax: 1.6, trees: 0.25,
+    pal: { grass: 0x86a84e, rock: 0x98968a, gravel: 0xc8bc9a, bed: 0x4e6e58, shallow: 0xa0e8cc, deep: 0x268c7c, skyTop: 0x5aa2e2, skyBot: 0xe2f2f8, fog: 0xd8ecf0 },
+    species: { aesche: 5, bachforelle: 4, barbe: 1 }, sizeMul: 0.8, fishN: 11,
+    clarity: [0, 0, 0], insects: ['baetis', 'gammarus'],
+    quests: [
+      { id: 'c1', text: "Fange 4 Fische in der Rinne", test: s => (s.lt_Rinne || 0) >= 4 },
+      { id: 'c2', text: "Fange 3 Fische auf eine unauffällige Nymphe (Pheasant Tail, Walt's Worm, Peeping Caddis)", test: s => (s.natural || 0) >= 3 },
+      { id: 'c3', text: "Fange zusammen 2 Meter Fisch", test: s => (s.sumLen || 0) >= 200 },
     ],
   },
   {
@@ -169,6 +195,33 @@ export const REVIERE = [
     ],
   },
   {
+    id: 'wasserfall', season: 2, name: "Der Wasserfallgumpen", sub: "Tief unterm Sturz",
+    seed: 97, width: 10, depth: 1.0, speed: 0.9, rocks: 22, rockSize: 0.8, pools: 2, poolDepth: 0.7, bend: [3, 0.07],
+    bigPool: { x: -1, z: -40, r: 3.6, d: 1.0 },
+    bankSlope: 2.6, bankMax: 16, trees: 0.4, cliff: true,
+    pal: { grass: 0x55803f, rock: 0x707276, gravel: 0x9c988e, bed: 0x304e48, shallow: 0x7edacc, deep: 0x146c6c, skyTop: 0x3a86cc, skyBot: 0xbfdcec, fog: 0xacccd8 },
+    species: { saibling: 5, bachforelle: 4, regenbogen: 2 }, sizeMul: 0.8, fishN: 11,
+    clarity: [0, 0, 1], insects: ['stone', 'caddis', 'baetis'],
+    quests: [
+      { id: 'f1', text: "Fange 3 Fische mit der 4-mm-Perle", test: s => (s.tung4 || 0) >= 3 },
+      { id: 'f2', text: "Fange einen Bachsaibling ab 34 cm", test: s => (s.spMax.saibling || 0) >= 34 },
+      { id: 'f3', text: "Fange 2 Fische im Kissen vor einem Stein", test: s => (s.lt_Kissen || 0) >= 2 },
+    ],
+  },
+  {
+    id: 'moorbach', season: 2, name: "Der Moorbach", sub: "Dunkles Wasser",
+    seed: 109, width: 10, depth: 0.9, speed: 0.45, rocks: 8, rockSize: 0.4, pools: 4, poolDepth: 0.6, bend: [7, 0.06],
+    bankSlope: 0.12, bankMax: 1.5, trees: 0.35, leafShare: 0.3, ground: [1.12, 0.95, 0.8],
+    pal: { grass: 0x7a8c48, rock: 0x7c786c, gravel: 0x9c8c6a, bed: 0x4a4028, shallow: 0xb4a468, deep: 0x5c4a24, skyTop: 0x4a90d4, skyBot: 0xd4e8f0, fog: 0xccdcd8 },
+    species: { saibling: 5, bachforelle: 5 }, sizeMul: 0.85, fishN: 10,
+    clarity: [1, 1, 2], insects: ['worm', 'caddis', 'gammarus'],
+    quests: [
+      { id: 'o1', text: "Fange 5 Fische bei angetrübtem oder trübem Wasser", test: s => (s.murky || 0) >= 5 },
+      { id: 'o2', text: "Fange 2 Fische im Morgennebel oder Abendlicht", test: s => (s.dusk || 0) >= 2 },
+      { id: 'o3', text: "Fange eine Bachforelle ab 45 cm", test: s => (s.spMax.bachforelle || 0) >= 45 },
+    ],
+  },
+  {
     id: 'seeauslauf', season: 2, name: "Der Seeauslauf", sub: "Wo die Großen ziehen",
     seed: 104, width: 14, depth: 1.3, speed: 0.5, rocks: 8, rockSize: 0.6, pools: 4, poolDepth: 0.7, bend: [7, 0.035],
     bankSlope: 0.2, bankMax: 2.5, trees: 0.6,
@@ -195,6 +248,32 @@ export const REVIERE = [
     ],
   },
   {
+    id: 'altarm', season: 3, name: "Der Altarm", sub: "Stilles Wasser",
+    seed: 137, width: 15, depth: 1.3, speed: 0.35, rocks: 6, rockSize: 0.5, pools: 5, poolDepth: 0.7, bend: [8, 0.05],
+    bankSlope: 0.12, bankMax: 1.6, trees: 1.0, leafShare: 0.8, leaf: [1.6, 0.92, 0.38], veg: [1.25, 0.96, 0.6], ground: [1.2, 0.94, 0.74],
+    pal: { grass: 0x98904a, rock: 0x88857a, gravel: 0xb4a684, bed: 0x485c46, shallow: 0x9cd6b0, deep: 0x2a7860, skyTop: 0x5a9ad8, skyBot: 0xe2eef2, fog: 0xd8e4e0 },
+    species: { barbe: 5, aesche: 2, bachforelle: 2, seeforelle: 1 }, sizeMul: 1.0, fishN: 11,
+    clarity: [0, 1, 1], insects: ['gammarus', 'worm', 'caddis'],
+    quests: [
+      { id: 'l1', text: "Fange 4 Fische mit der leichten 2,5-mm-Perle", test: s => (s.light || 0) >= 4 },
+      { id: 'l2', text: "Fange zusammen 3 Meter Fisch", test: s => (s.sumLen || 0) >= 300 },
+      { id: 'l3', text: "Lande 4 Fische in Folge, ohne einen zu verlieren", test: s => (s.best || 0) >= 4 },
+    ],
+  },
+  {
+    id: 'bruecke', season: 3, name: "Die Steinbrücke", sub: "Zwischen den Pfeilern",
+    seed: 143, width: 13, depth: 1.3, speed: 1.0, rocks: 24, rockSize: 1.1, pools: 3, poolDepth: 0.7, bend: [4, 0.05],
+    bankSlope: 0.5, bankMax: 4, trees: 0.6, leafShare: 0.6, leaf: [1.6, 0.92, 0.38], veg: [1.25, 0.96, 0.6], ground: [1.2, 0.94, 0.74],
+    pal: { grass: 0x8c8c4a, rock: 0x7c7e80, gravel: 0xaaa292, bed: 0x365c52, shallow: 0x90e0ce, deep: 0x187670, skyTop: 0x4a90d4, skyBot: 0xd4e8f0, fog: 0xc8dce0 },
+    species: { regenbogen: 4, bachforelle: 4, barbe: 2, aesche: 2 }, sizeMul: 0.95, fishN: 12,
+    clarity: [0, 1, 2], insects: ['stone', 'caddis', 'baetis'],
+    quests: [
+      { id: 'p1', text: "Fange 3 Fische an der Strömungskante neben einem Stein", test: s => (s.lt_Kante || 0) >= 3 },
+      { id: 'p2', text: "Fange 4 verschiedene Arten", test: s => Object.keys(s.sp).length >= 4 },
+      { id: 'p3', text: "Fange einen Fisch ab 54 cm", test: s => s.maxLen >= 54 },
+    ],
+  },
+  {
     id: 'wehr', season: 3, name: "Das alte Wehr", sub: "Weißes Wasser",
     seed: 149, width: 13, depth: 1.5, speed: 1.35, rocks: 34, rockSize: 1.0, pools: 2, poolDepth: 0.8, bend: [3, 0.06],
     bankSlope: 0.6, bankMax: 5, trees: 0.7, leafShare: 0.6, leaf: [1.5, 0.95, 0.42], veg: [1.2, 0.97, 0.65], ground: [1.15, 0.95, 0.78],
@@ -218,6 +297,32 @@ export const REVIERE = [
       { id: 'x1', text: "Fange 5 Äschen", test: s => (s.sp.aesche || 0) >= 5 },
       { id: 'x2', text: "Fange eine Äsche ab 46 cm", test: s => (s.spMax.aesche || 0) >= 46 },
       { id: 'x3', text: "Fange 3 Fische am 0,10er Vorfach", test: s => (s.ultra || 0) >= 3 },
+    ],
+  },
+  {
+    id: 'eisrinne', season: 4, name: "Die Eisrinne", sub: "Eng, schnell, bitterkalt",
+    seed: 173, width: 10, depth: 1.4, speed: 1.25, rocks: 20, rockSize: 0.9, pools: 2, poolDepth: 0.7, bend: [3.5, 0.065],
+    bankSlope: 3.0, bankMax: 20, trees: 0.4, cliff: true, leafShare: 0, veg: [1.25, 1.02, 0.8], ground: [1.4, 1.02, 1.35],
+    pal: { grass: 0x9aa490, rock: 0x84868a, gravel: 0xb0aca4, bed: 0x2e4c48, shallow: 0x8adcd0, deep: 0x126a6c, skyTop: 0x6a9cd0, skyBot: 0xdce8f0, fog: 0xc8d8e0 },
+    species: { bachforelle: 4, saibling: 3, aesche: 3, huchen: 1 }, sizeMul: 0.95, fishN: 11,
+    clarity: [0, 0, 1], insects: ['stone', 'gammarus'],
+    quests: [
+      { id: 'e1', text: "Fange 4 Fische mit der 4-mm-Perle", test: s => (s.tung4 || 0) >= 4 },
+      { id: 'e2', text: "Fange 3 Fische in der Tasche hinter einem Stein", test: s => (s.lt_Tasche || 0) >= 3 },
+      { id: 'e3', text: "Fange einen Fisch ab 56 cm", test: s => s.maxLen >= 56 },
+    ],
+  },
+  {
+    id: 'nebelstrecke', season: 4, name: "Die Nebelstrecke", sub: "Wo man den Sighter kaum sieht",
+    seed: 181, width: 14, depth: 1.2, speed: 0.6, rocks: 10, rockSize: 0.6, pools: 4, poolDepth: 0.65, bend: [7, 0.04], lights: ['morgen'], fog: [3, 85],
+    bankSlope: 0.2, bankMax: 2.5, trees: 0.6, leafShare: 0, veg: [1.25, 1.02, 0.8], ground: [1.4, 1.02, 1.35],
+    pal: { grass: 0xa4ac98, rock: 0x94969a, gravel: 0xbcb8ae, bed: 0x44645c, shallow: 0xa0e2d6, deep: 0x26867c, skyTop: 0x7aa8d8, skyBot: 0xe8f0f4, fog: 0xe0e8ec },
+    species: { aesche: 6, barbe: 2, bachforelle: 2, huchen: 1 }, sizeMul: 1.0, fishN: 11,
+    clarity: [0, 1], insects: ['gammarus', 'baetis', 'worm'],
+    quests: [
+      { id: 'n1', text: "Fange 6 Fische im Nebel", test: s => s.n >= 6 },
+      { id: 'n2', text: "Fange 3 Fische auf die passende Nymphe (vorher Stein umdrehen)", test: s => s.matched >= 3 },
+      { id: 'n3', text: "Fange zusammen 4 Meter Fisch", test: s => (s.sumLen || 0) >= 400 },
     ],
   },
   {
@@ -293,6 +398,38 @@ export const PAGES = [
     "Wo die Smaragda in den großen Strom mündet, ist das Wasser tief und grün wie Flaschenglas. Hier jagt der Huchen – der Donaulachs, kupferrot, lang wie ein Ruder.",
     "Er steht am Rand des Kolks und wartet auf alles, was schwach wirkt. Eine kleine Nymphe sieht er nicht einmal an. Er will einen Happen, und er will ihn tief.",
     "Du knotest das stärkste Vorfach an, das du hast, und denkst an den Alten im Smaragdgumpen. Der hier ist größer.",
+  ] },
+  { key: 'muehlbach', title: "Der Mühlbach", date: "Opas Tagebuch · ein eingelegter Zettel", text: [
+    "„Bevor du zu den Äschen gehst, nimm den Mühlbach mit. Er ist kaum breiter als meine Rute lang ist, und die Erlen hängen bis aufs Wasser.\"",
+    "„Hier lernst du, einen Fisch auch zu behalten. Wenig Platz, kurze Fluchten, und jeder Fehler hängt im Ast. Drei hintereinander, ohne einen zu verlieren – dann bist du so weit.\"",
+  ] },
+  { key: 'kiesbank', title: "Die Kiesbank", date: "Opas Tagebuch · Randnotiz", text: [
+    "„Auf der Kiesbank ist das Wasser knietief und klar wie Luft. Die Fische sehen dich lange, bevor du sie siehst. Bleib tief, wate langsam, und fisch die Rinne an – dort, wo der Grund dunkler wird.\"",
+    "„Nichts Buntes. Hier fängt das Unscheinbare.\"",
+  ] },
+  { key: 'wasserfall', title: "Unterm Sturz", date: "Omas Karte · am Rand notiert", text: [
+    "„Zwischen Quelle und See fällt der Bach über eine Stufe. Darunter hat er sich ein Loch gegraben, so tief, dass man den Grund nicht sieht.\"",
+    "„Emil hätte gelacht: Leni mit der dicksten Perle. Aber anders kommst du hier nicht hinunter. Und vergiss die Steine nicht – die Fische stehen auch davor, im Kissen, wo das Wasser sich staut.\"",
+  ] },
+  { key: 'moorbach', title: "Dunkles Wasser", date: "Omas Karte · mit Tinte nachgetragen", text: [
+    "„Aus dem Moor kommt ein zweiter Bach, braun wie Tee. Die Leute sagen, da sei nichts drin. Die Leute fischen ihn mittags.\"",
+    "„Geh in der Dämmerung. Dann kommen die dunklen Forellen aus den Unterständen, und sie sind größer, als der Bach vermuten lässt. Steht die Sonne hoch, komm einfach ein andermal wieder.\"",
+  ] },
+  { key: 'altarm', title: "Der Altarm", date: "Deine Handschrift · ein Nachmittag im Oktober", text: [
+    "Hinter dem Auwald liegt ein alter Arm des Flusses, fast ohne Strömung. Das Laub steht auf dem Wasser wie auf einem Teller.",
+    "Hier sinkt alles von selbst. Eine schwere Perle liegt nach zwei Sekunden im Schlamm. Du nimmst die leichteste, die du hast, und lernst, wie lange ein Drill dauert, wenn der Fisch alle Zeit der Welt hat.",
+  ] },
+  { key: 'bruecke', title: "Zwischen den Pfeilern", date: "Deine Handschrift · unter der Brücke", text: [
+    "Die alte Steinbrücke steht auf Blöcken, groß wie Autos. An jedem teilt sich das Wasser, und an jeder Kante, wo schnell auf langsam trifft, steht ein Fisch und lässt sich das Futter vorbeitragen.",
+    "Vier Arten in einem einzigen Zug, schreibst du abends auf. Opa hätte es nicht geglaubt.",
+  ] },
+  { key: 'eisrinne', title: "Die Eisrinne", date: "Deine Handschrift · Februar", text: [
+    "Zwischen Winterzug und Mündung zwängt sich der Fluss durch eine Rinne, an deren Wänden das Eis in Vorhängen hängt. Die Sonne kommt hier im Februar nicht hin.",
+    "Das Wasser ist schnell, die Fische sind träge und stehen dort, wo sie am wenigsten arbeiten müssen: in den Taschen hinter den Blöcken. Schweres Tungsten, kurze Driften, und Finger, die du nach einer Stunde nicht mehr spürst.",
+  ] },
+  { key: 'nebelstrecke', title: "Im Nebel", date: "Deine Handschrift · der Morgen davor", text: [
+    "Kurz vor der Mündung liegt jeden Wintermorgen Nebel auf dem Fluss, so dicht, dass das andere Ufer verschwindet. Der Sighter ist ein blasser Strich im Grau.",
+    "Du fischst mehr mit der Hand als mit den Augen. Jedes Zögern in der Schnur könnte ein Biss sein. Wer das hier kann, ist bereit für den, der unten wartet.",
   ] },
   { key: 'ende', title: 'Zurück in den Fluss', date: 'Deine Handschrift', text: [
     'Zweiundneunzig Zentimeter. Du hältst ihn im Kescher, die marmorierte Flanke leuchtet im grünen Wasser, und für einen Augenblick ist es ganz still.',

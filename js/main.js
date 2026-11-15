@@ -15,7 +15,7 @@ const fmt = (n, d = 1) => n.toFixed(d).replace('.', ',');
 const KEY = 'nymphmaniac_v1';
 function newSave() {
   return { level: 1, xp: 0, material: 4, flies: { pt: 4, perdigon: 4, walt: 4 }, sel: { fly: 'pt', bead: 3.0, tippet: 0.14 },
-    unlocked: 1, revier: 0, quests: {}, log: {}, stats: {}, pages: ['intro'], tut: 0, set: { help: true, vib: true, sound: true, assist: true, gfx: true, clear: false }, total: 0, started: false };
+    unlocked: 1, revier: 0, quests: {}, log: {}, stats: {}, pages: ['intro'], v: 2, tut: 0, set: { help: true, vib: true, sound: true, assist: true, gfx: true, clear: false }, total: 0, started: false };
 }
 let save;
 try { save = JSON.parse(localStorage.getItem(KEY)); } catch (e) { save = null; }
@@ -58,7 +58,7 @@ const vibrate = p => { if (save.set.vib && navigator.vibrate) { try { navigator.
 function enterRevier(i) {
   save.revier = i;
   const rv = REVIERE[i];
-  cond = { clarity: pick(rv.clarity), light: pick(LIGHTS), sampled: false };
+  cond = { clarity: pick(rv.clarity), light: pick(rv.lights ? LIGHTS.filter(l => rv.lights.includes(l.id)) : LIGHTS), sampled: false };
   const ins = [...rv.insects].sort(() => Math.random() - 0.5);
   if (cond.clarity === 2 && ins.includes('worm')) { ins.splice(ins.indexOf('worm'), 1); ins.unshift('worm'); }
   cond.i1 = ins[0]; cond.i2 = ins[1];
@@ -363,6 +363,7 @@ function updateFight(dt) {
 function endFightUI() { $('hud').classList.remove('fighting'); $('strike').textContent = T('ANHIEB'); S.hold = false; S.press = 0; S.fight = null; }
 function lostFish(kind) {
   const f = S.fight.f;
+  stats(REVIERE[save.revier].id).streak = 0;   // Serie gerissen
   endFightUI();
   f.spooked = 80; f.mesh.visible = false; placeFish(f);
   if (kind === 'snap') loseFly(T('Vorfach gerissen! Bei Fluchten den Druck rausnehmen.'));
@@ -401,6 +402,12 @@ function landed(f) {
   if (save.sel.tippet <= 0.10) inc('ultra');
   if (f.len >= 50) inc('big50');
   if (f.len >= 55) inc('big55');
+  inc('lt_' + f.lie.type);                                   // Standplatz: Tasche, Kissen, Kante, Rinne, Gumpen
+  if (save.sel.bead >= 4) inc('tung4');
+  if (fly.attractor <= 0.1) inc('natural');
+  if (cond.light.id === 'morgen' || cond.light.id === 'abend') inc('dusk');
+  st.sumLen = (st.sumLen || 0) + f.len;
+  st.streak = (st.streak || 0) + 1; st.best = Math.max(st.best || 0, st.streak);
   if (f.old) st.old++;
   const lg = save.log[f.species] || (save.log[f.species] = { n: 0, max: 0 });
   const rec = f.len > lg.max && lg.n > 0, first = lg.n === 0;
@@ -895,6 +902,11 @@ $('langs').addEventListener('click', e => { const b = e.target.closest('[data-la
 // Spielstaende von vor den neuen Staffeln: abgeschlossene Reviere schalten das naechste frei
 (function migrate() {
   let ch = false;
+  if (!save.v) {   // Reihenfolge vor den zusaetzlichen Folgen: Positionen auf die neue Liste umrechnen
+    const OLD = ['wiese', 'rausche', 'aeschenzug', 'klamm', 'gumpen', 'quellbach', 'seeauslauf', 'auwald', 'wehr', 'winterzug', 'muendung'];
+    const at = k => Math.max(0, REVIERE.findIndex(r => r.id === OLD[Math.min(k, OLD.length - 1)]));
+    save.unlocked = at(save.unlocked - 1) + 1; save.revier = at(save.revier); save.v = 2; ch = true;
+  }
   while (save.unlocked < REVIERE.length && REVIERE[save.unlocked - 1].quests.every(q => save.quests[q.id])) {
     const id = REVIERE[save.unlocked].id; save.unlocked++; ch = true;
     if (!save.pages.includes(id)) save.pages.push(id);

@@ -4,7 +4,7 @@ Ein 3D-Fliegenfischer-Spiel für den Browser mit Schwerpunkt Euro-Nymphing. Geda
 
 Opa Emil hinterlässt dir seine Nymphenrute, eine Fliegendose und ein Tagebuch mit fünf Strecken der Smaragda. Am Ende wartet ein Fisch, den er nie landen konnte.
 
-Vier Staffeln mit elf Revieren: Opas Tagebuch (Wiese bis Smaragdgumpen), Lenis Karte (Quellbach, Seeauslauf), Herbst im Unterlauf (Auwald, altes Wehr) und der Winterkönig (Winterzug, Mündung mit Huchen). Der Fluss mäandriert in jedem Revier anders.
+Vier Staffeln mit 19 Revieren und 57 Aufgaben: Opas Tagebuch (Wiese bis Smaragdgumpen, dazu Mühlbach und Kiesbank), Lenis Karte (Quellbach, Wasserfallgumpen, Moorbach, Seeauslauf), Herbst im Unterlauf (Auwald, Altarm, Steinbrücke, altes Wehr) und der Winterkönig (Winterzug, Eisrinne, Nebelstrecke, Mündung mit Huchen). Der Fluss mäandriert in jedem Revier anders.
 
 ## Spielen
 

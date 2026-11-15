@@ -976,6 +976,7 @@ export class World {
     this.skyU.uFogC.value.copy(fog);
     this.scene.fog.color.copy(fog);
     this.scene.fog.near = lid === 'morgen' ? 10 : 30; this.scene.fog.far = lid === 'morgen' ? 190 : 330;
+    if (rv.fog) { this.scene.fog.near = rv.fog[0]; this.scene.fog.far = rv.fog[1]; }   // Revier mit eigenem, dichterem Nebel
     this.bugs.visible = lid === 'morgen' || lid === 'abend';
 
     // Gelände
