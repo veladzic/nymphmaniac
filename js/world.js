@@ -178,6 +178,7 @@ function rockGeo(k, wet) {
 const FISH_COL = {
   bachforelle: [0x4a4020, 0xb89448, 0xe8d8a0], regenbogen: [0x3c5046, 0xb8a8b0, 0xeeeeea], aesche: [0x4a545c, 0x9aa6ac, 0xe6e8e6],
   saibling: [0x263a2a, 0x66743e, 0xe07a30], barbe: [0x554e2c, 0xa89050, 0xe8dcb0], marmorata: [0x44482e, 0x9a946c, 0xe4dcbc],
+  seeforelle: [0x3a4650, 0xa8b4bc, 0xf0f0ee], huchen: [0x4a3a30, 0xa87860, 0xe8d8c8],
 };
 function fishGeo(species) {
   const [cb, cs, cv] = (FISH_COL[species] || FISH_COL.bachforelle).map(h => new THREE.Color(h));
@@ -978,16 +979,16 @@ export class World {
     this.bugs.visible = lid === 'morgen' || lid === 'abend';
 
     // Gelände
-    const NX = 116, NZ = 262, W = 84, Z0 = -150, Z1 = 72;
+    const NX = 124, NZ = 262, W = 96, Z0 = -150, Z1 = 72;
     const tg = new THREE.PlaneGeometry(1, 1, NX, NZ);
     const tp = tg.attributes.position, tuv = tg.attributes.uv;
     const cols = new Float32Array(tp.count * 3), wgt = new Float32Array(tp.count * 3);
     const cGr = new THREE.Color(pal.grass), cGr2 = new THREE.Color(pal.grass).multiplyScalar(0.7), cRock = new THREE.Color(pal.rock),
       cGrav = new THREE.Color(pal.gravel), cBed = new THREE.Color(pal.bed), tmp = new THREE.Color();
-    const bedTint = new THREE.Color(clamp(cBed.r / cGrav.r, 0, 1), clamp(cBed.g / cGrav.g, 0, 1), clamp(cBed.b / cGrav.b, 0, 1)).lerp(new THREE.Color(1, 1, 1), 0.32), grassTint = new THREE.Color(0.86, 1.28, 0.74);
+    const bedTint = new THREE.Color(clamp(cBed.r / cGrav.r, 0, 1), clamp(cBed.g / cGrav.g, 0, 1), clamp(cBed.b / cGrav.b, 0, 1)).lerp(new THREE.Color(1, 1, 1), 0.32), gt = rv.ground || [1, 1, 1], grassTint = new THREE.Color(0.86 * gt[0], 1.28 * gt[1], 0.74 * gt[2]);   // Herbst / Winter faerben den Boden
     for (let i = 0; i < tp.count; i++) {
       const u = tp.getX(i) * 2, vz = tp.getY(i) + 0.5;
-      const x = Math.sign(u) * Math.pow(Math.abs(u), 1.8) * W / 2, z = Z0 + (1 - vz) * (Z1 - Z0);
+      const z = Z0 + (1 - vz) * (Z1 - Z0), x = river.cx(z) + Math.sign(u) * Math.pow(Math.abs(u), 1.8) * W / 2;   // dichtes Gitter folgt dem Flusslauf
       const h = river.heightAt(x, z);
       tp.setXYZ(i, x, h, z); tuv.setXY(i, x * 0.5, z * 0.5);
       const n = vnoise(x * 0.7, z * 0.7);
@@ -1052,6 +1053,7 @@ export class World {
     const wg = new THREE.PlaneGeometry(rv.width + 0.4, Z1 - Z0, WX, WZ);
     wg.rotateX(-Math.PI / 2); wg.translate(0, 0, (Z0 + Z1) / 2);
     const wp = wg.attributes.position;
+    for (let i = 0; i < wp.count; i++) wp.setX(i, wp.getX(i) + river.cx(wp.getZ(i)));   // Wasserflaeche folgt dem Maeander
     const aD = new Float32Array(wp.count), aS = new Float32Array(wp.count), aF = new Float32Array(wp.count), aB = new Float32Array(wp.count);
     for (let i = 0; i < wp.count; i++) {
       const x = wp.getX(i), z = wp.getZ(i);
@@ -1065,7 +1067,7 @@ export class World {
       }
       if (d < 0.12 && d > 0.01) f = Math.max(f, 0.35 * v / Math.max(0.3, rv.speed));
       aF[i] = f * clamp(0.45 + v / Math.max(0.4, rv.speed), 0.4, 1.2);
-      aB[i] = smooth(river.halfW * 0.35, river.halfW, Math.abs(x)) * clamp(rv.trees + (rv.cliff ? 0.6 : 0), 0.3, 1);
+      aB[i] = smooth(river.halfW * 0.35, river.halfW, Math.abs(river.off(x, z))) * clamp(rv.trees + (rv.cliff ? 0.6 : 0), 0.3, 1);
     }
     wg.setAttribute('aDepth', new THREE.BufferAttribute(aD, 1)); wg.setAttribute('aSpeed', new THREE.BufferAttribute(aS, 1));
     wg.setAttribute('aFoam', new THREE.BufferAttribute(aF, 1)); wg.setAttribute('aBank', new THREE.BufferAttribute(aB, 1));
@@ -1084,6 +1086,7 @@ export class World {
     for (let L = 0; L < 3 && mistK > 0; L++) {
       const y = 0.3 + L * 0.5, mg = new THREE.PlaneGeometry(rv.width + 24, Z1 - Z0, 20, 110).rotateX(-Math.PI / 2).translate(0, y, (Z0 + Z1) / 2);
       const mp = mg.attributes.position, aK = new Float32Array(mp.count);
+      for (let i = 0; i < mp.count; i++) mp.setX(i, mp.getX(i) + river.cx(mp.getZ(i)));
       for (let i = 0; i < mp.count; i++) aK[i] = smooth(0.12, 0.5, -river.heightAt(mp.getX(i), mp.getZ(i)));   // nur ueber tieferem Wasser, sonst schneidet der Dunst Schilf und Ufer in Streifen
       mg.setAttribute('aK', new THREE.BufferAttribute(aK, 1));
       const mm = new THREE.Mesh(mg, new THREE.ShaderMaterial({ uniforms: { uN: { value: this.noiseTex }, uTime: this.timeU, uCol: { value: fog.clone().lerp(new THREE.Color(1, 1, 1), 0.25) }, uOp: { value: mistK * (0.36 - L * 0.07) }, uOff: { value: L * 0.37 } },
@@ -1102,14 +1105,14 @@ export class World {
     };
     for (const k of river.rocks) addRock(wetG, k.x, -0.12, k.z, k.r);
     for (let i = 0; i < 110; i++) {
-      const side = rnd() < 0.5 ? -1 : 1, x = side * (river.halfW - 0.9 + Math.pow(rnd(), 1.6) * 7), z = Z0 + 40 + rnd() * (Z1 - Z0 - 44);
+      const side = rnd() < 0.5 ? -1 : 1, z = Z0 + 40 + rnd() * (Z1 - Z0 - 44), x = river.cx(z) + side * (river.halfW - 0.9 + Math.pow(rnd(), 1.6) * 7);
       const h = river.heightAt(x, z);
       addRock(h < 0.05 ? wetG : dryG, x, h - 0.04, z, 0.12 + Math.pow(rnd(), 2) * 0.7, 0.8);
     }
     // Treibholz
     const logMat = new THREE.MeshStandardMaterial({ color: C(0xd8cdbc), roughness: 1, map: this.tex.bark, normalMap: this.tex.barkN });
     for (let i = 0; i < 7; i++) {
-      const side = rnd() < 0.5 ? -1 : 1, x = side * (river.halfW + 0.3 + rnd() * 1.6), z = -70 + rnd() * 80, len = 1.5 + rnd() * 3;
+      const side = rnd() < 0.5 ? -1 : 1, z = -70 + rnd() * 80, x = river.cx(z) + side * (river.halfW + 0.3 + rnd() * 1.6), len = 1.5 + rnd() * 3;
       const m = new THREE.Mesh(new THREE.CylinderGeometry(0.07 + rnd() * 0.05, 0.11 + rnd() * 0.07, len, 7), logMat);
       m.position.set(x, river.heightAt(x, z) + 0.08, z); m.rotation.set(Math.PI / 2 + (rnd() - 0.5) * 0.15, 0, (rnd() - 0.5) * 1.6); m.rotation.order = 'YXZ'; m.rotation.y = rnd() * 3;
       m.castShadow = m.receiveShadow = true; this.env.add(m);
@@ -1122,7 +1125,7 @@ export class World {
       const im = new THREE.InstancedMesh(geo, mat, Math.max(1, list.length));
       list.forEach((q, k) => {
         dm.position.set(q.x, q.y, q.z); dm.scale.set(q.s, q.s * (q.sy || 1), q.s); dm.rotation.y = q.ry; dm.updateMatrix(); im.setMatrixAt(k, dm.matrix);
-        if (o.color) { lc.copy(q.c); lc.r *= tint[0]; lc.g *= tint[1]; lc.b *= tint[2]; im.setColorAt(k, lc); }
+        if (o.color) { lc.copy(q.c); const m = o.mul || [1, 1, 1]; lc.r *= tint[0] * m[0]; lc.g *= tint[1] * m[1]; lc.b *= tint[2] * m[2]; im.setColorAt(k, lc); }
       });
       im.count = list.length; im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true;
       im.castShadow = o.shadow !== false; if (o.depth) im.customDepthMaterial = o.depth;
@@ -1130,10 +1133,10 @@ export class World {
     };
     const obst = this.obst = [];   // Baeume und Buesche als Kreise: die Kamera weicht ihnen aus
     const block = (list, r) => { for (const q of list) obst.push({ x: q.x, z: q.z, r2: (r * q.s + 0.45) ** 2 }); return list; };
-    const clearOf = (q, r) => Math.abs(q.x) - river.halfW >= 1.2 + r * q.s + 0.45;   // der Angler (bis 1 m an Land) steht nie im Laub
+    const clearOf = (q, r) => Math.abs(river.off(q.x, q.z)) - river.halfW >= 1.2 + r * q.s + 0.45;   // der Angler (bis 1 m an Land) steht nie im Laub
     const spots = (n, place) => { const l = []; for (let i = 0; i < n * 4 && l.length < n; i++) { const q = place(); if (q) { q.ry = rnd() * 6.3; l.push(q); } } return l; };
     const bankSpot = (minO, maxO, pw, zMin = Z0 + 4) => {
-      const side = rnd() < 0.5 ? -1 : 1, x = side * (river.halfW + minO + Math.pow(rnd(), pw) * (maxO - minO)), z = zMin + rnd() * (Z1 - zMin - 3);
+      const side = rnd() < 0.5 ? -1 : 1, z = zMin + rnd() * (Z1 - zMin - 3), x = river.cx(z) + side * (river.halfW + minO + Math.pow(rnd(), pw) * (maxO - minO));
       const h = river.heightAt(x, z);
       if (rv.cliff && h > 1.3 && h < rv.bankMax * 0.84) return null;
       return { x, z, y: h, side };
@@ -1143,7 +1146,7 @@ export class World {
     const cardMat = tex => new THREE.MeshLambertMaterial({ map: tex, alphaTest: 0.5, side: THREE.DoubleSide, vertexColors: true });
     const cardDepth = tex => new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: tex, alphaTest: 0.5, side: THREE.DoubleSide });
     const needleMat = cardMat(this.tex.branch), needleDepth = cardDepth(this.tex.branch), leafMat = cardMat(this.tex.leaf), leafDepth = cardDepth(this.tex.leaf);
-    const leafShare = rv.cliff ? 0.08 : rv.id === 'wiese' || rv.id === 'aeschenzug' ? 0.5 : 0.25;
+    const leafShare = rv.leafShare !== undefined ? rv.leafShare : rv.cliff ? 0.08 : rv.id === 'wiese' || rv.id === 'aeschenzug' ? 0.5 : 0.25;
     const nT = Math.floor(300 * rv.trees * vk), nL = Math.floor(nT * leafShare), nC = nT - nL;
     for (let v = 0; v < 2; v++) {
       const list = spots(Math.ceil(nC / 2), () => { const q = bankSpot(3.2, 40, 1.3); if (!q) return null; q.y -= 0.2; q.s = 1.0 + rnd() * 1.15; q.sy = 0.9 + rnd() * 0.4; q.c = shade(); return clearOf(q, 2.4) ? q : null; });
@@ -1151,12 +1154,12 @@ export class World {
     }
     if (nL) for (let v = 0; v < 2; v++) {
       const list = spots(Math.ceil(nL / 2), () => { const q = bankSpot(3.4, 32, 1.5); if (!q) return null; q.y -= 0.15; q.s = 1.0 + rnd() * 0.9; q.sy = 0.9 + rnd() * 0.3; q.c = shade(); return clearOf(q, 2.0) ? q : null; });
-      block(list, 2.0); inst(leafTrunk(rnd), barkMat, list); inst(crownGeo(rnd, 2.2, 4.7, 90, 1.5), leafMat, list, { color: true, depth: leafDepth });
+      block(list, 2.0); inst(leafTrunk(rnd), barkMat, list); inst(crownGeo(rnd, 2.2, 4.7, 90, 1.5), leafMat, list, { color: true, depth: leafDepth, mul: rv.leaf });
     }
     inst(crownGeo(rnd, 0.72, 0.5, 18, 0.9), leafMat, block(spots(Math.floor(190 * clamp(rv.trees + 0.3, 0.4, 1.2) * vk), () => {
       const q = bankSpot(0.9, 17, 1.7); if (!q || q.y < 0.3) return null;
       q.y -= 0.05; q.s = 0.7 + rnd() * 1.1; q.sy = 0.8 + rnd() * 0.4; q.c = shade(); return clearOf(q, 1.1) ? q : null;
-    }), 1.1), { color: true, depth: leafDepth });
+    }), 1.1), { color: true, depth: leafDepth, mul: rv.leaf });
     // Bodenbewuchs: Grasbueschel, Farne unter den Baeumen, hohes Gras an der Wasserkante
     const sway = (tex, amp) => {
       const m = new THREE.MeshLambertMaterial({ map: tex, alphaTest: 0.42, side: THREE.DoubleSide });
@@ -1174,7 +1177,7 @@ export class World {
         const q = place(); if (!q) continue;
         const sz = sc();
         dm.position.set(q.x, q.y - 0.03, q.z); dm.scale.set(sz[0], sz[1], sz[0]); dm.rotation.y = rnd() * 6.3; dm.updateMatrix(); im.setMatrixAt(k, dm.matrix);
-        const bb = 0.8 + rnd() * 0.45; lc.setRGB(bb * col[0] * tint[0] * (0.95 + rnd() * 0.15), bb * col[1] * tint[1], bb * col[2] * tint[2] * (0.9 + rnd() * 0.2)); im.setColorAt(k, lc); k++;
+        const bb = 0.8 + rnd() * 0.45; const vg = rv.veg || [1, 1, 1]; lc.setRGB(bb * col[0] * vg[0] * tint[0] * (0.95 + rnd() * 0.15), bb * col[1] * vg[1] * tint[1], bb * col[2] * vg[2] * tint[2] * (0.9 + rnd() * 0.2)); im.setColorAt(k, lc); k++;
       }
       im.count = k; im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true;
       im.receiveShadow = true; veg.add(im); return im;
@@ -1241,7 +1244,8 @@ export class World {
     const cz = this.camZ, cxp = this.camX, por = this.portrait;
     // Umschauen: yaw dreht Kamera und Blickpunkt um den Angler, pitch hebt/senkt den Blick
     const yaw = this.yaw || 0, pit = this.pitch || 0, yc = Math.cos(yaw), ys = Math.sin(yaw), fw = Math.max(0, yc);
-    const ox = clamp(cxp * (por ? 0.13 : 0.42), -1.6, 1.6) * fw, cy = (por ? 2.75 : 2.25) - pit * 1.3, back0 = por ? 3.7 : 3.9;
+    const cu = cxp - (this.river ? this.river.cx(cz) : 0);   // Abstand des Anglers von der Flussmitte
+    const ox = clamp(cu * (por ? 0.13 : 0.42), -1.6, 1.6) * fw, cy = (por ? 2.75 : 2.25) - pit * 1.3, back0 = por ? 3.7 : 3.9;
     // Steht hinter dem Angler ein Baum oder Busch, rueckt die Kamera naeher heran statt ins Laub zu geraten
     let want = back0;
     if (this.obst && this.obst.length) {
@@ -1261,7 +1265,7 @@ export class World {
     const gh = this.river ? Math.max(0, this.river.heightAt(camX, camZ)) : 0;
     this.camera.position.set(camX + Math.sin(t * 0.4) * 0.025, Math.max(cy, gh + 0.7) + Math.sin(t * 0.7) * 0.018, camZ);
     this._look = this._look || new THREE.Vector3(px - 2, 0.3, -4);
-    const lo = (-clamp(cxp * (por ? 0.42 : 0.68), -2.4, 2.4) + (focus ? (focus.x - cxp) * 0.12 : 0)) * fw;
+    const lo = (-clamp(cu * (por ? 0.42 : 0.68), -2.4, 2.4) + (focus ? (focus.x - cxp) * 0.12 : 0)) * fw;
     const turned = yaw !== this._yawPrev || pit !== this._pitPrev; this._yawPrev = yaw; this._pitPrev = pit;
     this._look.lerp(_d.set(cxp + lo * yc - 4.6 * ys, 0.45 + pit * 7, cz - lo * ys - 4.6 * yc), turned ? Math.min(1, dt * 14) : kk);
     this.camera.lookAt(this._look);
@@ -1299,7 +1303,7 @@ export class World {
       for (const o of this.scene.children) if (o !== this.env && o !== this.sky) o.traverse(c => c.layers.enable(1));   // Angler, Rute, Schnur, Fische, Licht
     }
     // Bugwelle: Position des Anglers, ob er im Wasser steht, wie schnell er watet
-    const wet = this.river && Math.abs(px) < this.river.halfW && this.river.depthAt(px, pz) > 0.06 ? 1 : 0;
+    const wet = this.river && Math.abs(this.river.off(px, pz)) < this.river.halfW && this.river.depthAt(px, pz) > 0.06 ? 1 : 0;
     U.uWader.value.set(px, pz, wet, this.walkAmp || 0);
     // Ruckelt es dauerhaft, die teuren Wasser-Durchgaenge abschalten
     if (this.fxWater || this.fxPost) {

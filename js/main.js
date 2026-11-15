@@ -1,7 +1,7 @@
 // Nymphmaniac – Spiellogik: Wurf, Drift, Biss, Drill, Fortschritt, UI
 import { T, LANGS, getLang, setLang, loc } from './i18n.js';
 import { World } from './world.js';
-import { SPECIES, FLIES, INSECTS, REVIERE, PAGES, BEADS, TIPPETS, LEVEL_UNLOCKS, MAX_LEVEL, xpNeed, CLARITY, LIGHTS } from './data.js';
+import { SPECIES, FLIES, INSECTS, REVIERE, SEASONS, PAGES, BEADS, TIPPETS, LEVEL_UNLOCKS, MAX_LEVEL, xpNeed, CLARITY, LIGHTS } from './data.js';
 import { LANE_X, Z_MIN, Z_MAX } from './river.js';
 import { drawFish, drawFly } from './fishart.js';
 import { Sfx } from './audio.js';
@@ -35,12 +35,12 @@ if (!save.set.gfx) world.setQuality(false);
 world.setClearView(save.set.clear);
 let river, cond, fish = [], respawn = [];
 const S = {
-  mode: 'title', yaw: 0, pitch: 0, px: LANE_X, pz: 0, t: 0, joy: { x: 0, z: 0 }, face: 0, walk: 0, moveDir: 0, tip: { x: LANE_X - 0.6, z: -1.6 }, nymph: { x: 0, d: 0, z: 0 }, L: 4, s: 1, pullS: 0, g: 0, q: 1,
+  mode: 'title', yaw: 0, yb: 0, pitch: 0, px: LANE_X, pz: 0, t: 0, joy: { x: 0, z: 0 }, face: 0, walk: 0, moveDir: 0, tip: { x: LANE_X - 0.6, z: -1.6 }, nymph: { x: 0, d: 0, z: 0 }, L: 4, s: 1, pullS: 0, g: 0, q: 1,
   kick: 0, driftT: 0, onBottom: false, tickT: 0, bite: null, snag: false, snagT: 0, fight: null, hold: false, wade: null,
   cast: null, maxFrac: 0, swingT: 0, sinkRate: 0.2, snagHint: false, aim: null, press: 0, rodX: -0.5,
 };
 const groundY = () => 0.56 + (river ? clamp(river.heightAt(S.px, S.pz), -1.05, 1.2) : -0.56);
-const onLand = (x = S.px, z = S.pz) => Math.abs(x) >= river.halfW || river.depthAt(x, z) < 0.03;
+const onLand = (x = S.px, z = S.pz) => Math.abs(river.off(x, z)) >= river.halfW || river.depthAt(x, z) < 0.03;
 const hand = () => { const c = Math.cos(S.face), sn = Math.sin(S.face), lx = 0.2, lz = -0.4; return { x: S.px + lx * c + lz * sn, y: 0.8 + groundY(), z: S.pz - lx * sn + lz * c }; };
 function tip3() {
   const h = hand();
@@ -93,7 +93,7 @@ function makeFish(lie, old) {
   placeFish(f);
   return f;
 }
-function placeFish(f) { f.mesh.position.set(f.x, -Math.max(0.2, river.depthAt(f.x, f.z) - 0.12), f.z); f.mesh.rotation.set(0, 0, 0); }
+function placeFish(f) { f.ry = Math.atan(river.dcx(f.z)); f.mesh.position.set(f.x, -Math.max(0.2, river.depthAt(f.x, f.z) - 0.12), f.z); f.mesh.rotation.set(0, f.ry, 0); }   // Kopf gegen die Stroemung
 function checkOld(announce) {
   const rv = REVIERE[save.revier];
   if (rv.id !== 'gumpen' || !save.quests.g1 || !save.quests.g2 || fish.some(f => f.old)) return;
@@ -169,7 +169,7 @@ function updateDrift(dt) {
   if (!held) {
     const frac = Math.min(1, n.d / bottom);
     let vz = Math.max(0.16, v * (1 - 0.5 * frac)); if (S.onBottom) vz *= 0.75;
-    n.z += vz * dt;
+    n.z += vz * dt; n.x += river.dcx(n.z) * vz * dt;   // die Stroemung folgt dem Flusslauf
     for (const k of river.rocks) {
       const dx = n.x - k.x, dz = n.z - k.z, d = Math.hypot(dx, dz);
       if (d < k.r * 0.95) n.x += (dx >= 0 ? 1 : -1) * (k.r * 0.95 - d);
@@ -313,7 +313,7 @@ function startFight(f) {
   toast(f.old ? T('Die Rute biegt sich bis ins Handteil. DAS IST ER!') : T('Fisch hängt!'), 1800);
   updateTip();
 }
-function fightPos() { const F = S.fight, w = river.halfW - 0.9; return { x: clamp(S.px - Math.sin(F.ang) * F.dist, -w, w), z: S.pz - Math.cos(F.ang) * F.dist }; }
+function fightPos() { const F = S.fight, w = river.halfW - 0.9, z = S.pz - Math.cos(F.ang) * F.dist, c = river.cx(z); return { x: clamp(S.px - Math.sin(F.ang) * F.dist, c - w, c + w), z }; }
 function updateFight(dt) {
   const F = S.fight, f = F.f, sp = SPECIES[f.species], lim = curTippet().limit;
   let p = fightPos();
@@ -393,6 +393,14 @@ function landed(f) {
   if (save.sel.bead >= 3.5) st.heavy++;
   if (save.sel.tippet <= 0.12) st.fine++;
   if (f.len >= 42) st.big42++;
+  const inc = k => { st[k] = (st[k] || 0) + 1; };
+  if (save.sel.bead <= 2.5) inc('light');
+  if (f.lie.type === 'Gumpen') inc('pool');
+  if (cond.clarity >= 1) inc('murky');
+  if (fly.attractor >= 0.5) inc('attr');
+  if (save.sel.tippet <= 0.10) inc('ultra');
+  if (f.len >= 50) inc('big50');
+  if (f.len >= 55) inc('big55');
   if (f.old) st.old++;
   const lg = save.log[f.species] || (save.log[f.species] = { n: 0, max: 0 });
   const rec = f.len > lg.max && lg.n > 0, first = lg.n === 0;
@@ -407,8 +415,9 @@ function landed(f) {
   const i = save.revier;
   if (rv.quests.every(q => save.quests[q.id])) {
     if (i + 1 < REVIERE.length && save.unlocked < i + 2) { save.unlocked = i + 2; newPage = REVIERE[i + 1].id; }
+    else if (i + 1 === REVIERE.length && !save.pages.includes('ende2')) newPage = 'ende2';
   }
-  if (f.old && !save.pages.includes('ende')) newPage = 'ende';
+  if (f.old && !save.pages.includes('ende')) { if (newPage && !save.pages.includes(newPage)) save.pages.push(newPage); newPage = 'ende'; }   // erst das Ende von Staffel 1, die neue Seite liegt schon im Tagebuch
   if (newPage && !save.pages.includes(newPage)) save.pages.push(newPage);
   if (save.tut < 4) save.tut = 4;
   world.removeFish(f.mesh); fish = fish.filter(x => x !== f);
@@ -449,12 +458,12 @@ function updateMove(dt) {
   const ml = Math.hypot(mx, mz);
   if (ml < 0.12) return;
   if (ml > 1) { mx /= ml; mz /= ml; }
-  { const c = Math.cos(S.yaw), sn = Math.sin(S.yaw), rx = mx * c + mz * sn; mz = -mx * sn + mz * c; mx = rx; }   // Stick relativ zur Blickrichtung
+  { const c = Math.cos(S.yaw + S.yb), sn = Math.sin(S.yaw + S.yb), rx = mx * c + mz * sn; mz = -mx * sn + mz * c; mx = rx; }   // Stick relativ zur Blickrichtung
   const f = Math.min(1, ml), sp = (onLand() ? 1.5 : 1.3 * (1 - 0.42 * Math.min(1, river.depthAt(S.px, S.pz)))) * dt;
   const ok = (x, z) => {
     const d = river.depthAt(x, z);
     if (d > 1.05 || z < Z_MIN || z > Z_MAX) return false;
-    if (Math.abs(x) > river.halfW + 1.0 || river.heightAt(x, z) > 0.9) return false;   // höchstens 1 m Uferstreifen
+    if (Math.abs(river.off(x, z)) > river.halfW + 1.0 || river.heightAt(x, z) > 0.9) return false;   // höchstens 1 m Uferstreifen
     for (const k of river.rocks) if (Math.hypot(x - k.x, z - k.z) < k.r + 0.3) return false;
     return true;
   };
@@ -465,7 +474,7 @@ function updateMove(dt) {
   else if (moveMsgT <= 0) {
     moveMsgT = 3;
     const tx = S.px + mx * 0.4, tz = S.pz + mz * 0.4, d = river.depthAt(tx, tz);
-    toast(tz < Z_MIN ? T('Hier endet die Strecke. Oben kannst du sie von vorn beginnen.') : tz > Z_MAX ? T('Weiter unten ist die Brücke. Fisch stromauf!') : d > 1 ? T('Zu tief zum Waten.') : Math.abs(tx) > river.halfW ? T('Weiter weg vom Wasser kommst du nicht an die Fische.') : T('Da liegt ein Fels im Weg.'));
+    toast(tz < Z_MIN ? T('Hier endet die Strecke. Oben kannst du sie von vorn beginnen.') : tz > Z_MAX ? T('Weiter unten ist die Brücke. Fisch stromauf!') : d > 1 ? T('Zu tief zum Waten.') : Math.abs(river.off(tx, tz)) > river.halfW ? T('Weiter weg vom Wasser kommst du nicht an die Fische.') : T('Da liegt ein Fels im Weg.'));
   }
   if (ox === S.px && oz === S.pz) return;
   S.walk = f; S.moveDir = Math.atan2(-(S.px - ox), -(S.pz - oz));
@@ -536,7 +545,9 @@ function showPage(key, fresh) {
   const p = PAGES.find(p => p.key === key); if (!p) return;
   const idx = REVIERE.findIndex(r => r.id === key);
   let h = `<article class="paper"><div class="date">${p.date}</div><h2>${p.title}</h2>${p.text.map(t => `<p>${t}</p>`).join('')}</article>`;
-  if (fresh && idx > 0) h += `<div class="lvl">${T('Neues Revier freigeschaltet:')} ${REVIERE[idx].name}</div><button class="primary" data-act="goto" data-i="${idx}">${T('Zum Revier wandern')}</button><button class="ghost" data-act="close">${T('Hier weiterfischen')}</button>`;
+  const nextS = key === 'ende' ? REVIERE.findIndex(r => r.season === 2) : -1;
+  if (fresh && nextS > 0 && save.unlocked > nextS) h += `<div class="lvl">${T('Neue Staffel freigeschaltet:')} ${T(SEASONS[1])}</div><button class="primary" data-act="goto" data-i="${nextS}" data-p="1">${T('Staffel beginnen')}</button><button class="ghost" data-act="close">${T('Hier weiterfischen')}</button>`;
+  else if (fresh && idx > 0) h += `<div class="lvl">${idx > 0 && REVIERE[idx].season !== REVIERE[idx - 1].season ? T('Neue Staffel freigeschaltet:') + ' ' + T(SEASONS[REVIERE[idx].season - 1]) + '<br>' : ''}${T('Neues Revier freigeschaltet:')} ${REVIERE[idx].name}</div><button class="primary" data-act="goto" data-i="${idx}">${T('Zum Revier wandern')}</button><button class="ghost" data-act="close">${T('Hier weiterfischen')}</button>`;
   else h += `<button class="primary" data-act="close">${key === 'intro' && fresh ? T('Ans Wasser') : T('Schließen')}</button>`;
   openModal(h);
 }
@@ -545,6 +556,7 @@ function showJournal(tab = 'rev') {
   if (tab === 'rev') {
     REVIERE.forEach((rv, i) => {
       const locked = i >= save.unlocked, here = i === save.revier;
+      if (i === 0 || rv.season !== REVIERE[i - 1].season) h += `<h3 class="season">${T(SEASONS[rv.season - 1])}</h3>`;
       h += `<div class="card ${locked ? 'locked' : ''}"><div class="row"><div><b>${locked ? '🔒 ' : ''}${rv.name}</b><div class="small">${rv.sub}</div></div>`;
       if (!locked) h += here ? `<span class="chip">${T('Du bist hier')}</span>` : `<button class="mini" data-act="goto" data-i="${i}">${T('Hier fischen')}</button>`;
       h += `</div>`;
@@ -607,7 +619,7 @@ $('modalBody').addEventListener('click', e => {
   const a = b.dataset.act;
   if (a === 'close') closeModal();
   else if (a === 'release') { closeModal(); const f = S.afterRelease; S.afterRelease = null; f && f(); }
-  else if (a === 'goto') { closeModal(); enterRevier(+b.dataset.i); toast(REVIERE[save.revier].name + ' – ' + REVIERE[save.revier].sub); }
+  else if (a === 'goto') { closeModal(); enterRevier(+b.dataset.i); toast(REVIERE[save.revier].name + ' – ' + REVIERE[save.revier].sub); if (b.dataset.p) showPage(REVIERE[save.revier].id, false); }
   else if (a === 'jtab') showJournal(b.dataset.t);
   else if (a === 'selfly') { save.sel.fly = b.dataset.id; const f = curFly(); world.setFlyLook(f.col, f.bead); persist(); showBox(); updateHUD(); }
   else if (a === 'tie') { if (save.material >= 2) { save.material -= 2; save.flies[b.dataset.id] = (save.flies[b.dataset.id] || 0) + 1; sfx.tick(); persist(); const sc = $('modalBody').scrollTop; showBox(); $('modalBody').scrollTop = sc; updateHUD(); } }
@@ -678,7 +690,7 @@ canvas.addEventListener('pointermove', e => {
   else if (S.mode === 'idle') { if (!S.wade) aimAt(e.clientX, e.clientY); }
   else if (S.mode === 'drift') {
     const K = 3.6 / (Math.min(window.innerHeight, 900) * 0.42);
-    const c = Math.cos(S.yaw), sn = Math.sin(S.yaw);
+    const c = Math.cos(S.yaw + S.yb), sn = Math.sin(S.yaw + S.yb);
     S.tip.x += (dx * c + dy * sn) * K; S.tip.z += (-dx * sn + dy * c) * K;
     const now = performance.now(), hs = ptr.hist;
     hs.push({ t: now, x: e.clientX, y: e.clientY });
@@ -784,7 +796,7 @@ function frame(now) {
       if (f.spooked > 0) { f.spooked -= dt; f.mesh.visible = false; if (f.spooked <= 0) { f.mesh.visible = true; placeFish(f); } continue; }
       if (S.fight && S.fight.f === f) continue;
       f.mesh.visible = true;
-      f.mesh.rotation.y = Math.sin(S.t * 0.9 + f.phase) * 0.1;
+      f.mesh.rotation.y = (f.ry || 0) + Math.sin(S.t * 0.9 + f.phase) * 0.1;
       f.mesh.position.x = f.x + Math.sin(S.t * 0.7 + f.phase) * 0.12;
       if (Math.abs(f.z - S.pz) < 14) world.animFish(f.mesh, S.t * 5 + f.phase, 1);
     }
@@ -836,7 +848,8 @@ function frame(now) {
     const k = Math.min(1, dt * 4); S.yaw -= S.yaw * k; S.pitch -= S.pitch * k;
     if (Math.abs(S.yaw) < 0.002) S.yaw = 0;
   }
-  world.yaw = S.yaw; world.pitch = S.pitch;
+  S.yb += (Math.atan(river.dcx(S.pz)) * 0.85 - S.yb) * Math.min(1, dt * 2);   // Grundblick folgt dem Flusslauf
+  world.yaw = S.yaw + S.yb; world.pitch = S.pitch;
   world.update(dt, S.t, S.px, S.pz, groundY(), focus);
   if (S.mode !== 'title') { drawLupe(); updateGauges(); }
 }
@@ -879,6 +892,15 @@ function applyLang() {
 }
 $('langs').innerHTML = LANGS.map(([id, name]) => `<button data-lang="${id}">${name}</button>`).join('');
 $('langs').addEventListener('click', e => { const b = e.target.closest('[data-lang]'); if (b) { setLang(b.dataset.lang); applyLang(); } });
+// Spielstaende von vor den neuen Staffeln: abgeschlossene Reviere schalten das naechste frei
+(function migrate() {
+  let ch = false;
+  while (save.unlocked < REVIERE.length && REVIERE[save.unlocked - 1].quests.every(q => save.quests[q.id])) {
+    const id = REVIERE[save.unlocked].id; save.unlocked++; ch = true;
+    if (!save.pages.includes(id)) save.pages.push(id);
+  }
+  if (ch) persist();
+})();
 setLang(getLang()); applyLang();
 
 enterRevier(Math.min(save.revier, save.unlocked - 1));

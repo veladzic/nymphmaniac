@@ -13,6 +13,10 @@ export const SPECIES = {
     note: 'Klebt am Grund. Wer sie hakt, braucht Geduld und ein gutes Vorfach.' },
   marmorata: { name: 'Marmorata', latin: 'Salmo marmoratus', min: 38, max: 82, fight: 1.6, shy: 0.8, xp: 2.0,
     note: 'Die Marmorierte. Königin der smaragdgrünen Flüsse.' },
+  seeforelle: { name: "Seeforelle", latin: 'Salmo trutta lacustris', min: 40, max: 88, fight: 1.5, shy: 0.75, xp: 1.6,
+    note: "Silbern und schwer. Zieht im Herbst aus dem See in den Auslauf und prüft jede Nymphe zweimal." },
+  huchen: { name: "Huchen", latin: 'Hucho hucho', min: 60, max: 125, fight: 2.0, shy: 0.7, xp: 2.4,
+    note: "Der Donaulachs. Kupferrot, einzelgängerisch, frisst Forellen – und nimmt nur einen großen Happen tief am Grund." },
 };
 
 export const INSECTS = {
@@ -40,6 +44,12 @@ export const FLIES = [
     desc: 'Groß, dunkel, mit Gummibeinchen. Ein Happen, für den auch die Großen aufstehen.' },
   { id: 'redtag', name: 'Red Tag Jig', level: 6, imitates: ['gammarus'], attractor: 0.5, sink: 1.0, col: '#2f5a2a', bead: '#d9a531', hot: '#e02020', loves: ['aesche'],
     desc: 'Pfauengras und roter Schwanz. Äschen können nicht widerstehen.' },
+  { id: 'mop', name: 'Mop Fly', level: 7, imitates: ['caddis'], attractor: 0.8, sink: 0.9, col: '#b7c94a', bead: '#d9a531',
+    desc: "Ein Stück Wischmopp am Haken. Sieht albern aus, treibt wie eine fette Larve – und fängt, wenn nichts anderes geht." },
+  { id: 'egg', name: 'Eggstasy', level: 9, imitates: ['gammarus'], attractor: 1.0, sink: 0.8, col: '#f29a3a', bead: '#e8e8e8', loves: ['seeforelle', 'regenbogen'],
+    desc: "Ein leuchtendes Fischei aus Chenille. Im kalten Wasser fressen Forellen den Laich der anderen." },
+  { id: 'huchenjig', name: 'Huchen-Jig', level: 10, imitates: ['stone'], attractor: 0.6, sink: 1.3, col: '#2a2a2a', bead: '#3a3a3a', big: 0.6, loves: ['huchen'],
+    desc: "Schwer, dunkel, lang wie ein Finger. Kein Imitat für Zaghafte – gebaut für den Kolk und das, was darin jagt." },
 ];
 
 export const BEADS = [
@@ -47,6 +57,7 @@ export const BEADS = [
 ];
 
 export const TIPPETS = [
+  { d: 0.18, level: 8, limit: 1.06, take: 0.58, sink: 0.82 },
   { d: 0.16, level: 1, limit: 0.95, take: 0.72, sink: 0.9 },
   { d: 0.14, level: 1, limit: 0.88, take: 0.9, sink: 1.0 },
   { d: 0.12, level: 3, limit: 0.8, take: 1.06, sink: 1.1 },
@@ -59,6 +70,10 @@ export const LEVEL_UNLOCKS = {
   4: 'Squirmy Wormy',
   5: 'Steinfliegennymphe',
   6: 'Red Tag Jig & 0,10er Fluorocarbon',
+  7: "Mop Fly",
+  8: "0,18er Vorfach – für die ganz Großen",
+  9: "Eggstasy",
+  10: "Huchen-Jig",
 };
 export const MAX_LEVEL = 12;
 export const xpNeed = lvl => 70 + 50 * lvl;
@@ -71,9 +86,11 @@ export const LIGHTS = [
   { id: 'bedeckt', name: 'bedeckt', act: 1.1, tint: [0.82, 0.85, 0.88], sun: 0.65 },
 ];
 
+export const SEASONS = ["Staffel 1 · Opas Tagebuch", "Staffel 2 · Lenis Karte", "Staffel 3 · Herbst im Unterlauf", "Staffel 4 · Der Winterkönig"];
+
 export const REVIERE = [
   {
-    id: 'wiese', name: 'Die Wiesenstrecke', sub: 'Wo alles begann',
+    id: 'wiese', season: 1, bend: [5, 0.05], name: 'Die Wiesenstrecke', sub: 'Wo alles begann',
     seed: 11, width: 12, depth: 0.75, speed: 0.55, rocks: 16, rockSize: 0.4, pools: 2, poolDepth: 0.45,
     bankSlope: 0.16, bankMax: 2.2, trees: 0.45,
     pal: { grass: 0x7aa64a, rock: 0x8f8d84, gravel: 0xb9ad90, bed: 0x40604e, shallow: 0x86dcc0, deep: 0x1f8270, skyTop: 0x4a98e0, skyBot: 0xd6eef8, fog: 0xcfe8f0 },
@@ -86,7 +103,7 @@ export const REVIERE = [
     ],
   },
   {
-    id: 'rausche', name: 'Die Rausche', sub: 'Taschenwasser',
+    id: 'rausche', season: 1, bend: [3, 0.07], name: 'Die Rausche', sub: 'Taschenwasser',
     seed: 23, width: 12, depth: 0.85, speed: 1.15, rocks: 46, rockSize: 0.75, pools: 1, poolDepth: 0.5,
     bankSlope: 0.3, bankMax: 4, trees: 0.8,
     pal: { grass: 0x5f8f45, rock: 0x7d7f80, gravel: 0xa9a393, bed: 0x3a5a50, shallow: 0x8fe0d0, deep: 0x1a7a74, skyTop: 0x3f8fd8, skyBot: 0xcfe8f5, fog: 0xc4e0ea },
@@ -99,7 +116,7 @@ export const REVIERE = [
     ],
   },
   {
-    id: 'aeschenzug', name: 'Der Äschenzug', sub: 'Feines Zeug',
+    id: 'aeschenzug', season: 1, bend: [6.5, 0.04], name: 'Der Äschenzug', sub: 'Feines Zeug',
     seed: 37, width: 13, depth: 1.05, speed: 0.75, rocks: 10, rockSize: 0.45, pools: 3, poolDepth: 0.5,
     bankSlope: 0.14, bankMax: 2.0, trees: 0.35,
     pal: { grass: 0x8aa850, rock: 0x959388, gravel: 0xc4b896, bed: 0x4a6a55, shallow: 0x9ae6c8, deep: 0x23887a, skyTop: 0x5aa2e2, skyBot: 0xe2f2f8, fog: 0xd8ecf0 },
@@ -112,7 +129,7 @@ export const REVIERE = [
     ],
   },
   {
-    id: 'klamm', name: 'Die Klamm', sub: 'Tief und schnell',
+    id: 'klamm', season: 1, bend: [3.5, 0.06], name: 'Die Klamm', sub: 'Tief und schnell',
     seed: 51, width: 11, depth: 1.45, speed: 1.3, rocks: 26, rockSize: 0.9, pools: 3, poolDepth: 0.7,
     bankSlope: 3.2, bankMax: 22, trees: 0.5, cliff: true,
     pal: { grass: 0x4f7a40, rock: 0x6c6e72, gravel: 0x9a968c, bed: 0x2f4d48, shallow: 0x7ad8cc, deep: 0x126a6c, skyTop: 0x3a86cc, skyBot: 0xbfdcec, fog: 0xa8c8d4 },
@@ -125,7 +142,7 @@ export const REVIERE = [
     ],
   },
   {
-    id: 'gumpen', name: 'Der Smaragdgumpen', sub: 'Das Reich des Alten',
+    id: 'gumpen', season: 1, bend: [4.5, 0.05], name: 'Der Smaragdgumpen', sub: 'Das Reich des Alten',
     seed: 77, width: 13, depth: 1.2, speed: 0.8, rocks: 18, rockSize: 0.8, pools: 2, poolDepth: 0.6,
     bigPool: { x: -1.6, z: -34, r: 4.2, d: 0.95 },
     bankSlope: 0.5, bankMax: 7, trees: 1.0,
@@ -136,6 +153,85 @@ export const REVIERE = [
       { id: 'g1', text: 'Fange eine Marmorata', test: s => (s.sp.marmorata || 0) >= 1 },
       { id: 'g2', text: 'Fange 3 Fische ab 42 cm', test: s => s.big42 >= 3 },
       { id: 'g3', text: 'Lande den Alten – und lass ihn wieder schwimmen', test: s => s.old >= 1 },
+    ],
+  },
+  {
+    id: 'quellbach', season: 2, name: "Der Quellbach", sub: "Klein und kalt",
+    seed: 91, width: 9, depth: 0.5, speed: 0.95, rocks: 40, rockSize: 0.45, pools: 4, poolDepth: 0.45, bend: [4, 0.08],
+    bankSlope: 0.9, bankMax: 8, trees: 0.3, leafShare: 0.05,
+    pal: { grass: 0x6f9a4a, rock: 0x86888a, gravel: 0xb4ae9c, bed: 0x3f5f52, shallow: 0x9aeadc, deep: 0x1f8a7e, skyTop: 0x3f8fd8, skyBot: 0xcfe8f5, fog: 0xc8e2ec },
+    species: { saibling: 6, bachforelle: 4 }, sizeMul: 0.55, fishN: 12,
+    clarity: [0, 0, 0], insects: ['stone', 'baetis', 'caddis'],
+    quests: [
+      { id: 'q1', text: "Fange 4 Bachsaiblinge", test: s => (s.sp.saibling || 0) >= 4 },
+      { id: 'q2', text: "Fange 3 Fische mit der leichten 2,5-mm-Perle", test: s => (s.light || 0) >= 3 },
+      { id: 'q3', text: "Fange 3 Fische in Gumpen", test: s => (s.pool || 0) >= 3 },
+    ],
+  },
+  {
+    id: 'seeauslauf', season: 2, name: "Der Seeauslauf", sub: "Wo die Großen ziehen",
+    seed: 104, width: 14, depth: 1.3, speed: 0.5, rocks: 8, rockSize: 0.6, pools: 4, poolDepth: 0.7, bend: [7, 0.035],
+    bankSlope: 0.2, bankMax: 2.5, trees: 0.6,
+    pal: { grass: 0x7aa64a, rock: 0x8f8d84, gravel: 0xbcb294, bed: 0x3c6252, shallow: 0x8fe2cc, deep: 0x1a7f72, skyTop: 0x4a98e0, skyBot: 0xd6eef8, fog: 0xcfe8f0 },
+    species: { seeforelle: 4, aesche: 3, bachforelle: 3, saibling: 1 }, sizeMul: 0.9, fishN: 11,
+    clarity: [0, 0, 1], insects: ['gammarus', 'caddis', 'baetis'],
+    quests: [
+      { id: 's1', text: "Fange eine Seeforelle", test: s => (s.sp.seeforelle || 0) >= 1 },
+      { id: 's2', text: "Fange eine Seeforelle ab 60 cm", test: s => (s.spMax.seeforelle || 0) >= 60 },
+      { id: 's3', text: "Fange 6 Fische auf die passende Nymphe (vorher Stein umdrehen)", test: s => s.matched >= 6 },
+    ],
+  },
+  {
+    id: 'auwald', season: 3, name: "Der Auwald", sub: "Trübes Wasser, graue Schatten",
+    seed: 131, width: 14, depth: 1.1, speed: 0.6, rocks: 12, rockSize: 0.5, pools: 3, poolDepth: 0.6, bend: [8, 0.045],
+    bankSlope: 0.15, bankMax: 1.8, trees: 1.1, leafShare: 0.8, leaf: [1.75, 0.9, 0.32], veg: [1.3, 0.95, 0.55], ground: [1.25, 0.92, 0.7],
+    pal: { grass: 0x9a9048, rock: 0x8a877c, gravel: 0xb8aa88, bed: 0x4a5f48, shallow: 0x9ed8b4, deep: 0x2a7a62, skyTop: 0x5a9ad8, skyBot: 0xe2eef2, fog: 0xd8e4e0 },
+    species: { barbe: 5, aesche: 3, bachforelle: 2, regenbogen: 1 }, sizeMul: 0.95, fishN: 11,
+    clarity: [1, 1, 2], insects: ['worm', 'gammarus', 'caddis'],
+    quests: [
+      { id: 'u1', text: "Fange 4 Barben", test: s => (s.sp.barbe || 0) >= 4 },
+      { id: 'u2', text: "Fange 4 Fische bei angetrübtem oder trübem Wasser", test: s => (s.murky || 0) >= 4 },
+      { id: 'u3', text: "Fange eine Barbe ab 60 cm", test: s => (s.spMax.barbe || 0) >= 60 },
+    ],
+  },
+  {
+    id: 'wehr', season: 3, name: "Das alte Wehr", sub: "Weißes Wasser",
+    seed: 149, width: 13, depth: 1.5, speed: 1.35, rocks: 34, rockSize: 1.0, pools: 2, poolDepth: 0.8, bend: [3, 0.06],
+    bankSlope: 0.6, bankMax: 5, trees: 0.7, leafShare: 0.6, leaf: [1.5, 0.95, 0.42], veg: [1.2, 0.97, 0.65], ground: [1.15, 0.95, 0.78],
+    pal: { grass: 0x8a8a48, rock: 0x7a7c7e, gravel: 0xa8a090, bed: 0x345a50, shallow: 0x8fe0d0, deep: 0x16746e, skyTop: 0x4a90d4, skyBot: 0xd4e8f0, fog: 0xc8dce0 },
+    species: { regenbogen: 6, bachforelle: 3, barbe: 2, marmorata: 1 }, sizeMul: 1.0, fishN: 12,
+    clarity: [0, 1, 2], insects: ['stone', 'worm', 'baetis'],
+    quests: [
+      { id: 'v1', text: "Fange 5 Fische auf eine Reizfliege (Frenchie, Squirmy, Red Tag, Mop Fly)", test: s => (s.attr || 0) >= 5 },
+      { id: 'v2', text: "Fange eine Regenbogenforelle ab 52 cm", test: s => (s.spMax.regenbogen || 0) >= 52 },
+      { id: 'v3', text: "Fange 3 Fische ab 50 cm", test: s => (s.big50 || 0) >= 3 },
+    ],
+  },
+  {
+    id: 'winterzug', season: 4, name: "Der Winterzug", sub: "Raureif und feines Zeug",
+    seed: 167, width: 13, depth: 1.2, speed: 0.55, rocks: 9, rockSize: 0.5, pools: 4, poolDepth: 0.6, bend: [6, 0.04],
+    bankSlope: 0.18, bankMax: 2.4, trees: 0.5, leafShare: 0, veg: [1.25, 1.02, 0.8], ground: [1.4, 1.02, 1.35],
+    pal: { grass: 0xa8b09a, rock: 0x9a9c9e, gravel: 0xc4c0b4, bed: 0x4a6a60, shallow: 0xa8e8dc, deep: 0x2a8a80, skyTop: 0x7aa8d8, skyBot: 0xe8f0f4, fog: 0xe0e8ec },
+    species: { aesche: 8, bachforelle: 2 }, sizeMul: 1.0, fishN: 11,
+    clarity: [0, 0, 0], insects: ['gammarus', 'baetis'],
+    quests: [
+      { id: 'x1', text: "Fange 5 Äschen", test: s => (s.sp.aesche || 0) >= 5 },
+      { id: 'x2', text: "Fange eine Äsche ab 46 cm", test: s => (s.spMax.aesche || 0) >= 46 },
+      { id: 'x3', text: "Fange 3 Fische am 0,10er Vorfach", test: s => (s.ultra || 0) >= 3 },
+    ],
+  },
+  {
+    id: 'muendung', season: 4, name: "Die Mündung", sub: "Wo der Huchen jagt",
+    seed: 191, width: 15, depth: 1.6, speed: 0.7, rocks: 14, rockSize: 1.0, pools: 2, poolDepth: 0.8, bend: [6, 0.045],
+    bigPool: { x: -1.5, z: -36, r: 4.5, d: 1.1 },
+    bankSlope: 0.4, bankMax: 6, trees: 0.8, leafShare: 0, veg: [1.25, 1.02, 0.8], ground: [1.4, 1.02, 1.35],
+    pal: { grass: 0xa0a890, rock: 0x8c8e92, gravel: 0xb8b4a8, bed: 0x2f5a52, shallow: 0x86dcc8, deep: 0x0f6e62, skyTop: 0x6a9cd0, skyBot: 0xe0ecf2, fog: 0xd4e0e6 },
+    species: { huchen: 3, aesche: 3, barbe: 3, bachforelle: 2 }, sizeMul: 1.0, fishN: 11,
+    clarity: [0, 1], insects: ['gammarus', 'stone', 'worm'],
+    quests: [
+      { id: 'm1', text: "Fange einen Huchen", test: s => (s.sp.huchen || 0) >= 1 },
+      { id: 'm2', text: "Fange 3 Fische ab 55 cm", test: s => (s.big55 || 0) >= 3 },
+      { id: 'm3', text: "Lande einen Huchen ab 100 cm – und lass ihn wieder schwimmen", test: s => (s.spMax.huchen || 0) >= 100 },
     ],
   },
 ];
@@ -168,9 +264,45 @@ export const PAGES = [
     '„Er zeigt sich nicht jedem. Beweise dem Gumpen erst, dass du fischen kannst. Dann steht er am tiefsten Punkt, dicht am Grund, und nimmt nur, was schwer genug ist, um zu ihm hinunterzukommen, und was aussieht wie echtes Futter."',
     '„Wenn du ihn hast: Halt ihn kurz ins Wasser, schau ihn dir an – und lass ihn gehen. Er gehört dem Fluss."',
   ] },
+  { key: 'quellbach', title: "Lenis Karte", date: "Omas Karte · Staffel 2", text: [
+    "Hinten im Tagebuch klebt ein gefaltetes Blatt, das du bisher übersehen hast. Eine Karte, mit Bleistift gezeichnet, in einer anderen Handschrift: Oma Leni.",
+    "„Emil glaubt, der Fluss fängt an der Wiese an\", steht am Rand. „Dabei kommen seine Fische von viel weiter oben. Geh zum Quellbach. Dort ist alles klein – das Wasser, die Saiblinge, und deine Fehler dürfen es auch sein.\"",
+    "„Nimm die leichteste Perle, die du hast. Im Quellbach plumpst man nicht, man legt ab.\"",
+  ] },
+  { key: 'seeauslauf', title: "Der See dahinter", date: "Omas Karte · zweites Blatt", text: [
+    "„Wo der Bach aus dem See läuft, wird er breit und langsam. Emil hat hier nie gefischt – zu wenig Strömung, hat er gesagt. Er hat sich geirrt.\"",
+    "„Im Herbst ziehen die Seeforellen in den Auslauf. Silbern, schwer und misstrauisch. Sie fressen, was der See ihnen bringt, also schau unter die Steine, bevor du anknotest.\"",
+    "„Lass dir Zeit. In langsamem Wasser hat der Fisch alle Zeit der Welt, deine Nymphe anzuschauen.\"",
+  ] },
+  { key: 'auwald', title: "Unter gelbem Laub", date: "Deine Handschrift · Staffel 3", text: [
+    "Lenis Karte endet am See. Den Rest schreibst du selbst. Im Oktober fährst du dorthin, wo die Smaragda breit wird und durch den Auwald schlingert.",
+    "Das Wasser trägt Farbe vom Regen, die Blätter treiben, und am Grund stehen Barben wie graue Schatten nebeneinander. Hier unten zählt nicht die feine Imitation. Hier zählt, was man im Trüben noch sieht.",
+    "Du schreibst dir auf: schwer fischen, auffällig fischen, und dem Vorfach nichts zumuten, was es nicht hält.",
+  ] },
+  { key: 'wehr', title: "Das alte Wehr", date: "Deine Handschrift · zweite Seite", text: [
+    "Unterhalb des alten Wehrs kocht das Wasser. Der Müller ist lange fort, aber die Regenbogenforellen, die er einst besetzt hat, sind geblieben und groß geworden.",
+    "Im weißen Wasser hat kein Fisch Zeit zum Überlegen. Was auffällt, wird genommen. Was zu leicht ist, kommt nie unten an.",
+    "Ein alter Mann am Ufer sieht dir zu. „Wenn du die hier landest\", sagt er, „dann geh im Winter an die Mündung. Dort jagt einer, der Forellen frisst.\"",
+  ] },
+  { key: 'winterzug', title: "Raureif", date: "Deine Handschrift · Staffel 4", text: [
+    "Im Januar ist der Fluss so klar, dass man die Kiesel zählen kann. Die Äschen stehen jetzt dicht beisammen im tiefen Zug und nehmen nur, was ihnen fast ins Maul treibt.",
+    "Kalte Finger, dünnstes Vorfach, kleinste Bewegungen. Wer hier grob fischt, fischt allein.",
+    "Opa hätte gesagt: „Im Winter lernt man, was man im Sommer nur geglaubt hat zu können.\"",
+  ] },
+  { key: 'muendung', title: "Der Winterkönig", date: "Deine Handschrift · letzte Seite", text: [
+    "Wo die Smaragda in den großen Strom mündet, ist das Wasser tief und grün wie Flaschenglas. Hier jagt der Huchen – der Donaulachs, kupferrot, lang wie ein Ruder.",
+    "Er steht am Rand des Kolks und wartet auf alles, was schwach wirkt. Eine kleine Nymphe sieht er nicht einmal an. Er will einen Happen, und er will ihn tief.",
+    "Du knotest das stärkste Vorfach an, das du hast, und denkst an den Alten im Smaragdgumpen. Der hier ist größer.",
+  ] },
   { key: 'ende', title: 'Zurück in den Fluss', date: 'Deine Handschrift', text: [
     'Zweiundneunzig Zentimeter. Du hältst ihn im Kescher, die marmorierte Flanke leuchtet im grünen Wasser, und für einen Augenblick ist es ganz still.',
     'Dann senkst du den Kescherrand. Der Alte bleibt noch einen Herzschlag lang stehen, als wolle er sich dein Gesicht merken, und gleitet zurück in die Tiefe.',
     'Am Abend schreibst du unter Opas letzte Zeile: „Ich habe ihn gelandet, Opa. Und er schwimmt wieder." Die Smaragda gehört jetzt dir – jede Strecke, jede Tasche, jeder Fisch, der noch größer werden will.',
+    "Als du das Tagebuch zuklappst, löst sich hinten ein gefaltetes Blatt. Eine Karte – und eine Handschrift, die nicht Opas ist.",
+  ] },
+  { key: 'ende2', title: "Der ganze Fluss", date: "Deine Handschrift", text: [
+    "Über einen Meter. Der Huchen liegt im flachen Wasser, die Kiemen arbeiten, und du hältst ihn nur so lange, wie man einen Atemzug anhält.",
+    "Dann schiebt er sich mit einem Schlag der Schwanzflosse zurück in den Strom.",
+    "Von der Quelle bis zur Mündung: Du hast die Smaragda einmal ganz gefischt. Du klappst das Tagebuch zu, legst Lenis Karte hinein und schreibst auf den Umschlag einen neuen Namen neben den von Opa. Deinen.",
   ] },
 ];

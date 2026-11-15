@@ -179,3 +179,4 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; touch-action
   #strike { width: 88px; height: 88px; font-size: 14px; }
   #quest { display: none; }
 }
+#modalBody h3.season{margin:18px 0 6px;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#e6b84a;border-bottom:1px solid rgba(230,184,74,.3);padding-bottom:4px}

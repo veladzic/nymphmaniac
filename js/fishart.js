@@ -12,6 +12,10 @@ const LOOK = {
     spots: [{ c: '#e8e0a0', n: 50, r: 0.013 }, { c: '#e0402a', n: 12, r: 0.01, halo: 'rgba(120,170,255,.9)', band: [0.45, 0.8] }] },
   barbe: { back: '#5e5630', side: '#b89e58', belly: '#f0e4b8', fin: '#c8643a', scales: true, barbel: true, slim: true, spots: [] },
   marmorata: { back: '#4c5136', side: '#a9a37a', belly: '#ece4c4', fin: '#8e8a62', marble: true, bigHead: true, spots: [] },
+  seeforelle: { back: '#3f4c58', side: '#b9c4cb', belly: '#f4f5f3', fin: '#8f9aa0',
+    spots: [{ c: '#15181b', n: 70, r: 0.01 }] },
+  huchen: { back: '#5a3f33', side: '#b98468', belly: '#efe2d6', fin: '#a8644a', slim: true, bigHead: true,
+    spots: [{ c: '#1c1512', n: 90, r: 0.007 }] },
 };
 
 function bodyPath(c, L, H, o) {

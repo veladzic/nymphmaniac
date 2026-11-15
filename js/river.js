@@ -27,51 +27,62 @@ export function makeRiver(rv) {
   const rnd = mulberry32(rv.seed);
   const halfW = rv.width / 2;
 
+  // Maeander: Mittellinie des Flusses als Funktion von z. Alles Weitere rechnet quer zur Mittellinie (u = x - cx(z)).
+  const bend = rv.bend || [3.5, 0.05];
+  const rawC = z => bend[0] * Math.sin(z * bend[1] + rv.seed * 0.7) + bend[0] * 0.35 * Math.sin(z * bend[1] * 2.3 + rv.seed * 1.9);
+  const c0 = rawC(0);
+  const cx = z => rawC(z) - c0;                    // am Einstieg (z = 0) liegt die Mitte bei x = 0
+  const dcx = z => cx(z + 0.5) - cx(z - 0.5);      // Steigung dx/dz
+  const off = (x, z) => x - cx(z);
+
   const rocks = [];
   for (let i = 0; i < rv.rocks; i++) {
-    const x = -halfW + 1 + rnd() * (halfW * 2 - 2);
+    const u = -halfW + 1 + rnd() * (halfW * 2 - 2);
     const z = -64 + rnd() * 70;
     const r = 0.35 + rnd() * rv.rockSize;
-    if (Math.hypot(x - LANE_X, z) < r + 1.5) continue;
-    rocks.push({ x, z, r });
+    if (Math.hypot(u - LANE_X, z) < r + 1.5) continue;
+    rocks.push({ x: cx(z) + u, z, r });
   }
   const pools = [];
   for (let i = 0; i < rv.pools; i++) {
-    pools.push({ x: -3.5 + rnd() * 4, z: -54 + rnd() * 48, r: 2 + rnd() * 1.5, d: rv.poolDepth * (0.7 + rnd() * 0.5) });
+    const u = -3.5 + rnd() * 4, z = -54 + rnd() * 48;
+    pools.push({ x: cx(z) + u, z, r: 2 + rnd() * 1.5, d: rv.poolDepth * (0.7 + rnd() * 0.5) });
   }
-  if (rv.bigPool) pools.push({ ...rv.bigPool, big: true });
+  if (rv.bigPool) pools.push({ ...rv.bigPool, x: cx(rv.bigPool.z) + rv.bigPool.x, big: true });
 
-  const chan = z => Math.sin(z * 0.09 + rv.seed) * 1.6 - 1.0;
-  const bankF = x => 1 - smooth(0.55, 1.0, Math.abs(x) / halfW);
+  const chan = z => Math.sin(z * 0.09 + rv.seed) * 1.6 - 1.0 - Math.max(-1.2, Math.min(1.2, dcx(z) * 5));   // Stromrinne drueckt in die Aussenkurve
+  const bankF = u => 1 - smooth(0.55, 1.0, Math.abs(u) / halfW);
 
-  function depthAt(x, z) {
+  function depthAt(xw, z) {
+    const x = xw - cx(z);
     const b = bankF(x);
     if (b <= 0) return 0;
     const c = Math.exp(-(((x - chan(z)) / 2.4) ** 2));
     let d = rv.depth * (0.38 + 0.62 * c);
-    for (const p of pools) d += p.d * Math.exp(-((x - p.x) ** 2 + (z - p.z) ** 2) / (p.r * p.r));
+    for (const p of pools) d += p.d * Math.exp(-((xw - p.x) ** 2 + (z - p.z) ** 2) / (p.r * p.r));
     for (const k of rocks) {
-      const dx = x - k.x, dz = z - (k.z + k.r * 1.9);
+      const dx = xw - k.x, dz = z - (k.z + k.r * 1.9);
       d += 0.3 * Math.exp(-(dx * dx + dz * dz) / (k.r * k.r * 2.2));
     }
-    d += (vnoise(x * 0.9, z * 0.9) - 0.5) * 0.14;
+    d += (vnoise(xw * 0.9, z * 0.9) - 0.5) * 0.14;
     return Math.max(0, d * b);
   }
 
-  function speedAt(x, z) {
+  function speedAt(xw, z) {
+    const x = xw - cx(z);
     const b = bankF(x);
     const c = Math.exp(-(((x - chan(z)) / 2.4) ** 2));
     let v = rv.speed * (0.4 + 0.6 * c) * (0.3 + 0.7 * b);
-    for (const p of pools) v *= 1 - 0.5 * Math.exp(-((x - p.x) ** 2 + (z - p.z) ** 2) / (p.r * p.r));
+    for (const p of pools) v *= 1 - 0.5 * Math.exp(-((xw - p.x) ** 2 + (z - p.z) ** 2) / (p.r * p.r));
     for (const k of rocks) {
-      const dx = (x - k.x) / (k.r * 1.1), dz = (z - (k.z + k.r * 2)) / (k.r * 2.3);
+      const dx = (xw - k.x) / (k.r * 1.1), dz = (z - (k.z + k.r * 2)) / (k.r * 2.3);
       v *= 1 - 0.78 * Math.exp(-(dx * dx + dz * dz));
     }
     return Math.max(0.06, v);
   }
 
   function heightAt(x, z) {
-    const ax = Math.abs(x);
+    const ax = Math.abs(x - cx(z));
     if (ax < halfW) return -depthAt(x, z);
     const o = ax - halfW;
     let h = rv.bankMax * (1 - Math.exp(-o * rv.bankSlope / rv.bankMax));
@@ -80,7 +91,7 @@ export function makeRiver(rv) {
   }
 
   const lies = [];
-  const valid = (x, z) => depthAt(x, z) > 0.38 && Math.hypot(x - LANE_X, z) > 3.2 && Math.abs(x) < halfW - 0.6 && z > Z_MIN - 4 && z < Z_MAX - 2.5;
+  const valid = (x, z) => depthAt(x, z) > 0.38 && Math.hypot(x - LANE_X, z) > 3.2 && Math.abs(off(x, z)) < halfW - 0.6 && z > Z_MIN - 4 && z < Z_MAX - 2.5;
   const far = (x, z) => lies.every(l => (l.x - x) ** 2 + (l.z - z) ** 2 > 2.2);
   for (const p of pools) {
     if (p.big) { lies.push({ x: p.x, z: p.z, type: 'Gumpen', big: true }); continue; }
@@ -105,9 +116,9 @@ export function makeRiver(rv) {
     }
   }
   for (let z = Z_MIN; z < Z_MAX - 4; z += 6) {
-    const x = chan(z) + (rnd() < 0.5 ? -1 : 1) * (0.6 + rnd() * 0.9), zz = z + rnd() * 3;
+    const zz = z + rnd() * 3, x = cx(zz) + chan(zz) + (rnd() < 0.5 ? -1 : 1) * (0.6 + rnd() * 0.9);
     if (valid(x, zz) && far(x, zz)) lies.push({ x, z: zz, type: 'Rinne' });
   }
 
-  return { rv, rocks, pools, lies, halfW, chan, depthAt, speedAt, heightAt };
+  return { rv, rocks, pools, lies, halfW, chan, cx, dcx, off, depthAt, speedAt, heightAt };
 }
