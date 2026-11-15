@@ -195,3 +195,32 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; touch-action
 .chip.ok { background: rgba(87,214,141,.2); color: #8ff0b8; } .chip.warn { background: rgba(248,200,60,.22); color: #ffd978; } .chip.bad { background: rgba(255,90,79,.24); color: #ff9c94; }
 #modalBody input[type=range] { width: 100%; margin: 8px 0 4px; accent-color: #e6b84a; height: 28px; }
 label.slider { display: block; padding: 10px 0 6px; border-top: 1px solid var(--line); }
+
+#gauge.driftmode { background: linear-gradient(90deg, #57d68d 0, #57d68d 38%, #e8c44a 62%, #ff5a4f 100%); }
+#gauge.driftmode .zone { display: none; }
+#gauge.driftmode .l { color: var(--green); }
+
+/* Drill: zweiter Drillknopf links und Anzeige der Rutenstellung in der Mitte */
+#strikeL { position: absolute; left: calc(14px + var(--sal)); bottom: calc(16px + var(--sab)); width: 104px; height: 104px; border-radius: 50%; font-weight: 800; font-size: 16px; letter-spacing: .06em;
+  background: radial-gradient(circle at 35% 30%, #ffd86a, #e08a1c); color: #2a1a00; border: 4px solid rgba(255, 255, 255, .9); box-shadow: 0 6px 20px rgba(0, 0, 0, .5); touch-action: none; display: none; }
+#strikeL.down { transform: scale(.93); filter: brightness(1.2); }
+#hud.fighting #strikeL { display: block; }
+#rodPad { position: absolute; left: 50%; bottom: calc(18px + var(--sab)); width: 104px; height: 104px; margin-left: -52px; border-radius: 50%; display: none; pointer-events: none !important;
+  background: radial-gradient(circle, rgba(10, 34, 32, .45), rgba(10, 34, 32, .75)); border: 2px solid rgba(255, 255, 255, .45); backdrop-filter: blur(4px); overflow: hidden; }
+#hud.fighting #rodPad { display: block; }
+#rodPad i { position: absolute; top: 0; bottom: 0; width: 50%; opacity: 0; transition: opacity .15s; }
+#rodPad i.l { left: 0; background: linear-gradient(90deg, rgba(255, 60, 60, .55), transparent); } #rodPad i.r { right: 0; background: linear-gradient(270deg, rgba(255, 60, 60, .55), transparent); }
+#rodPad.wantL i.l, #rodPad.wantR i.r { opacity: 1; }
+#rodPad.good i.l, #rodPad.good i.r { background: linear-gradient(90deg, rgba(87, 214, 141, .5), transparent); } #rodPad.good i.r { background: linear-gradient(270deg, rgba(87, 214, 141, .5), transparent); }
+#rodKnob { position: absolute; left: 50%; top: 50%; width: 42px; height: 42px; margin: -21px 0 0 -21px; border-radius: 50%; background: rgba(255, 255, 255, .9); box-shadow: 0 2px 8px rgba(0, 0, 0, .5); }
+#rodPad.good #rodKnob { background: #8ff0b8; }
+#rodPad small { position: absolute; left: 0; right: 0; bottom: 6px; text-align: center; font-size: 9px; opacity: .75; }
+@media (max-height: 520px) { #strikeL { width: 88px; height: 88px; font-size: 14px; } #rodPad { width: 88px; height: 88px; margin-left: -44px; } }
+
+/* Hinweistexte oben links unter der Revieranzeige statt mitten im Bild */
+#toast { left: calc(10px + var(--sal)); top: calc(118px + var(--sat)); transform: translateY(-6px); max-width: min(74vw, 320px); text-align: left; font-size: 13.5px; padding: 9px 13px; }
+#toast.show { transform: none; }
+#hud.fighting #toast { top: calc(64px + var(--sat)); }
+#menuBtns #btnPov { font-size: 11.5px; font-weight: 700; letter-spacing: .04em; }
+#menuBtns #btnPov.on { background: #e6b84a; color: #1a1a10; }
+@media (max-width: 520px) { #menuBtns { flex-wrap: wrap; justify-content: flex-end; max-width: 140px; } }

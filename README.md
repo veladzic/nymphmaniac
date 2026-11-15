@@ -65,14 +65,16 @@ Ein gefangener Fisch kommt nach 100 Sekunden am selben Platz wieder, sobald du m
 
 ### Steigen: Nymphe oder Trockenfliege
 
-Jeder Fisch außer dem Alten wechselt ständig zwischen zwei Zuständen:
+Nicht jeder Fisch steigt. Beim Besetzen wird pro Fisch gewürfelt, ob er überhaupt an die Oberfläche kommt: Barbe nie, Huchen 25 %, Marmorata 45 %, Seeforelle 60 %, Bachforelle, Regenbogenforelle und Saibling 72 %, Äsche 90 %. Der Alte steigt nie. Fische, die nicht steigen, bleiben immer am Grund und nehmen nur Nymphen.
+
+Die übrigen wechseln ständig zwischen zwei Zuständen:
 
 | Zustand | Dauer | Nimmt |
 |---|---|---|
 | am Grund | 45 bis 115 s, geteilt durch die Aktivität des Lichts | nur Nymphen (Euro oder Indikator) |
 | steigend | 25 bis 50 s; der Fisch steht dicht unter der Oberfläche und macht alle 2,5 bis 7 s einen Ring | nur Trockenfliegen |
 
-Zu Beginn steigt etwa jeder fünfte Fisch. Bei Morgennebel und Abendlicht sind die Pausen am Grund kürzer, es steigen also mehr Fische.
+Zu Beginn steigen etwa 30 % der steigfähigen Fische, und jeder startet an einer zufälligen Stelle seines Abschnitts, damit sie nicht alle gleichzeitig hochkommen. Bei Morgennebel und Abendlicht sind die Pausen am Grund kürzer, es steigen also mehr Fische.
 
 ### Wann ein Fisch beißt
 

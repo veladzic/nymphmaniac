@@ -578,6 +578,8 @@ export class World {
     window.addEventListener('resize', () => this.resize());
   }
 
+  setPov(on) { this.pov = !!on; this.resize(); }
+
   setQuality(hi) {
     this.hi = hi; this.fxWater = hi; this.fxPost = hi; this._slow = 0;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, hi ? (this.mobile ? 1.75 : 2) : 1.2));
@@ -595,7 +597,7 @@ export class World {
     this.camera.aspect = asp;
     let vf = 50;
     if (asp < 1.25) vf = Math.min(78, 2 * Math.atan(Math.tan(30 * Math.PI / 180) / asp) * 180 / Math.PI);
-    this.camera.fov = Math.max(50, vf);
+    this.camera.fov = Math.max(50, vf) + (this.pov ? 14 : 0);   // aus den Augen des Anglers etwas weitwinkliger
     this.camera.updateProjectionMatrix();
     this.portrait = asp < 1;
     this.makeTargets();
@@ -900,7 +902,7 @@ export class World {
     // Schnur: an der Rute entlang durch die Ringe, dann als dicke Flugschnur mit duennem Vorfach hinaus
     this.leaderMat = new THREE.MeshStandardMaterial({ color: 0xe9e9da, roughness: 0.4, transparent: true, opacity: 0.6 });
     this.inLine = []; for (let i = 0; i < 12; i++) { const m = new THREE.Mesh(unit, this.flyLineMat); m.frustumCulled = false; this.scene.add(m); this.inLine.push(m); }
-    this.NL = 26;
+    this.NL = 64;
     this.lineSegs = []; for (let i = 0; i < this.NL - 1; i++) { const m = new THREE.Mesh(unit, this.flyLineMat); m.frustumCulled = false; this.scene.add(m); this.lineSegs.push(m); }
     const lg = new THREE.BufferGeometry();
     lg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(this.NL * 3), 3));
@@ -956,7 +958,7 @@ export class World {
     this.dropV = new Float32Array(DN * 3); this.dropI = 0;
     const ring = (r0, r1, col) => { const g = new THREE.RingGeometry(r0, r1, 40); g.rotateX(-Math.PI / 2); const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.9, depthWrite: false, depthTest: false })); m.renderOrder = 8; m.visible = false; this.scene.add(m); return m; };
     this.aimRing = ring(0.26, 0.33, 0xffffff); this.aimDot = ring(0, 0.07, 0xffffff);
-    this.entryRing = ring(0.13, 0.19, 0x57d68d);
+    this.entryRing = ring(0.13, 0.19, 0x57d68d); this.entryRing.material.depthTest = true;   // wird von Steinen verdeckt, sonst sieht es aus, als laege die Fliege auf dem Stein
     // Insekten über dem Wasser
     const IN = 70, ig = new THREE.BufferGeometry(), ip = new Float32Array(IN * 3);
     this.bugSeed = Array.from({ length: IN }, () => [Math.random() * 14 - 9, 0.3 + Math.random() * 2.2, Math.random() * 22 - 16, Math.random() * 6, 0.5 + Math.random()]);
@@ -980,6 +982,13 @@ export class World {
     this.flyFrac = mode === 'euro' ? 0 : 0.62;                                   // Anteil dicke Flugschnur, der Rest ist Vorfach
     this.indMesh.material.color.set(col || '#ff7a1a'); this.indMesh.scale.set(size || 0.05, (size || 0.05) * 0.85, size || 0.05);
     this.nymph.visible = mode !== 'dry'; this.dryFly.visible = mode === 'dry';
+  }
+  // Hoehe der Steinoberflaeche an einer Stelle (Strahl von oben auf das echte Steinmodell); null, wenn dort kein Stein ist
+  rockTop(k, x, z) {
+    if (!k.mesh) return null;
+    this.ray.set(_d.set(x, 8, z), _a.set(0, -1, 0));
+    const h = this.ray.intersectObject(k.mesh, false);
+    return h.length ? h[0].point.y : null;
   }
   setIndicator(p, y) {
     const m = this.indMesh; m.visible = !!p;
@@ -1227,9 +1236,17 @@ export class World {
     const addRock = (geos, x, y, z, r, flat = 1) => {
       const m = new THREE.Mesh(geos[(rnd() * geos.length) | 0], rockMat);
       m.position.set(x, y, z); m.scale.set(r * (1 + rnd() * 0.25), r * (0.85 + rnd() * 0.35) * flat, r * (1 + rnd() * 0.25)); m.rotation.y = rnd() * 6.3;
-      m.castShadow = m.receiveShadow = true; this.env.add(m);
+      m.castShadow = m.receiveShadow = true; this.env.add(m); return m;
     };
-    for (const k of river.rocks) addRock(wetG, k.x, -0.12, k.z, k.r);
+    for (const k of river.rocks) { const m = addRock(wetG, k.x, -0.12, k.z, k.r); // tatsaechlicher Umriss des Steins ab der Wasserlinie aufwaerts, in 32 Richtungen: daran legen sich Schnur und Fliege an
+      m.updateMatrix(); const pa = m.geometry.attributes.position, prof = new Float32Array(32), v = new THREE.Vector3(); let top = 0;
+      for (let i = 0; i < pa.count; i++) {
+        v.fromBufferAttribute(pa, i).applyMatrix4(m.matrix); if (v.y < -0.03) continue;
+        const ox = v.x - k.x, oz = v.z - k.z, b = ((Math.round(Math.atan2(oz, ox) / 6.2832 * 32) % 32) + 32) % 32;
+        prof[b] = Math.max(prof[b], Math.hypot(ox, oz)); if (v.y > top) top = v.y;
+      }
+      for (let b = 0; b < 32; b++) if (!prof[b]) prof[b] = Math.max(prof[(b + 31) % 32], prof[(b + 1) % 32]) || k.r;
+      k.prof = prof; k.vr = Math.max(...prof); k.top = top; m.updateMatrixWorld(true); k.mesh = m; }
     for (let i = 0; i < 110; i++) {
       const side = rnd() < 0.5 ? -1 : 1, z = Z0 + 40 + rnd() * (Z1 - Z0 - 44), x = river.cx(z) + side * (river.halfW - 0.9 + Math.pow(rnd(), 1.6) * 7);
       const h = river.heightAt(x, z);
@@ -1394,6 +1411,11 @@ export class World {
     const lo = (-clamp(cu * (por ? 0.42 : 0.68), -2.4, 2.4) + (focus ? (focus.x - cxp) * 0.12 : 0)) * fw;
     const turned = yaw !== this._yawPrev || pit !== this._pitPrev; this._yawPrev = yaw; this._pitPrev = pit;
     this._look.lerp(_d.set(cxp + lo * yc - 4.6 * ys, 0.45 + pit * 7, cz - lo * ys - 4.6 * yc), turned ? Math.min(1, dt * 14) : kk);
+    if (this.pov) {   // Sicht des Anglers: Kamera knapp vor dem Gesicht, damit Arme und Rute im Bild sind, der eigene Kopf aber nicht
+      const g = this.angler.position;
+      this.camera.position.set(g.x - ys * 0.2, g.y + 1.16 + Math.sin(t * 0.7) * 0.006, g.z - yc * 0.2);
+      this._look.set(g.x - ys * 6, g.y - 0.2 + pit * 8, g.z - yc * 6);
+    }
     this.camera.lookAt(this._look);
     this.sky.position.copy(this.camera.position);
     // Sonne & Schatten folgen dem Angler

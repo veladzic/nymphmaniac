@@ -46,7 +46,18 @@ const S = {
   kick: 0, driftT: 0, onBottom: false, tickT: 0, bite: null, snag: false, snagT: 0, fight: null, hold: false, wade: null,
   cast: null, maxFrac: 0, swingT: 0, sinkRate: 0.2, snagHint: false, aim: null, press: 0, rodX: -0.5,
 };
-function applyRig() { const f = curFly(), k = curInd(); world.setRigStyle(rigMode(), k.col, k.size); world.setFlyLook(f.col, isDry() ? f.col : f.bead, f.hot, f.id); }
+function gaugeLabels() {
+  const q = (s, v) => { const e = document.querySelector(s); if (e) e.textContent = v; };
+  if (isEuro()) { q('#gauge .l', T('lose')); q('#gauge .c', T('Kontakt')); q('#gauge .r', T('Zug')); }
+  else { q('#gauge .l', T("treibt frei")); q('#gauge .c', ''); q('#gauge .r', isDry() ? T("furcht") : T('Zug')); }
+}
+// Radius eines Steins in einer Richtung (aus seinem echten Umriss), sonst grob aus dem Flussmodell
+function rockR(k, ox, oz) {
+  if (!k.prof) return k.r * 1.2;
+  const f = (Math.atan2(oz, ox) / 6.2832 * 32 + 32) % 32, i = Math.floor(f), t = f - i;
+  return k.prof[i % 32] * (1 - t) + k.prof[(i + 1) % 32] * t;
+}
+function applyRig() { gaugeLabels(); const f = curFly(), k = curInd(); world.setRigStyle(rigMode(), k.col, k.size); world.setFlyLook(f.col, isDry() ? f.col : f.bead, f.hot, f.id); }
 const groundY = () => 0.56 + (river ? clamp(river.heightAt(S.px, S.pz), -1.05, 1.2) : -0.56);
 const onLand = (x = S.px, z = S.pz) => Math.abs(river.off(x, z)) >= river.halfW || river.depthAt(x, z) < 0.03;
 const hand = () => { const c = Math.cos(S.face), sn = Math.sin(S.face), lx = 0.2, lz = -0.4; return { x: S.px + lx * c + lz * sn, y: 0.8 + groundY(), z: S.pz - lx * sn + lz * c }; };
@@ -96,7 +107,12 @@ function makeFish(lie, old) {
     const bonus = lie.type === 'Gumpen' ? 0.18 : 0;
     len = Math.round(sp.min + (sp.max - sp.min) * clamp(Math.pow(Math.random(), 1.9) * rv.sizeMul + bonus * Math.random() + rv.sizeMul * 0.12, 0, 1));
   }
-  const f = { lie, x: lie.x, z: lie.z, species, len, wary: 0, spooked: 0, old: !!old, phase: Math.random() * 6, match: 1, rise: !old && Math.random() < 0.22, riseT: 8 + Math.random() * 45, ringT: 1 + Math.random() * 3 };
+  const f = { lie, x: lie.x, z: lie.z, species, len, wary: 0, spooked: 0, old: !!old, phase: Math.random() * 6, match: 1, rise: false, riseT: 0, ringT: 1 + Math.random() * 3 };
+  // nicht jeder Fisch steigt: Barben bleiben am Grund, Huchen und Marmorata kommen selten hoch, Aeschen fast immer
+  f.riser = !old && Math.random() < ({ barbe: 0, huchen: 0.25, marmorata: 0.45, seeforelle: 0.6, aesche: 0.9 }[species] ?? 0.72);
+  f.rise = f.riser && Math.random() < 0.3;
+  // zufaellige Phase im jeweiligen Abschnitt, sonst steigen kurz nach dem Betreten des Reviers alle Fische gleichzeitig
+  f.riseT = f.rise ? 5 + Math.random() * 45 : (10 + Math.random() * 105) / (cond ? cond.light.act : 1);
   f.mesh = world.makeFish(len, species);
   placeFish(f);
   return f;
@@ -153,7 +169,7 @@ function doCast(pt) {
 }
 // Haltung von Rute und Schnur waehrend des Wurfs. Jeder Schlag bewegt die Rute zwischen 10 und 1 Uhr;
 // die Schnur rollt als Schlaufe ab: das untere Bein liegt schon gestreckt, das obere holt noch auf.
-const _cpts = Array.from({ length: 22 }, () => new THREE_V3());
+const _cpts = Array.from({ length: 64 }, () => new THREE_V3());
 function castPose(h, TP0) {
   const c = S.cast, tt = Math.min(c.t, 1) * c.T;
   let acc = 0, k = 0;
@@ -190,7 +206,7 @@ function updateCast(dt) {
     const tp = curTippet(), fly = curFly();
     S.sinkRate = curBead().sink * fly.sink * tp.sink;
     for (const f of fish) f.match = flyMatch(fly, f);
-    S.indSunk = false; S.indLow = false;
+    S.indSunk = false; S.indLow = false; S.rockHold = null;
     if (rigMode() === 'indi') {   // traegt der Indikator die Nymphe? Und wie laut setzt er auf?
       const k = curInd(), load = curBead().sink * fly.sink;
       S.indSunk = load > k.cap; S.indLow = !S.indSunk && load > k.cap * 0.85;
@@ -244,6 +260,30 @@ function updateDrift(dt) {
     return d / S.L;
   };
   S.s = constrain(true);
+  // Indikator / Trockenfliege: die Schnur liegt auf dem Wasser. Kreuzt sie einen Stein, bleibt sie dort haengen;
+  // die Fliege kann dann nur noch so weit treiben, wie Schnur hinter dem Stein liegt - danach wird sie gebremst und furcht.
+  if (!euro && !held) {
+    const ax = TP.x + (n.x - TP.x) * 0.3, az = TP.z + (n.z - TP.z) * 0.3, vx = n.x - ax, vz = n.z - az, ll = vx * vx + vz * vz || 1;
+    let hit = null, hx = 0, hz = 0;
+    for (const k of river.rocks) {
+      const t = clamp(((k.x - ax) * vx + (k.z - az) * vz) / ll, 0, 1), cx = ax + vx * t, cz = az + vz * t;
+      const dc = Math.hypot(cx - k.x, cz - k.z);
+      if (t < 0.96 && dc < (k.vr || k.r * 1.2) && dc < rockR(k, cx - k.x, cz - k.z) * 0.95) {
+        // nur wenn die Schnur dort wirklich aufliegt: nahe der Rutenspitze haengt sie noch hoch in der Luft ueber dem Stein
+        const Dl = Math.hypot(n.x - TP.x, n.z - TP.z) || 1, tdl = Math.min(Dl * 0.45, 2.6), sl = Math.hypot(cx - TP.x, cz - TP.z), yl = sl < tdl ? TP.y * Math.pow(1 - sl / tdl, 1.7) : 0, top = world.rockTop(k, cx, cz);
+        if (top !== null && yl <= top + 0.05) { hit = k; hx = cx; hz = cz; break; }
+      }   // die Schnur liegt quer ueber diesem Stein
+    }
+    if (!hit) S.rockHold = null;
+    else {
+      if (!S.rockHold || S.rockHold.k !== hit) S.rockHold = { k: hit, x: hx, z: hz, len: Math.hypot(n.x - hx, n.z - hz) + 0.25 };
+      const h = S.rockHold, dx = h.x - n.x, dz = h.z - n.z, d = Math.hypot(dx, dz);
+      if (d > h.len) {
+        const ex = d - h.len; n.x += dx / d * ex; n.z += dz / d * ex; pull = Math.max(pull, Math.min(1.5, ex / dt));
+        if (!S.rockHint) { S.rockHint = true; toast(T("Die Schnur liegt über einem Stein und hält die Fliege fest – sie furcht. Rute heben und so werfen, dass kein Stein dazwischen liegt."), 5200); }
+      }
+    }
+  }
   if (!held) {
     // Kontakt (Anzeige mittig) hält die Nymphe knapp über Grund in der Schwebe; nur lose Schnur lässt sie aufsetzen, Zug hebt sie
     const sink = S.sinkRate / (1 + 0.9 * v), lift = Math.min(1.1, Math.max(0, S.pullS - 0.08) * 1.3);
@@ -254,6 +294,15 @@ function updateDrift(dt) {
     else if (indi) nd = Math.min(n.d + (sink - lift * 0.5) * dt, Math.min(save.rig.depth, bottom));   // haengt in der eingestellten Tiefe unter dem Indikator
     n.d = clamp(nd, 0, bottom);
     constrain(false);
+    if (!euro) for (const k of river.rocks) {   // Fliege und Indikator schwimmen um den Stein herum, nie darueber
+      const dx = n.x - k.x, dz = n.z - k.z, d = Math.hypot(dx, dz); if (d > (k.vr || k.r * 1.3) + 0.1) continue;
+      const R = rockR(k, dx, dz) + 0.05;
+      if (d < R) {   // die Stroemung schiebt sie seitlich am Stein vorbei, statt sie davor festzuhalten
+        const sg = S.rockHold && S.rockHold.k === k ? (S.rockHold.x >= k.x ? 1 : -1) : dx >= 0 ? 1 : -1;   // haengt die Schnur am Stein, rutscht die Fliege auf deren Seite vorbei
+        const ex = dx + sg * Math.max(0.45, v) * dt * 2.2, e = Math.hypot(ex, dz) || 1;
+        n.x = k.x + ex / e * R; n.z = k.z + dz / e * R;
+      }
+    }
     if (river.depthAt(n.x, n.z) < 0.05) return endDrift();
   }
   S.pullS += (pull - S.pullS) * Math.min(1, dt * 8);
@@ -745,6 +794,8 @@ const canMenu = () => S.mode === 'idle' && !modalOpen();
 $('btnJournal').addEventListener('click', () => canMenu() && showJournal());
 $('btnBox').addEventListener('click', () => canMenu() && showBox());
 $('btnRig').addEventListener('click', () => canMenu() && showRig());
+const togglePov = () => { save.set.pov = !save.set.pov; world.setPov(save.set.pov); $('btnPov').classList.toggle('on', save.set.pov); persist(); };
+$('btnPov').addEventListener('click', togglePov);
 $('rig').addEventListener('click', () => canMenu() && showRig());
 $('btnLog').addEventListener('click', () => canMenu() && showLog());
 $('btnSet').addEventListener('click', () => canMenu() && showSettings());
@@ -765,8 +816,11 @@ $('btnRestart').addEventListener('click', () => { if (S.mode !== 'idle') return;
 function pressDown() { sfx.start(); if (S.mode === 'fight') S.hold = true; else if (S.mode === 'drift') strike(); }
 function pressUp() { S.hold = false; }
 const sb = $('strike');
-sb.addEventListener('pointerdown', e => { e.preventDefault(); sb.setPointerCapture?.(e.pointerId); sb.classList.add('down'); pressDown(); });
+sb.addEventListener('pointerdown', e => { e.preventDefault(); try { sb.setPointerCapture(e.pointerId); } catch (err) { /* */ } sb.classList.add('down'); pressDown(); });
 for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) sb.addEventListener(ev, () => { sb.classList.remove('down'); pressUp(); });
+const sbL = $('strikeL');   // zweiter Drillknopf fuer die linke Hand
+sbL.addEventListener('pointerdown', e => { e.preventDefault(); try { sbL.setPointerCapture(e.pointerId); } catch (err) { /* */ } sbL.classList.add('down'); pressDown(); });
+for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) sbL.addEventListener(ev, () => { sbL.classList.remove('down'); pressUp(); });
 
 // Zeiger auf der Wasserfläche: zielen, Rute führen, Wisch-Anhieb, analoger Drill
 const ptr = { id: null, x: 0, y: 0, ax: 0, ay: 0, hist: [], look: false };
@@ -830,6 +884,7 @@ window.addEventListener('keydown', e => {
   else if (KEYMAP[e.code]) { const k = KEYMAP[e.code]; K[k] = 1; if (S.mode === 'fight') { if (k === 'left') S.rodX = -1.6; if (k === 'right') S.rodX = 1.6; } }
   else if (e.code === 'KeyF') canMenu() && showBox();
   else if (e.code === 'KeyR') canMenu() && showRig();
+  else if (e.code === 'KeyV') togglePov();
   else if (e.code === 'KeyT') canMenu() && showJournal();
 });
 window.addEventListener('keyup', e => { if (e.code === 'Space') pressUp(); if (KEYMAP[e.code]) K[KEYMAP[e.code]] = 0; });
@@ -858,25 +913,61 @@ function drawLupe() {
     c.beginPath(); for (let i = 0; i <= 8; i++) { const p = P(clamp(t0 + (t1 - t0) * i / 8, 0, 1.25)); i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y); }
     c.strokeStyle = col; c.lineWidth = lw; c.lineCap = 'butt'; c.stroke();
   };
-  seg(0, 1.25, 'rgba(240,240,220,.8)', 2);
-  if (isEuro()) { seg(0.28 + off, 0.5 + off, '#ff2f7a', 8); seg(0.5 + off, 0.72 + off, '#f8e71c', 8); seg(0.72 + off, 0.92 + off, '#ff2f7a', 8); }
-  else if (drift) {   // Bissanzeiger bzw. Trockenfliege: taucht beim Biss ab
-    const dryL = isDry(), r = dryL ? 5 : 6 + curInd().size * 110, yy = wy - r * 0.45 + kick * (r * 2.2) + (S.indSunk ? r * 1.6 : S.indLow ? r * 0.5 : 0);
-    c.fillStyle = dryL ? curFly().col : curInd().col; c.beginPath(); c.arc(xe, yy, r, 0, 7); c.fill();
-    if (dryL) { c.strokeStyle = '#f4f4f0'; c.lineWidth = 3; c.beginPath(); c.moveTo(xe, yy - 3); c.lineTo(xe - 3, yy - 15); c.stroke(); }
+  if (isEuro()) {
+    seg(0, 1.25, 'rgba(240,240,220,.8)', 2);
+    seg(0.28 + off, 0.5 + off, '#ff2f7a', 8); seg(0.5 + off, 0.72 + off, '#f8e71c', 8); seg(0.72 + off, 0.92 + off, '#ff2f7a', 8);
+    c.fillStyle = 'rgba(28,95,88,.72)'; c.fillRect(0, wy, W, W - wy);
+    c.strokeStyle = 'rgba(255,255,255,.6)'; c.lineWidth = 2; c.beginPath(); c.arc(xe, wy, 6 + kick * 8, Math.PI, 0); c.stroke();
+  } else {
+    // Trockenfliege / Indikator: Blick flach uebers Wasser. Die Schnur liegt auf der Oberflaeche, vorn schwimmt die Fliege bzw. der Bissanzeiger.
+    const dryL = isDry(), fx = 122, sy = wy, bite = drift && !!S.bite, drag = drift ? clamp((S.g - 0.25) / 0.6, 0, 1) : 0, bob = Math.sin(S.t * 3.1) * 1.2;
+    const lineCol = dryL ? '#cfe08a' : '#ff9a3a';
+    // Schnur auf dem Wasser: bei freier Drift in lockeren Boegen, bei Zug gestreckt
+    c.lineCap = 'round'; c.strokeStyle = lineCol; c.lineWidth = 3.2; c.beginPath(); c.moveTo(-6, sy + 26);
+    c.bezierCurveTo(26, sy + 22 - (1 - drag) * 12, 44, sy + 10 + (1 - drag) * 9, 70, sy + 5);
+    c.stroke();
+    c.strokeStyle = 'rgba(236,236,220,.75)'; c.lineWidth = 1.2; c.beginPath(); c.moveTo(70, sy + 5); c.quadraticCurveTo(96, sy + 1 + (1 - drag) * 3, fx - 8, sy + 0.5); c.stroke();
+    if (drag > 0.05) {   // die Fliege furcht: Kielwellen hinter ihr
+      c.strokeStyle = `rgba(255,255,255,${0.25 + drag * 0.6})`; c.lineWidth = 1.6;
+      for (const sg of [-1, 1]) { c.beginPath(); c.moveTo(fx + 6, sy + 1); c.lineTo(fx + 22 + drag * 34, sy + sg * (3 + drag * 9) + 2); c.stroke(); }
+    }
+    if (bite) {          // genommen: die Fliege ist weg, nur der Ring bleibt
+      const k = (S.bite.t * 2.2) % 1;
+      c.strokeStyle = `rgba(255,255,255,${0.9 - k * 0.7})`; c.lineWidth = 2.4;
+      for (const rr of [10 + k * 26, 4 + k * 14]) { c.beginPath(); c.ellipse(fx, sy + 2, rr, rr * 0.3, 0, 0, 7); c.stroke(); }
+      if (!dryL) { c.fillStyle = curInd().col; c.globalAlpha = 0.45; c.beginPath(); c.arc(fx, sy + 16, 6 + curInd().size * 90, 0, 7); c.fill(); c.globalAlpha = 1; }   // Indikator unter Wasser gezogen
+    } else if (dryL) {
+      const f = curFly(), y0 = sy - 3 + bob * 0.4;
+      c.save(); c.translate(fx, y0 - 2); c.rotate(drag * 0.25); c.scale(2, 2);
+      c.strokeStyle = '#1e1e1e'; c.lineWidth = 2; c.beginPath(); c.moveTo(-9, 1); c.lineTo(10, 1); c.arc(10, 8, 7, -Math.PI / 2, Math.PI * 0.7); c.stroke();   // Haken haengt im Film
+      c.strokeStyle = f.col; c.lineWidth = 5; c.beginPath(); c.moveTo(-4, 0); c.lineTo(11, 0); c.stroke();                                                    // Koerper
+      c.strokeStyle = '#5a4630'; c.lineWidth = 1; c.beginPath(); for (const a of [-0.3, 0, 0.3]) { c.moveTo(12, 0); c.lineTo(24, a * 12 - 1); } c.stroke();     // Schwanz
+      c.strokeStyle = '#7a5a36'; c.lineWidth = 1; c.beginPath(); for (let i = 0; i < 16; i++) { const a = i / 16 * 6.283; c.moveTo(-6, 0); c.lineTo(-6 + Math.cos(a) * 4, Math.sin(a) * 11); } c.stroke();   // Hechel
+      c.fillStyle = f.id === 'elk' || f.id === 'stimu' ? '#d8c08a' : '#f6f6f0';
+      c.beginPath(); if (f.id === 'elk' || f.id === 'stimu') { c.moveTo(-8, -2); c.quadraticCurveTo(4, -15, 18, -5); c.quadraticCurveTo(4, -5, -8, -2); } else { c.moveTo(-7, -2); c.lineTo(-10, -19); c.lineTo(-3, -19); c.closePath(); } c.fill();   // Fluegel
+      c.restore();
+    } else {
+      const k = curInd(), r = 5 + k.size * 95, yy = sy - r * 0.3 + bob * 0.5 + (S.indSunk ? r * 1.5 : S.indLow ? r * 0.45 : 0) + kick * r * 0.8;
+      c.strokeStyle = 'rgba(236,236,220,.6)'; c.lineWidth = 1; c.beginPath(); c.moveTo(fx, yy); c.lineTo(fx + 5, sy + 60); c.stroke();                     // Vorfach hinunter zur Nymphe
+      c.fillStyle = k.col; c.beginPath(); c.arc(fx, yy, r, 0, 7); c.fill();
+      c.fillStyle = 'rgba(255,255,255,.35)'; c.beginPath(); c.arc(fx - r * 0.3, yy - r * 0.35, r * 0.3, 0, 7); c.fill();
+    }
+    c.fillStyle = 'rgba(28,95,88,.5)'; c.fillRect(0, wy + 3, W, W - wy);
   }
-  c.fillStyle = 'rgba(28,95,88,.72)'; c.fillRect(0, wy, W, W - wy);
-  c.strokeStyle = 'rgba(255,255,255,.6)'; c.lineWidth = 2; c.beginPath(); c.arc(xe, wy, 6 + kick * 8, Math.PI, 0); c.stroke();
   c.restore();
 }
 function updateGauges() {
   const drift = S.mode === 'drift';
   $('btnRestart').classList.toggle('show', S.mode === 'idle' && S.pz < Z_MIN + 4 && !modalOpen());
+  const euroG = isEuro();
   $('read').classList.toggle('off', !drift);
   $('gauge').classList.toggle('off', !drift);
+  $('depthG').style.visibility = isDry() ? 'hidden' : '';          // an der Oberflaeche gibt es keine Tiefe zu lesen
+  $('gauge').classList.toggle('driftmode', !euroG);
   $('strike').classList.toggle('off', !drift && S.mode !== 'fight');
-  $('gMark').style.left = (50 + (drift ? S.g : 0) * 46) + '%';
-  $('gauge').classList.toggle('bad', drift && Math.abs(S.g) > 0.4);
+  // Euro: lose - Kontakt - Zug. Indikator und Trockenfliege: wie natuerlich die Fliege treibt; lose Schnur ist dort richtig, nur Zug schadet
+  $('gMark').style.left = (euroG ? 50 + (drift ? S.g : 0) * 46 : 6 + (drift ? clamp(S.g, 0, 1) : 0) * 88) + '%';
+  $('gauge').classList.toggle('bad', drift && (euroG ? Math.abs(S.g) > 0.4 : S.g > 0.4));
   const bottom = drift ? Math.max(0.06, river.depthAt(S.nymph.x, S.nymph.z)) : 1;
   const fr = drift ? clamp(S.nymph.d / bottom, 0, 1) : 0;
   const dot = $('depthDot'); dot.style.top = (fr * 92) + '%';
@@ -889,6 +980,10 @@ function updateGauges() {
     $('tLimit').style.left = lim * 100 + '%';
     $('sFill').style.width = clamp(F.stam, 0, 1) * 100 + '%';
     // Pfeil statt Text: im Drill schaut man auf den Fisch, nicht auf Wörter
+    // Rutenstellung als Stick in der Mitte: seitlich = Seitendruck, nach unten = Druck; die Haelfte, in die du ziehen sollst, leuchtet
+    const pad = $('rodPad'), R = pad.offsetWidth / 2 || 52;
+    $('rodKnob').style.transform = `translate(${clamp(S.rodX / 1.9, -1, 1) * R * 0.55}px,${clamp(F.p || 0, 0, 1) * R * 0.55}px)`;
+    pad.className = F.landing > 0 ? '' : (F.side > 0 ? 'wantR' : 'wantL') + (F.good ? ' good' : '');
     const dir = F.landing > 0 ? '' : F.jump > 0 ? 'up' : (F.p || 0) < 0.08 ? 'down' : F.side > 0 ? 'right' : 'left';
     $('fightArrow').className = dir + (F.good && (dir === 'left' || dir === 'right') ? ' good' : '');
   }
@@ -912,7 +1007,7 @@ function frame(now) {
       if (S.fight && S.fight.f === f) continue;
       f.mesh.visible = true;
       // Steigen: jeder Fisch kommt von Zeit zu Zeit an die Oberflaeche und frisst dort - dann nimmt er nur Trockenfliegen
-      if (!f.old) {
+      if (!f.old && f.riser) {
         f.riseT -= dt;
         if (f.riseT <= 0) {
           f.rise = !f.rise; f.riseT = f.rise ? 25 + Math.random() * 25 : (45 + Math.random() * 70) / cond.light.act; f.ringT = 0.6;
@@ -955,7 +1050,25 @@ function frame(now) {
     const cp = castPose(h, TP);
     TP.x = cp.tip.x; TP.y = cp.tip.y; TP.z = cp.tip.z; target = cp.pull; bend = cp.bend; linePath = cp.pts;
   } else if (S.mode === 'drift') {
-    target = { x: S.nymph.x, y: isEuro() ? -S.nymph.d : 0.02, z: S.nymph.z }; s = S.s; bend = 0.05 + Math.min(0.35, S.pullS * 0.3) + (S.bite || S.snag ? 0.25 : 0);
+    target = { x: S.nymph.x, y: isEuro() ? -S.nymph.d : 0.02, z: S.nymph.z }; s = S.s;
+    if (!isEuro()) {   // Flugschnur faellt von der Rutenspitze aufs Wasser und treibt dort mit, lose in einem Bogen stromab
+      // Liegt sie ueber einem Stein, bleibt sie dort liegen: der Verlauf geht ueber die Auflagestelle, und die Schnur schmiegt sich an die echte Steinoberflaeche
+      const n = S.nymph, h = S.rockHold, N = _cpts.length, slack = h ? 0 : Math.min(1.2, (1 - Math.min(1, S.s)) * 2.2);
+      const ax = h ? h.x : n.x, az = h ? h.z : n.z, L1 = Math.hypot(ax - TP.x, az - TP.z), L2 = h ? Math.hypot(n.x - ax, n.z - az) : 0, D = L1 + L2 || 1, td = Math.min(D * 0.45, 2.6);
+      for (let i = 0; i < N; i++) {
+        const f = i / (N - 1), dist = f * D, q = _cpts[i];
+        if (dist <= L1) { const u = L1 > 1e-4 ? dist / L1 : 1; q.set(TP.x + (ax - TP.x) * u, 0.015, TP.z + (az - TP.z) * u); }
+        else { const u = (dist - L1) / (L2 || 1); q.set(ax + (n.x - ax) * u, 0.015, az + (n.z - az) * u); }
+        if (dist < td) q.y = 0.015 + TP.y * Math.pow(1 - dist / td, 1.7);
+        else q.z += Math.sin(Math.PI * (dist - td) / Math.max(0.01, D - td)) * slack * 0.55;
+        for (const k of river.rocks) {
+          if (Math.hypot(q.x - k.x, q.z - k.z) > (k.vr || k.r * 1.3) + 0.02) continue;
+          const top = world.rockTop(k, q.x, q.z);
+          if (top !== null && q.y < top + 0.012) q.y = top + 0.012;   // liegt auf dem Stein auf: nicht durch, nicht darunter, nicht schwebend
+        }
+      }
+      linePath = _cpts;
+    } bend = 0.05 + Math.min(0.35, S.pullS * 0.3) + (S.bite || S.snag ? 0.25 : 0);
     focus = target;
   } else if (S.mode === 'fight') {
     const p = fightPos(); target = { x: p.x, y: -0.05, z: p.z }; bend = clamp(S.fight.ten, 0.1, 1); focus = p;
@@ -966,17 +1079,26 @@ function frame(now) {
   if (linePath) world.setLinePath(linePath);
   { const ind = rigMode() === 'indi' && S.mode === 'drift';
     if (ind) world.nymph.position.set(S.nymph.x, -S.nymph.d, S.nymph.z);
-    world.setIndicator(ind ? S.nymph : null, S.bite || S.snag ? -0.06 : S.indSunk ? -0.05 : (S.indLow ? 0.005 : 0.03) + Math.sin(S.t * 5) * 0.006 - S.kick * 0.04); }
+    world.dryFly.visible = isDry() && !(S.mode === 'drift' && S.bite) && S.mode !== 'fight';   // genommen: die Fliege ist von der Oberflaeche verschwunden
+    world.setIndicator(ind ? S.nymph : null, S.bite || S.snag ? -0.13 : S.indSunk ? -0.05 : (S.indLow ? 0.005 : 0.03) + Math.sin(S.t * 5) * 0.006 - S.kick * 0.04); }
   world.setAim(S.mode === 'idle' ? S.aim : null);
   if (S.mode === 'drift') {
     const k = isEuro() ? TP.y / (TP.y + S.nymph.d + 1e-4) : 1;
-    world.setEntry(TP.x + (S.nymph.x - TP.x) * k, TP.z + (S.nymph.z - TP.z) * k, S.bite && save.set.help ? 'bite' : Math.abs(S.g) < 0.4 ? 'ok' : S.g < 0 ? 'slack' : 'drag');
+    world.setEntry(TP.x + (S.nymph.x - TP.x) * k, TP.z + (S.nymph.z - TP.z) * k, S.bite && save.set.help ? 'bite' : (isEuro() ? Math.abs(S.g) < 0.4 : S.g < 0.4) ? 'ok' : S.g < 0 ? 'slack' : 'drag');
   } else world.setEntry(0, 0, null);
   S.yaw += (K.tl - K.tr) * 1.7 * dt;
-  if (S.mode === 'fight') {   // im Drill dreht die Kamera zurück stromauf – links/rechts muss stimmen
-    S.yaw = ((S.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
-    const k = Math.min(1, dt * 4); S.yaw -= S.yaw * k; S.pitch -= S.pitch * k;
-    if (Math.abs(S.yaw) < 0.002) S.yaw = 0;
+  // Die Kamera folgt von selbst: im Wurf dem Ziel, in der Drift der Fliege, im Drill dem Fisch - weich nachgefuehrt
+  {
+    const wrap = a => ((a + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    let tgt = null, part = 0.85, lim = 1.5, rate = 1.6;
+    if (S.mode === 'drift') tgt = S.nymph;
+    else if (S.mode === 'cast') tgt = { x: S.cast.tx, z: S.cast.tz };
+    else if (S.mode === 'fight') { tgt = fightPos(); part = 0.7; lim = 0.95; rate = 2.2; }   // nur teilweise, damit links/rechts fuer den Seitendruck stimmt
+    if (tgt && Math.hypot(tgt.x - S.px, tgt.z - S.pz) > 0.8) {
+      const want = clamp(wrap(Math.atan2(-(tgt.x - S.px), -(tgt.z - S.pz)) - S.yb) * part, -lim, lim);
+      S.yaw = wrap(S.yaw); S.yaw += wrap(want - S.yaw) * Math.min(1, dt * rate);
+      if (S.mode === 'fight') S.pitch -= S.pitch * Math.min(1, dt * 3);
+    }
   }
   S.yb += (Math.atan(river.dcx(S.pz)) * 0.85 - S.yb) * Math.min(1, dt * 2);   // Grundblick folgt dem Flusslauf
   world.yaw = S.yaw + S.yb; world.pitch = S.pitch;
@@ -1003,7 +1125,8 @@ function applyLang() {
   set('.tbox .pre', 'Ein Euro-Nymphing-Abenteuer'); set('.tbox .sub', 'Das Erbe der Smaragda');
   set('.tbox p', 'Opas Rute. Opas Fliegendose. Fünf Strecken eines smaragdgrünen Flusses – und ein Fisch, den er nie landen konnte.');
   set('#btnStart', save.started ? 'Weiterfischen' : 'Ans Wasser'); set('#btnNew', 'Neues Spiel');
-  set('#gauge .l', 'lose'); set('#gauge .c', 'Kontakt'); set('#gauge .r', 'Zug');
+  set('#rodPad small', 'Rute'); set('#strikeL', 'DRILL');
+  set('#gauge .l', 'lose'); set('#gauge .c', 'Kontakt'); set('#gauge .r', 'Zug'); gaugeLabels();
   set('#fightUI .lab', 'Schnurspannung', 0); set('#fightUI .lab', 'Kraft des Fisches', 1);
   set('#btnRestart', '↺ Strecke von vorn beginnen'); set('#joy small', 'waten'); set('#btnStone small', 'Stein');
   set('#strike', S.mode === 'fight' ? 'DRILL' : 'ANHIEB');
@@ -1036,6 +1159,7 @@ $('langs').addEventListener('click', e => { const b = e.target.closest('[data-la
   }
   if (ch) persist();
 })();
+world.setPov(save.set.pov); $('btnPov').classList.toggle('on', !!save.set.pov);
 applyRig();
 setLang(getLang()); applyLang();
 
