@@ -18,7 +18,9 @@ export class Sfx {
   }
   setOn(v) { this.on = v; if (this.master) this.master.gain.value = v ? this.vol : 0; }
   setVol(v) { this.vol = v; if (this.master) this.master.gain.value = this.on ? v : 0; }
-  setRiver(speed) { if (this.riverGain) this.riverGain.gain.setTargetAtTime(0.12 + Math.min(0.3, speed * 0.2), this.ctx.currentTime, 0.5); }
+  setRiver(speed) { this._rb = 0.12 + Math.min(0.3, speed * 0.2); this._near = 0; if (this.riverGain) this.riverGain.gain.setTargetAtTime(this._rb, this.ctx.currentTime, 0.5); }
+  // Naehe zu einem Wasserfall (0..1): das Rauschen schwillt an
+  setNear(k) { if (!this.riverGain || Math.abs(k - (this._near || 0)) < 0.03) return; this._near = k; this.riverGain.gain.setTargetAtTime((this._rb || 0.2) * (1 + k * 1.6), this.ctx.currentTime, 0.4); }
   tone(f0, f1, dur, vol = 0.2, type = 'sine', delay = 0) {
     if (!this.ctx || !this.on) return;
     const t = this.ctx.currentTime + delay, o = this.ctx.createOscillator(), g = this.ctx.createGain();

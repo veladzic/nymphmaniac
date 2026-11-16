@@ -193,7 +193,7 @@ export const REVIERE = [
     ],
   },
   {
-    id: 'gumpen', season: 1, bend: [4.5, 0.05], name: 'Der Smaragdgumpen', sub: 'Das Reich des Alten',
+    id: 'gumpen', fall: 2.6, season: 1, bend: [4.5, 0.05], name: 'Der Smaragdgumpen', sub: 'Das Reich des Alten',
     seed: 77, width: 13, depth: 1.2, speed: 0.8, rocks: 18, rockSize: 0.8, pools: 2, poolDepth: 0.6,
     bigPool: { x: -1.6, z: -34, r: 4.2, d: 0.95 },
     bankSlope: 0.5, bankMax: 7, trees: 1.0,
@@ -207,7 +207,7 @@ export const REVIERE = [
     ],
   },
   {
-    id: 'quellbach', season: 2, name: "Der Quellbach", sub: "Klein und kalt",
+    id: 'quellbach', fall: 2.8, season: 2, name: "Der Quellbach", sub: "Klein und kalt",
     seed: 91, width: 9, depth: 0.5, speed: 0.95, rocks: 40, rockSize: 0.45, pools: 4, poolDepth: 0.45, bend: [4, 0.08],
     bankSlope: 0.9, bankMax: 8, trees: 0.3, leafShare: 0.05,
     pal: { grass: 0x6f9a4a, rock: 0x86888a, gravel: 0xb4ae9c, bed: 0x3f5f52, shallow: 0x9aeadc, deep: 0x1f8a7e, skyTop: 0x3f8fd8, skyBot: 0xcfe8f5, fog: 0xc8e2ec },
@@ -220,7 +220,7 @@ export const REVIERE = [
     ],
   },
   {
-    id: 'wasserfall', season: 2, name: "Der Wasserfallgumpen", sub: "Tief unterm Sturz",
+    id: 'wasserfall', fall: 7.5, season: 2, name: "Der Wasserfallgumpen", sub: "Tief unterm Sturz",
     seed: 97, width: 10, depth: 1.0, speed: 0.9, rocks: 22, rockSize: 0.8, pools: 2, poolDepth: 0.7, bend: [3, 0.07],
     bigPool: { x: -1, z: -40, r: 3.6, d: 1.0 },
     bankSlope: 2.6, bankMax: 16, trees: 0.4, cliff: true,
@@ -234,7 +234,7 @@ export const REVIERE = [
     ],
   },
   {
-    id: 'moorbach', season: 2, name: "Der Moorbach", sub: "Dunkles Wasser",
+    id: 'moorbach', fall: 0.7, season: 2, name: "Der Moorbach", sub: "Dunkles Wasser",
     seed: 109, width: 10, depth: 0.9, speed: 0.45, rocks: 8, rockSize: 0.4, pools: 4, poolDepth: 0.6, bend: [7, 0.06],
     bankSlope: 0.12, bankMax: 1.5, trees: 0.35, leafShare: 0.3, ground: [1.12, 0.95, 0.8],
     pal: { grass: 0x7a8c48, rock: 0x7c786c, gravel: 0x9c8c6a, bed: 0x4a4028, shallow: 0xb4a468, deep: 0x5c4a24, skyTop: 0x4a90d4, skyBot: 0xd4e8f0, fog: 0xccdcd8 },
@@ -273,7 +273,7 @@ export const REVIERE = [
     ],
   },
   {
-    id: 'altarm', season: 3, name: "Der Altarm", sub: "Stilles Wasser",
+    id: 'altarm', fall: 0.7, season: 3, name: "Der Altarm", sub: "Stilles Wasser",
     seed: 137, width: 15, depth: 1.3, speed: 0.35, rocks: 6, rockSize: 0.5, pools: 5, poolDepth: 0.7, bend: [8, 0.05],
     bankSlope: 0.12, bankMax: 1.6, trees: 1.0, leafShare: 0.8, leaf: [1.6, 0.92, 0.38], veg: [1.25, 0.96, 0.6], ground: [1.2, 0.94, 0.74],
     pal: { grass: 0x98904a, rock: 0x88857a, gravel: 0xb4a684, bed: 0x485c46, shallow: 0x9cd6b0, deep: 0x2a7860, skyTop: 0x5a9ad8, skyBot: 0xe2eef2, fog: 0xd8e4e0 },
@@ -299,7 +299,7 @@ export const REVIERE = [
     ],
   },
   {
-    id: 'wehr', season: 3, name: "Das alte Wehr", sub: "Weißes Wasser",
+    id: 'wehr', fall: 2.4, season: 3, name: "Das alte Wehr", sub: "Weißes Wasser",
     seed: 149, width: 13, depth: 1.5, speed: 1.35, rocks: 34, rockSize: 1.0, pools: 2, poolDepth: 0.8, bend: [3, 0.06],
     bankSlope: 0.6, bankMax: 5, trees: 0.7, leafShare: 0.6, leaf: [1.5, 0.95, 0.42], veg: [1.2, 0.97, 0.65], ground: [1.15, 0.95, 0.78],
     pal: { grass: 0x8a8a48, rock: 0x7a7c7e, gravel: 0xa8a090, bed: 0x345a50, shallow: 0x8fe0d0, deep: 0x16746e, skyTop: 0x4a90d4, skyBot: 0xd4e8f0, fog: 0xc8dce0 },

@@ -23,6 +23,7 @@ function boneAim(b, dirW) {
   b.updateMatrixWorld(true);
 }
 const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const fallHk = h => h * 0.2;   // Lautstaerke eines Falls aus seiner Hoehe
 const fbm = (x, y) => vnoise(x, y) * 0.55 + vnoise(x * 2.1 + 5, y * 2.1) * 0.28 + vnoise(x * 4.3, y * 4.3 + 9) * 0.17;
 
 function placeSeg(m, a, b, r) {
@@ -423,9 +424,45 @@ void main(){
   foam=max(foam,smoothstep(0.38,0.85,wk*1.1+(fine.b-0.5)*0.8)*0.85);
   col=mix(col,vec3(0.93,0.96,0.97)*(0.55+0.45*uSun),foam); a=max(a,foam*0.95);
   if(uFx<0.5) a*=smoothstep(0.0,0.06,d);
+  // Wasserfall: wo die Flaeche ueber eine Stufe kippt, laufen weisse Straehnen in der Fallrichtung herab
+  float fall=smoothstep(1.25,1.7,vFoam);
+  if(fall>0.){
+    float st=texture2D(uN,vec2(vW.x*0.5,vW.y*0.15+uTime*0.5)).r*0.6+texture2D(uN,vec2(vW.x*1.6,vW.y*0.4+uTime*0.85)).g*0.4;
+    vec3 fc=mix(body*0.95+vec3(0.06),vec3(0.95,0.97,0.98),smoothstep(0.36,0.66,st))*(0.6+0.4*uSun);
+    col=mix(col,fc,fall); a=max(a,fall);
+  }
   float ff=smoothstep(uFogNear,uFogFar,length(cameraPosition-vW));
   col=mix(col,uFog,ff);
   gl_FragColor=vec4(col,a);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}`;
+// Gischt: Tropfenwolken, die aus dem Fuss eines Falls aufsteigen und zurueckfallen (Bahn rein aus der Zeit berechnet)
+const SPRAY_VS = `
+attribute vec3 aV; attribute float aP; uniform float uTime,uScale; varying float vA; varying float vD;
+void main(){ float t=fract(uTime*0.42*(0.7+0.6*fract(aP*7.3))+aP);
+  vec3 p=position+aV*t+vec3(0.,-2.4*t*t,0.); vA=sin(t*3.1416)*(0.35+0.65*fract(aP*5.7));
+  vec4 mv=modelViewMatrix*vec4(p,1.); vD=-mv.z;
+  gl_PointSize=min(220.,(0.3+1.1*t)*(0.7+fract(aP*3.1))*uScale/max(0.6,-mv.z)); gl_Position=projectionMatrix*mv; }`;
+const SPRAY_FS = `
+uniform vec3 uCol,uFog; uniform float uOp,uFogNear,uFogFar; varying float vA; varying float vD;
+void main(){ float d=length(gl_PointCoord-0.5); float a=smoothstep(0.5,0.08,d)*vA*uOp; if(a<0.004) discard;
+  gl_FragColor=vec4(mix(uCol,uFog,smoothstep(uFogNear,uFogFar,vD)),a);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}`;
+// Seitlicher Wasserfall: ein Band, das der Uferwand folgt; weisse Straehnen laufen daran herab
+const FALL_VS = `
+attribute float aFade; varying vec2 vUv; varying float vFade; varying float vD;
+void main(){ vUv=uv; vFade=aFade; vec4 mv=modelViewMatrix*vec4(position,1.); vD=-mv.z; gl_Position=projectionMatrix*mv; }`;
+const FALL_FS = `
+uniform sampler2D uN; uniform float uTime,uOff,uFogNear,uFogFar; uniform vec3 uLight,uFog; varying vec2 vUv; varying float vFade; varying float vD;
+void main(){
+  float st=texture2D(uN,vec2(vUv.x*0.33+uOff,vUv.y*0.06-uTime*0.42)).r*0.6+texture2D(uN,vec2(vUv.x*0.85+uOff,vUv.y*0.17-uTime*0.8)).g*0.4;
+  float edge=smoothstep(0.,0.3,vUv.x)*smoothstep(1.,0.7,vUv.x);
+  float a=edge*smoothstep(0.2,0.55,st+0.22*edge)*vFade; if(a<0.01) discard;
+  vec3 col=mix(vec3(0.55,0.72,0.76),vec3(0.96,0.98,0.99),smoothstep(0.38,0.72,st))*uLight;
+  gl_FragColor=vec4(mix(col,uFog,smoothstep(uFogNear,uFogFar,vD)),a*0.94);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }`;
@@ -1139,9 +1176,11 @@ export class World {
       tp.setXYZ(i, x, h, z); tuv.setXY(i, x * 0.5, z * 0.5);
       const n = vnoise(x * 0.7, z * 0.7);
       let wG = 0, wP = 0, wR = 0;
-      if (h < 0.03) { tmp.setRGB(1, 1, 1).lerp(bedTint, Math.min(1, -h / 1.3)).multiplyScalar(0.95 + n * 0.2); wP = 1; }
-      else if (rv.cliff && h > 1.0) { const top = h > rv.bankMax * 0.86 ? 0.85 : 0; tmp.setRGB(1, 1, 1).multiplyScalar(0.7 + n * 0.3 + vnoise(x * 0.2, h * 0.9) * 0.3).lerp(grassTint, top); wR = 1 - top; wG = top; }
-      else { const g = smooth(0.22, 0.5, h + (n - 0.5) * 0.25); tmp.setRGB(1.04, 1.02, 0.98).lerp(_c.copy(grassTint).multiplyScalar(0.8 + fbm(x * 0.12, z * 0.12) * 0.45), g); wG = g; wP = 1 - g; }
+      const hl = z < -60 ? h - river.lift(z, -0.6, x) : h, face = z < -60 && river.falls.some(f => Math.abs(z - (f.z - 0.6)) < 2.3) && hl < 1.2;   // Hoehe ueber dem oertlichen Wasserspiegel; an der Stufe steht blanker Fels
+      if (face) { tmp.setRGB(1, 1, 1).multiplyScalar(0.62 + n * 0.3 + vnoise(x * 0.3, h * 1.1) * 0.25); wR = 1; }
+      else if (hl < 0.03) { tmp.setRGB(1, 1, 1).lerp(bedTint, Math.min(1, -hl / 1.3)).multiplyScalar(0.95 + n * 0.2); wP = 1; }
+      else if (rv.cliff && hl > 1.0) { const top = hl > rv.bankMax * 0.86 ? 0.85 : 0; tmp.setRGB(1, 1, 1).multiplyScalar(0.7 + n * 0.3 + vnoise(x * 0.2, h * 0.9) * 0.3).lerp(grassTint, top); wR = 1 - top; wG = top; }
+      else { const g = smooth(0.22, 0.5, hl + (n - 0.5) * 0.25); tmp.setRGB(1.04, 1.02, 0.98).lerp(_c.copy(grassTint).multiplyScalar(0.8 + fbm(x * 0.12, z * 0.12) * 0.45), g); wG = g; wP = 1 - g; }
       cols[i * 3] = tmp.r * tint[0]; cols[i * 3 + 1] = tmp.g * tint[1]; cols[i * 3 + 2] = tmp.b * tint[2];
       wgt[i * 3] = wG; wgt[i * 3 + 1] = wP; wgt[i * 3 + 2] = wR;
     }
@@ -1199,7 +1238,7 @@ export class World {
     const wg = new THREE.PlaneGeometry(rv.width + 0.4, Z1 - Z0, WX, WZ);
     wg.rotateX(-Math.PI / 2); wg.translate(0, 0, (Z0 + Z1) / 2);
     const wp = wg.attributes.position;
-    for (let i = 0; i < wp.count; i++) wp.setX(i, wp.getX(i) + river.cx(wp.getZ(i)));   // Wasserflaeche folgt dem Maeander
+    for (let i = 0; i < wp.count; i++) { const z = wp.getZ(i); const x = wp.getX(i) + river.cx(z); wp.setX(i, x); wp.setY(i, river.lift(z, 0, x)); }   // Wasserflaeche folgt dem Maeander und kippt ueber die Stufen
     const aD = new Float32Array(wp.count), aS = new Float32Array(wp.count), aF = new Float32Array(wp.count), aB = new Float32Array(wp.count);
     for (let i = 0; i < wp.count; i++) {
       const x = wp.getX(i), z = wp.getZ(i);
@@ -1213,6 +1252,14 @@ export class World {
       }
       if (d < 0.12 && d > 0.01) f = Math.max(f, 0.35 * v / Math.max(0.3, rv.speed));
       aF[i] = f * clamp(0.45 + v / Math.max(0.4, rv.speed), 0.4, 1.2);
+      // Wasserfaelle: die kippende Flaeche selbst (Wert 2 = Fallstraehnen im Shader), darunter kochendes Weisswasser, das stromab auslaeuft
+      for (const fl of river.falls) {
+        const dz = z - fl.z;
+        if (Math.abs(dz) < 2 && river.lift(z - 0.25, 0, x) - river.lift(z + 0.25, 0, x) > fl.h * 0.07) { aF[i] = 2; aS[i] = Math.max(v, 2.2); }
+        else if (dz > 0 && dz < 14) { aF[i] = Math.max(aF[i], 1.15 * Math.exp(-Math.max(0, dz - 1.4) / (1.4 + fl.h * 0.9)) * (d > 0.02 ? 1 : 0)); aS[i] = Math.max(v, 1.4 * Math.exp(-dz / 5)); }
+        else if (dz < 0 && dz > -2.5) aF[i] = Math.max(aF[i], 0.5 * (1 + dz / 2.5));   // Zug auf die Kante zu
+      }
+      for (const sf of river.sideFalls) { const ex = river.cx(sf.z) + sf.side * (river.halfW - 0.6), dd = (x - ex) ** 2 + (z - sf.z - 0.3) ** 2; if (dd < 9 && d > 0.02) aF[i] = Math.max(aF[i], 1.1 * Math.exp(-dd / 1.3)); }
       aB[i] = smooth(river.halfW * 0.35, river.halfW, Math.abs(river.off(x, z))) * clamp(rv.trees + (rv.cliff ? 0.6 : 0), 0.3, 1);
     }
     wg.setAttribute('aDepth', new THREE.BufferAttribute(aD, 1)); wg.setAttribute('aSpeed', new THREE.BufferAttribute(aS, 1));
@@ -1263,6 +1310,60 @@ export class World {
       const h = river.heightAt(x, z);
       addRock(h < 0.05 ? wetG : dryG, x, h - 0.04, z, 0.12 + Math.pow(rnd(), 2) * 0.7, 0.8);
     }
+    // Wasserfaelle: Bloecke teilen die Kante in Rinnen, am Fuss liegt Sturzgeroell; Gischt steigt auf
+    const fogU = { uFog: { value: fog }, uFogNear: { value: this.scene.fog.near }, uFogFar: { value: this.scene.fog.far } };
+    const sprayCol = new THREE.Color(1, 1, 1).lerp(sunCol, 0.25).multiplyScalar(overcast ? 0.75 : 0.72 + 0.28 * Math.min(1, sunK));
+    const spray = (list, op) => {   // list: [{x,y,z, w (Breite quer), dir (Flussrichtung des Sprungs: x,z), h}]
+      const per = this.mobile ? 34 : 70, N = list.reduce((a, q) => a + Math.round(per * q.n), 0);
+      const P = new Float32Array(N * 3), V = new Float32Array(N * 3), A = new Float32Array(N); let k = 0;
+      for (const q of list) for (let j = 0, m = Math.round(per * q.n); j < m; j++, k++) {
+        const u = (rnd() - 0.5) * q.w, up = (0.9 + rnd() * 1.6) * q.pow, out = (0.3 + rnd() * 1.3) * q.pow;
+        P[k * 3] = q.x + q.ax * u; P[k * 3 + 1] = q.y + rnd() * 0.15; P[k * 3 + 2] = q.z + q.az * u;
+        V[k * 3] = q.dx * out + (rnd() - 0.5) * 0.7; V[k * 3 + 1] = up; V[k * 3 + 2] = q.dz * out + (rnd() - 0.5) * 0.7; A[k] = rnd();
+      }
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(P, 3)); g.setAttribute('aV', new THREE.BufferAttribute(V, 3)); g.setAttribute('aP', new THREE.BufferAttribute(A, 1));
+      const pts = new THREE.Points(g, new THREE.ShaderMaterial({ uniforms: { uTime: this.timeU, uScale: { value: window.innerHeight * 0.95 }, uCol: { value: sprayCol }, uOp: { value: op }, ...fogU }, vertexShader: SPRAY_VS, fragmentShader: SPRAY_FS, transparent: true, depthWrite: false }));
+      pts.frustumCulled = false; pts.renderOrder = 7; this.env.add(pts);
+    };
+    const sp = [];
+    for (const fl of river.falls) {
+      const top = river.lift(fl.z - 3), bot = river.lift(fl.z + 3);
+      for (let u = -river.halfW + 0.6; u < river.halfW - 0.4; u += 1.1 + rnd() * 1.4) {
+        if (rnd() < 0.42) continue;   // Luecken: dort stuerzt das Wasser durch
+        const z = fl.z - 0.5 + rnd() * 0.5, r = 0.5 + rnd() * 0.55 + fl.h * 0.07;
+        addRock(dryG, river.cx(z) + u, top - 0.5 - rnd() * 0.15, z, r, 1.05);
+      }
+      for (let j = 0; j < 7; j++) { const u = (rnd() - 0.5) * (rv.width - 1.5), z = fl.z + 1.0 + rnd() * 1.6; addRock(wetG, river.cx(z) + u, bot - 0.2, z, 0.3 + rnd() * 0.5, 0.75); }
+      for (const side of [-1, 1]) for (let j = 0; j < 3; j++) { const z = fl.z - 1.2 + j * 0.9, x = river.cx(z) + side * (river.halfW + 0.2 + rnd() * 0.8); addRock(dryG, x, river.heightAt(x, z) - 0.1, z, 0.6 + rnd() * 0.7 + fl.h * 0.08, 1); }
+      sp.push({ x: river.cx(fl.z + 0.9), y: bot + 0.05, z: fl.z + 0.9, w: rv.width - 1.2, ax: 1, az: 0, dx: 0, dz: 1, pow: 0.7 + Math.min(1.3, fl.h * 0.3), n: clamp(rv.width / 10 * (0.6 + fl.h * 0.25), 0.8, 3) });
+    }
+    // seitliche Faelle
+    this.fallSpots = [{ x: river.cx(river.falls[0].z), z: river.falls[0].z, k: clamp(0.5 + fallHk(river.falls[0].h), 0.5, 1.4) }];
+    const lightU = { value: new THREE.Color(1, 1, 1).lerp(sunCol, 0.3).multiplyScalar(overcast ? 0.7 : 0.6 + 0.4 * Math.min(1, sunK)) };
+    for (const sf of river.sideFalls) {
+      const pos = [], uvs = [], fade = [], idx = []; let len = 0, px = 0, py = 0, pz = 0, n = 0, topY = 0, topX = 0;
+      const hTop = Math.min(rv.bankMax * 0.8, 10), wob = rnd() * 6;
+      for (let o = 9; o >= -0.5; o -= 0.12) {
+        const zc = sf.z + Math.sin(o * 0.9 + wob) * 0.25, x = river.cx(zc) + sf.side * (river.halfW + o), h = river.heightAt(x, zc);
+        if (!n && h > hTop) continue;                                    // beginnt dort, wo die Wand die Fallhoehe erreicht
+        const y = Math.max(h, 0) + 0.07; if (n) len += Math.hypot(x - px, y - py, zc - pz); else { topY = y; topX = x; }
+        const w = sf.w * (0.75 + 0.5 * smooth(0, 3, len));               // unten faechert das Band auf
+        pos.push(x, y, zc - w / 2, x, y, zc + w / 2); uvs.push(0, len, 1, len); fade.push(0, 0);
+        px = x; py = y; pz = zc; n++;
+      }
+      if (n < 4) continue;
+      for (let j = 0; j < n; j++) { const f = smooth(0, 3, j) * (1 - smooth(n - 4, n - 1, j) * 0.35); fade[j * 2] = fade[j * 2 + 1] = f; if (j < n - 1) idx.push(j * 2, j * 2 + 1, j * 2 + 2, j * 2 + 1, j * 2 + 3, j * 2 + 2); }
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2)); g.setAttribute('aFade', new THREE.Float32BufferAttribute(fade, 1)); g.setIndex(idx);
+      const m = new THREE.Mesh(g, new THREE.ShaderMaterial({ uniforms: { uN: { value: this.noiseTex }, uTime: this.timeU, uOff: { value: rnd() }, uLight: lightU, ...fogU }, vertexShader: FALL_VS, fragmentShader: FALL_FS, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
+      m.renderOrder = 6; m.userData.air = true; m.frustumCulled = false; this.env.add(m);
+      for (const dz of [-1, 1]) { const rz = sf.z + dz * (sf.w * 0.5 + 0.3), rx = topX + sf.side * 0.15; addRock(dryG, rx, river.heightAt(rx, rz) - 0.15, rz, 0.4 + rnd() * 0.35, 0.9); }   // Quellfassung oben
+      for (let j = 0; j < 4; j++) { const z = sf.z + (rnd() - 0.5) * 2.4, x = river.cx(z) + sf.side * (river.halfW - 0.2 + rnd() * 0.9); addRock(wetG, x, river.heightAt(x, z) - 0.08, z, 0.25 + rnd() * 0.3, 0.8); }
+      const ex = river.cx(sf.z) + sf.side * (river.halfW - 0.5);
+      sp.push({ x: ex, y: 0.05, z: sf.z, w: sf.w * 1.3, ax: 0, az: 1, dx: -sf.side * 0.6, dz: 0.3, pow: 0.45 + Math.min(0.6, topY * 0.06), n: 0.5 });
+      this.fallSpots.push({ x: ex, z: sf.z, k: 0.45 + Math.min(0.5, topY * 0.05) });
+    }
+    spray(sp, overcast ? 0.4 : 0.5);
+
     // Treibholz
     const logMat = new THREE.MeshStandardMaterial({ color: C(0xd8cdbc), roughness: 1, map: this.tex.bark, normalMap: this.tex.barkN });
     for (let i = 0; i < 7; i++) {

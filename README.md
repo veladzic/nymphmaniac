@@ -75,6 +75,8 @@ Ein fliehender Fisch verschwindet nicht einfach: Er schießt vom Angler weg die 
 
 Ein Ladebildschirm deckt den Start und jeden Revierwechsel ab, bis Texturen, Anglerfigur und die ersten Bilder da sind. Der Balken zählt die wirklich geladenen Dateien; beim Revierwechsel stehen Staffel, Reviername und ein Rat von Opa darauf. „Weiterfischen“ baut die Strecke nicht mehr neu, sie steht seit dem Laden.
 
+Wasserfälle: Oberhalb der befischbaren Strecke (12 m und 27 m hinter ihrem oberen Ende) kommt der Fluss über zwei Stufen herab; Bett, Ufer und Wasserspiegel liegen dort um die Fallhöhe höher. Die Höhe folgt aus dem Revier (`0,6 + 1,1 × Strömung`, zwischen 0,9 und 2,2 m, in Schluchten 3,4 m) oder steht als `fall` in den Revierdaten (Wasserfallgumpen 7,5 m). Wo das Ufer mindestens 4 m hoch ist, stürzt gegenüber der Watspur ein seitlicher Fall über die Wand, ab 7 m ein zweiter. Gischt steigt am Fuß auf, und das Rauschen schwillt im Umkreis von 26 m an. Die Strecke selbst bleibt eben – Drift, Drill und Standplätze rechnen unverändert.
+
 Steine sind für alles fest, bei jeder Rute: Die Schnur legt sich auf die Steinoberfläche, statt hindurchzugehen, und hält die Fliege dann fest. Fliege und Nymphe treiben am echten Steinumriss vorbei; eine Euro-Nymphe, die unter Wasser von vorn gegen einen Stein treibt, verklemmt sich mit 12 % Wahrscheinlichkeit (Hänger). Im Drill weicht der Fisch an den Rand eines Steins aus, statt hindurchzuschwimmen.
 
 ### Steigen: Nymphe oder Trockenfliege

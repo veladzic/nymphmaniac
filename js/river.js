@@ -81,13 +81,27 @@ export function makeRiver(rv) {
     return Math.max(0.06, v);
   }
 
+  // Wasserfaelle: oberhalb der befischbaren Strecke kommt der Fluss ueber zwei Stufen herab. Stromauf davon liegen Bett, Ufer und
+  // Wasserspiegel um die Fallhoehe hoeher; die Strecke selbst (z >= Z_MIN) bleibt eben, damit Drift und Drill unveraendert rechnen.
+  const fallH = rv.fall !== undefined ? rv.fall : rv.cliff ? 3.4 : Math.min(2.2, Math.max(0.9, 0.6 + rv.speed * 1.1));
+  const falls = [{ z: Z_MIN - 12, h: fallH }, { z: Z_MIN - 27, h: fallH * 0.65 }];
+  // x: die Kante laeuft nicht schnurgerade quer, sondern springt je nach Stelle bis 0,7 m vor und zurueck
+  const lift = (z, sh = 0, x) => { if (x !== undefined) z += (vnoise(x * 0.55, 7.3) - 0.5) * 1.4; let a = 0; for (const f of falls) a += f.h * (1 - smooth(f.z + sh - 0.7, f.z + sh + 0.7, z)); return a; };
+  // Seitliche Faelle ueber die Uferwand, nur wo das Ufer hoch genug ist. Eigener Zufall, damit Steine und Standplaetze unveraendert bleiben.
+  const sideFalls = [];
+  if (rv.bankMax >= 4) {
+    const r2 = mulberry32(rv.seed * 13 + 5), z1 = -20 - r2() * 26;
+    sideFalls.push({ z: z1, side: -1, w: 0.7 + r2() * 0.5 });                       // gegenueber der Watspur, also immer im Blick
+    if (rv.bankMax >= 7) sideFalls.push({ z: z1 < -33 ? z1 + 15 + r2() * 6 : z1 - 15 - r2() * 6, side: r2() < 0.6 ? 1 : -1, w: 0.5 + r2() * 0.4 });
+  }
+
   function heightAt(x, z) {
-    const ax = Math.abs(x - cx(z));
-    if (ax < halfW) return -depthAt(x, z);
+    const ax = Math.abs(x - cx(z)), lf = z < Z_MIN - 8 ? lift(z, -0.6, x) : 0;   // die Felsstufe liegt knapp hinter dem fallenden Wasser
+    if (ax < halfW) return lf - depthAt(x, z);
     const o = ax - halfW;
     let h = rv.bankMax * (1 - Math.exp(-o * rv.bankSlope / rv.bankMax));
     h += (vnoise(x * 0.25 + 9, z * 0.25) - 0.3) * Math.min(o * 0.5, rv.cliff ? 4 : 1.6);
-    return Math.max(0.02, h);
+    return lf + Math.max(0.02, h);
   }
 
   const lies = [];
@@ -120,5 +134,5 @@ export function makeRiver(rv) {
     if (valid(x, zz) && far(x, zz)) lies.push({ x, z: zz, type: 'Rinne' });
   }
 
-  return { rv, rocks, pools, lies, halfW, chan, cx, dcx, off, depthAt, speedAt, heightAt };
+  return { rv, rocks, pools, lies, halfW, chan, cx, dcx, off, depthAt, speedAt, heightAt, falls, lift, sideFalls };
 }

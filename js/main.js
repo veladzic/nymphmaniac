@@ -1325,6 +1325,7 @@ function frame(now) {
   }
   S.yb += (Math.atan(river.dcx(S.pz)) * 0.85 - S.yb) * Math.min(1, dt * 2);   // Grundblick folgt dem Flusslauf
   world.yaw = S.yaw + S.yb; world.pitch = S.pitch;
+  { let nk = 0; for (const q of world.fallSpots || []) nk = Math.max(nk, q.k * clamp(1 - Math.hypot(q.x - S.px, q.z - S.pz) / 26, 0, 1)); sfx.setNear(Math.min(1, nk)); }   // Wasserfaelle hoert man, wenn man naeher kommt
   world.lift = S.mode === 'drift' || S.mode === 'cast' ? 1 : S.mode === 'fight' ? 0.7 : 0;
   world.update(dt, S.t, S.px, S.pz, groundY(), focus);
   if (S.mode !== 'title') { drawLupe(); updateGauges(); }
