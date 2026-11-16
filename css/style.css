@@ -356,3 +356,7 @@ label.slider { display: block; padding: 10px 0 6px; border-top: 1px solid var(--
 @keyframes ldRing { 0%, 36% { transform: scale(.05); opacity: 0; } 44% { opacity: .9; } 100% { transform: scale(1); opacity: 0; } }
 @media (max-height: 430px) { .ld-art { width: 150px; margin: 6px auto; } .ld-tip { display: none; } #loader h1 { font-size: 28px; } }
 @media (prefers-reduced-motion: reduce) { #loader::before, .ld-art * { animation: none !important; } .ld-art .ln { stroke-dashoffset: 0; } .ld-art .sg { opacity: 1; } .ld-art .rg { opacity: .5; } }
+
+/* Rig-Anzeige und Stein-Knopf stehen links ueber dem Watstick, damit die Bildmitte frei bleibt */
+#leftBtns { flex-direction: column-reverse; align-items: flex-start; gap: 8px; }
+#leftBtns .col { flex-direction: column-reverse; }   /* Stein oben, Rig-Anzeige direkt ueber dem Stick */
