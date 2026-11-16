@@ -360,3 +360,22 @@ label.slider { display: block; padding: 10px 0 6px; border-top: 1px solid var(--
 /* Rig-Anzeige und Stein-Knopf stehen links ueber dem Watstick, damit die Bildmitte frei bleibt */
 #leftBtns { flex-direction: column-reverse; align-items: flex-start; gap: 8px; }
 #leftBtns .col { flex-direction: column-reverse; }   /* Stein oben, Rig-Anzeige direkt ueber dem Stick */
+
+/* ---------- Fang im Kescher: die Szene bleibt frei, Name oben, Werte als Leiste unten (Hochformat) oder rechts (Querformat) ---------- */
+#hud[data-mode=landed] > *:not(#toast) { visibility: hidden; }
+#modal.sheetmode { background: none; backdrop-filter: none; pointer-events: none; align-items: flex-end; padding: 0 8px calc(8px + var(--sab)); }
+#modal.sheetmode #modalCard { pointer-events: auto; width: min(100%, 460px); max-height: 44%; background: rgba(13, 40, 37, .93); backdrop-filter: none; }   /* kein Weichzeichner: er wuerde die Kopfzeile (position: fixed) in der Karte festhalten */
+#modal.sheetmode #modalBody { padding: 12px 14px 12px; }
+#modal.sheetmode .primary { position: sticky; bottom: 0; margin-top: 10px; box-shadow: 0 0 0 12px rgba(13, 40, 37, .96); }
+.cs-head { position: fixed; top: calc(14px + var(--sat)); left: 12px; right: 12px; text-align: center; pointer-events: none; text-shadow: 0 2px 10px rgba(0, 0, 0, .8), 0 0 3px rgba(0, 0, 0, .6); }
+.cs-head .kicker { font-size: 12px; text-transform: uppercase; letter-spacing: .16em; color: var(--gold); font-weight: 700; }
+.cs-head h2 { font-family: Georgia, serif; font-size: 27px !important; margin: 2px 0 0 !important; }
+.cs-head .latin { font-style: italic; font-size: 13px; opacity: .85; }
+.cs-head .big { font-size: 32px; font-weight: 800; margin-top: 2px; } .cs-head .big span { font-size: 17px; font-weight: 500; opacity: .85; }
+@media (min-width: 760px), (orientation: landscape) {
+  #modal.sheetmode { align-items: center; justify-content: flex-end; padding: calc(10px + var(--sat)) calc(10px + var(--sar)) calc(10px + var(--sab)) 10px; }
+  #modal.sheetmode #modalCard { width: min(40%, 350px); max-height: 100%; }
+  .cs-head { right: calc(min(40%, 350px) + 20px); }
+}
+#modal.sheetmode .catch canvas { display: block; width: 100%; height: auto; max-height: 96px; object-fit: contain; margin: 0 0 4px; }
+@media (min-width: 760px), (orientation: landscape) { #modal.sheetmode .catch canvas { max-height: 130px; } }

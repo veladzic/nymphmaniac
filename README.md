@@ -77,6 +77,10 @@ Ein Ladebildschirm deckt den Start und jeden Revierwechsel ab, bis Texturen, Ang
 
 Wasserfälle: Oberhalb der befischbaren Strecke (12 m und 27 m hinter ihrem oberen Ende) kommt der Fluss über zwei Stufen herab; Bett, Ufer und Wasserspiegel liegen dort um die Fallhöhe höher. Die Höhe folgt aus dem Revier (`0,6 + 1,1 × Strömung`, zwischen 0,9 und 2,2 m, in Schluchten 3,4 m) oder steht als `fall` in den Revierdaten (Wasserfallgumpen 7,5 m). Wo das Ufer mindestens 4 m hoch ist, stürzt gegenüber der Watspur ein seitlicher Fall über die Wand, ab 7 m ein zweiter. Gischt steigt am Fuß auf, und das Rauschen schwillt im Umkreis von 26 m an. Die Strecke selbst bleibt eben – Drift, Drill und Standplätze rechnen unverändert.
 
+Nach dem Landen liegt der Fisch im Kescher am Wasser: Die Kamera fährt nah heran, der Fisch liegt auf der Seite, atmet und schlägt alle gut vier Sekunden ein paar Mal kräftig. Name, Länge und Gewicht stehen oben, Punkte, Aufgaben und Stufenbalken in einer Leiste unten (Hochformat) oder rechts (Querformat). „Zurücksetzen“ lässt ihn sich aufrichten und davonschwimmen. In der Leiste steht oben das gezeichnete Porträt der Art.
+
+Das 3D-Fischmodell trägt je Art eine eigene Haut, erzeugt aus denselben Farben und Zeichnungen wie das Porträt (`LOOK` in `js/fishart.js`): Rücken-, Flanken- und Bauchfarbe, Flecken, rote Punkte mit Hof, der rosa Streifen der Regenbogenforelle, die Marmorierung der Marmorata, Schuppen bei Äsche und Barbe, dazu Auge, Kiemendeckel und Maulspalte. Alle Flossen sind ausgeformt: gegabelte Schwanzflosse, Rücken-, Fett-, After-, Bauch- und Brustflossen, weißer Saum beim Saibling, Barteln bei der Barbe – und bei der Äsche die hohe, gefleckte Fahne.
+
 Steine sind für alles fest, bei jeder Rute: Die Schnur legt sich auf die Steinoberfläche, statt hindurchzugehen, und hält die Fliege dann fest. Fliege und Nymphe treiben am echten Steinumriss vorbei; eine Euro-Nymphe, die unter Wasser von vorn gegen einen Stein treibt, verklemmt sich mit 12 % Wahrscheinlichkeit (Hänger). Im Drill weicht der Fisch an den Rand eines Steins aus, statt hindurchzuschwimmen.
 
 ### Steigen: Nymphe oder Trockenfliege

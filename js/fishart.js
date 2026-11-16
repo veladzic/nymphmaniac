@@ -1,7 +1,7 @@
 // Prozedurale 2D-Fischporträts für Fangbild und Fangbuch
 import { mulberry32 } from './river.js';
 
-const LOOK = {
+export const LOOK = {
   bachforelle: { back: '#5a4a22', side: '#c9a544', belly: '#f2e2a8', fin: '#b98a3a',
     spots: [{ c: '#1d1a14', n: 64, r: 0.011, halo: 'rgba(255,240,200,.45)' }, { c: '#d43a1e', n: 18, r: 0.009, halo: 'rgba(255,240,220,.7)', band: [0.4, 0.75] }] },
   regenbogen: { back: '#4a5f52', side: '#c8d0cc', belly: '#f4f4f0', fin: '#a8a89a', stripe: 'rgba(226,84,120,.6)',

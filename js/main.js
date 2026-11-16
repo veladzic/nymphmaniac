@@ -637,27 +637,28 @@ function landed(f) {
   if (f.old && !save.pages.includes('ende')) { if (newPage && !save.pages.includes(newPage)) save.pages.push(newPage); newPage = 'ende'; }   // erst das Ende von Staffel 1, die neue Seite liegt schon im Tagebuch
   if (newPage && !save.pages.includes(newPage)) save.pages.push(newPage);
   if (save.tut < 4) save.tut = 4;
-  world.removeFish(f.mesh); fish = fish.filter(x => x !== f);
+  // der Fisch bleibt im Bild: er liegt im Kescher am Wasser, bis er zurueckgesetzt wird
+  fish = fish.filter(x => x !== f); world.showCatch(f.mesh, f.len, S.px, S.pz, catchWide());
   if (!f.old) respawn.push({ lie: f.lie, t: 100 });
   world.setPolar(save.level >= 2);
   persist();
   if (f.old) sfx.fanfare(); else sfx.chime();
   vibrate([40, 60, 40, 60, 120]);
 
-  let h = `<div class="catch"><div class="kicker">${f.old ? T('Der Alte vom Smaragdgumpen') : first ? T('Neue Art im Fangbuch!') : rec ? T('Neuer persönlicher Rekord!') : T('Gefangen')}</div>
-    <canvas id="catchCv" width="640" height="260"></canvas>
+  let h = `<div class="cs-head"><div class="kicker">${f.old ? T('Der Alte vom Smaragdgumpen') : first ? T('Neue Art im Fangbuch!') : rec ? T('Neuer persönlicher Rekord!') : T('Gefangen')}</div>
     <h2>${sp.name}</h2><div class="latin">${sp.latin}</div>
-    <div class="big">${f.len} cm <span>· ${w >= 1000 ? fmt(w / 1000, 2) + ' kg' : w + ' g'}</span></div>
-    <div class="meta">${fly.name} · ${fmt(save.sel.bead)} mm · ${fmt(save.sel.tippet, 2)} mm · ${T(f.lie.type)}</div>
+    <div class="big">${f.len} cm <span>· ${w >= 1000 ? fmt(w / 1000, 2) + ' kg' : w + ' g'}</span></div></div>
+    <div class="catch"><canvas id="catchCv" width="640" height="230"></canvas><div class="meta">${fly.name} · ${fmt(save.sel.bead)} mm · ${fmt(save.sel.tippet, 2)} mm · ${T(f.lie.type)}</div>
     <div class="xpl">${parts.map(p => `<div><span>${p[0]}</span><b>+${p[1]}</b></div>`).join('')}<div class="sum"><span>${T('Gesamt')}</span><b>+${xp} XP</b></div></div>
     <div class="chips"><span class="chip">+${mat} ${T('Bindematerial')}</span></div>`;
   for (const q of done) h += `<div class="qdone">✓ ${T('Aufgabe erfüllt:')} ${q}</div>`;
   for (const l of ups) h += `<div class="lvl">${T('Stufe {0}!', l)}${unlocksAt(l).length ? ' ' + T('Neu:') + ' ' + unlocksAt(l).join(', ') : ''}</div>`;
   h += xpBarHtml();
   h += `<button class="primary" data-act="release">${T('Zurücksetzen')}</button></div>`;
-  openModal(h, { lock: true });
+  openModal(h, { lock: true, cls: 'sheet' });
   drawFish($('catchCv'), f.species, { seed: f.len * 13 + 1 });
   S.afterRelease = () => {
+    world.releaseCatch();
     S.mode = 'idle'; restTip(); updateHUD(); updateTip();
     world.splash(S.px - 0.6, S.pz - 0.6, 1); sfx.plop();
     checkOld(true);
@@ -757,7 +758,7 @@ function updateHUD() {
 let modalOpts = null, modalT = 0;
 function openModal(html, opts = {}) {
   modalOpts = opts; modalT = opts.fast ? 0 : performance.now();
-  $('modalCard').className = opts.cls || '';
+  $('modalCard').className = opts.cls || ''; $('modal').classList.toggle('sheetmode', opts.cls === 'sheet');
   $('modalBody').innerHTML = html;
   $('modalClose').style.display = opts.lock ? 'none' : '';
   $('modal').classList.remove('hidden');
@@ -802,6 +803,7 @@ function showJournal(tab = 'rev') {
 function showBox() { showRig('fly'); }
 // ---------- Rig-Baukasten: oben das Rig als Bild, darunter die Steckplaetze, je Steckplatz eine Auswahl ----------
 let rigSlot = null;
+const catchWide = () => window.matchMedia('(min-width: 760px), (orientation: landscape)').matches;   // Infoleiste zum Fang steht rechts statt unten
 const loWide = () => window.matchMedia('(min-width: 760px)').matches;
 const _flyCv = document.createElement('canvas'); _flyCv.width = _flyCv.height = 96;
 function drawRigPreview(cv) {

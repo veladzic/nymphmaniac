@@ -1,6 +1,7 @@
 // 3D-Welt v2: realistischeres Wasser, Licht & Schatten, Vegetation, Felsen, Berge, Angler, Fische
 import * as THREE from './three.module.min.js';
 import { makeRiver, mulberry32, vnoise, LANE_X } from './river.js';
+import { LOOK as FISH_LOOK } from './fishart.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 const _d = new THREE.Vector3(), _a = new THREE.Vector3(), _b = new THREE.Vector3();
@@ -176,37 +177,110 @@ function rockGeo(k, wet) {
   g.computeVertexNormals();
   return g;
 }
-const FISH_COL = {
-  bachforelle: [0x4a4020, 0xb89448, 0xe8d8a0], regenbogen: [0x3c5046, 0xb8a8b0, 0xeeeeea], aesche: [0x4a545c, 0x9aa6ac, 0xe6e8e6],
-  saibling: [0x263a2a, 0x66743e, 0xe07a30], barbe: [0x554e2c, 0xa89050, 0xe8dcb0], marmorata: [0x44482e, 0x9a946c, 0xe4dcbc],
-  seeforelle: [0x3a4650, 0xa8b4bc, 0xf0f0ee], huchen: [0x4a3a30, 0xa87860, 0xe8d8c8],
-};
+// ---------- Fischmodell ----------
+// Haut je Art als Textur (dieselben Farben und Zeichnungen wie das gezeichnete Portraet): oben der Koerper abgewickelt
+// (links Kopf, rechts Schwanzwurzel; oberer Rand Ruecken, unterer Rand Bauch - beide Flanken teilen sich das Bild), unten drei Flossenfelder.
+const SKIN_W = 512, SKIN_H = 256, SKIN_B = 176;
+function fishSkin(species) {
+  const o = FISH_LOOK[species] || FISH_LOOK.bachforelle, W = SKIN_W, BH = SKIN_B, FH = SKIN_H - SKIN_B, CW = W / 3;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = SKIN_H;
+  const c = cv.getContext('2d'), rnd = mulberry32(species.length * 131 + species.charCodeAt(0) * 7 + 3);
+  const g = c.createLinearGradient(0, 0, 0, BH);
+  g.addColorStop(0, o.back); g.addColorStop(0.2, o.back); g.addColorStop(0.42, o.side); g.addColorStop(0.68, o.side); g.addColorStop(0.9, o.belly); g.addColorStop(1, o.belly);
+  c.fillStyle = g; c.fillRect(0, 0, W, BH);
+  if (o.stripe) { const st = c.createLinearGradient(0, 0.36 * BH, 0, 0.64 * BH); st.addColorStop(0, 'rgba(0,0,0,0)'); st.addColorStop(0.5, o.stripe); st.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = st; c.fillRect(0.08 * W, 0.36 * BH, 0.92 * W, 0.28 * BH); }
+  if (o.scales) { c.lineWidth = 1.2; for (let y = 5, r = 0; y < BH * 0.86; y += 10, r++) for (let x = 0.2 * W + (r % 2) * 6; x < W; x += 12) { c.strokeStyle = 'rgba(0,0,0,.2)'; c.beginPath(); c.arc(x, y, 7, -1.2, 1.2); c.stroke(); c.strokeStyle = 'rgba(255,255,255,.1)'; c.beginPath(); c.arc(x - 1.5, y, 7, -1.2, 1.2); c.stroke(); } }
+  if (o.marble || o.worm) {
+    c.strokeStyle = o.marble ? 'rgba(42,46,28,.8)' : 'rgba(200,205,130,.55)'; c.lineWidth = o.marble ? 5 : 3; c.lineCap = 'round';
+    for (let i = 0, n = o.marble ? 95 : 30; i < n; i++) {
+      let x = rnd() * W, y = (o.marble ? rnd() * 0.74 : rnd() * 0.3) * BH, an = rnd() * 6.3;
+      c.beginPath(); c.moveTo(x, y);
+      for (let k = 0; k < 5; k++) { an += (rnd() - 0.5) * 2.4; x += Math.cos(an) * 11; y += Math.sin(an) * 9; c.lineTo(x, y); }
+      c.stroke();
+    }
+  }
+  for (const sp of o.spots) for (let i = 0, n = Math.round(sp.n * 1.4); i < n; i++) {
+    const x = (sp.front ? 0.2 + rnd() * 0.3 : 0.17 + rnd() * (sp.tail ? 0.83 : 0.74)) * W, y = (sp.band ? 0.4 + rnd() * 0.26 : 0.03 + rnd() * 0.58) * BH, r = sp.r * W * 1.2 * (0.7 + rnd() * 0.6);
+    if (sp.halo) { c.beginPath(); c.arc(x, y, r * 1.8, 0, 7); c.fillStyle = sp.halo; c.fill(); }
+    c.beginPath(); c.arc(x, y, r, 0, 7); c.fillStyle = sp.c; c.fill();
+  }
+  for (let i = 0; i < 700; i++) { c.fillStyle = rnd() < 0.5 ? 'rgba(0,0,0,.07)' : 'rgba(255,255,255,.07)'; c.fillRect(rnd() * W, rnd() * BH, 1.5, 1.5); }   // feine Schuppung
+  // Kopf: Kiemendeckel, Auge, Maulspalte
+  const hx = (o.bigHead ? 0.235 : 0.2) * W;
+  c.fillStyle = 'rgba(0,0,0,.07)'; c.fillRect(0, 0, hx, BH);
+  c.fillStyle = 'rgba(255,255,255,.1)'; c.beginPath(); c.ellipse(hx * 0.72, 0.52 * BH, hx * 0.2, 0.2 * BH, 0, 0, 7); c.fill();
+  c.strokeStyle = 'rgba(0,0,0,.45)'; c.lineWidth = 2.5; c.beginPath(); c.moveTo(hx, 0.1 * BH); c.quadraticCurveTo(hx + 0.035 * W, 0.5 * BH, hx, 0.86 * BH); c.stroke();
+  c.lineWidth = 2; c.beginPath(); c.moveTo(0, 0.55 * BH); c.lineTo((o.bigHead ? 0.11 : 0.085) * W, 0.6 * BH); c.stroke();
+  const ex = 0.088 * W, ey = 0.4 * BH;
+  c.beginPath(); c.arc(ex, ey, 10, 0, 7); c.fillStyle = '#e8c860'; c.fill(); c.strokeStyle = 'rgba(0,0,0,.4)'; c.lineWidth = 1; c.stroke();
+  c.beginPath(); c.arc(ex, ey, 6, 0, 7); c.fillStyle = '#0c0c0c'; c.fill();
+  c.beginPath(); c.arc(ex - 2.5, ey - 2.5, 1.8, 0, 7); c.fillStyle = 'rgba(255,255,255,.85)'; c.fill();
+  const tr = c.createLinearGradient(0.9 * W, 0, W, 0); tr.addColorStop(0, 'rgba(0,0,0,0)'); tr.addColorStop(1, 'rgba(0,0,0,.18)'); c.fillStyle = tr; c.fillRect(0.9 * W, 0, 0.1 * W, BH);
+  // Flossenfelder: 0 = paarige und kleine Flossen, 1 = Schwanzflosse, 2 = Rueckenflosse (bei der Aesche die Fahne)
+  const rays = (x0, n, horiz) => { c.strokeStyle = 'rgba(0,0,0,.28)'; c.lineWidth = 1.2; for (let i = 0; i <= n; i++) { const k = i / n; c.beginPath(); if (horiz) { c.moveTo(x0, BH + FH * (0.5 + (k - 0.5) * 0.25)); c.lineTo(x0 + CW, BH + FH * k); } else { c.moveTo(x0 + CW * (0.15 + k * 0.7), SKIN_H); c.lineTo(x0 + CW * k, BH); } c.stroke(); } };
+  const shade = x0 => { const sh = c.createLinearGradient(0, SKIN_H, 0, BH); sh.addColorStop(0, 'rgba(0,0,0,.28)'); sh.addColorStop(1, 'rgba(255,255,255,.2)'); c.fillStyle = sh; c.fillRect(x0, BH, CW, FH); };
+  c.fillStyle = o.fin; c.fillRect(0, BH, W, FH);
+  shade(0); rays(0, 16, false);
+  if (o.whiteEdge) { c.fillStyle = '#f6f6ee'; c.fillRect(0, BH, 13, FH); c.fillStyle = '#16181a'; c.fillRect(13, BH, 6, FH); }
+  { const sh = c.createLinearGradient(CW, 0, 2 * CW, 0); sh.addColorStop(0, 'rgba(0,0,0,.3)'); sh.addColorStop(1, 'rgba(255,255,255,.12)'); c.fillStyle = sh; c.fillRect(CW, BH, CW, FH); rays(CW, 16, true); }
+  if (o.spots.some(q => q.tail)) { c.fillStyle = '#17191a'; for (let i = 0; i < 46; i++) { c.beginPath(); c.arc(CW + rnd() * CW, BH + rnd() * FH, 2 + rnd() * 1.5, 0, 7); c.fill(); } }
+  if (o.dorsalBig) {
+    const dg = c.createLinearGradient(0, BH, 0, SKIN_H); dg.addColorStop(0, '#c2386a'); dg.addColorStop(0.45, '#8a5aa6'); dg.addColorStop(1, '#55687c'); c.fillStyle = dg; c.fillRect(2 * CW, BH, CW, FH);
+    rays(2 * CW, 20, false);
+    for (let r = 0; r < 4; r++) for (let i = 0; i < 9; i++) {
+      const x = 2 * CW + (0.07 + i / 9 * 0.9 + (r % 2) * 0.04) * CW, y = BH + FH * (0.16 + r * 0.2);
+      c.beginPath(); c.ellipse(x, y, 7, 5, 0, 0, 7); c.fillStyle = 'rgba(130,190,235,.55)'; c.fill();
+      c.beginPath(); c.ellipse(x, y, 4.5, 3.2, 0, 0, 7); c.fillStyle = 'rgba(70,14,52,.9)'; c.fill();
+    }
+    c.fillStyle = 'rgba(226,70,90,.75)'; c.fillRect(2 * CW, BH, CW, 5);   // roter Saum
+  } else {
+    shade(2 * CW); rays(2 * CW, 14, false);
+    if (o.spots.length && !o.whiteEdge) { c.fillStyle = o.spots[0].c; for (let i = 0; i < 14; i++) { c.beginPath(); c.arc(2 * CW + rnd() * CW, BH + FH * (0.25 + rnd() * 0.7), 2.4 + rnd() * 1.6, 0, 7); c.fill(); } }
+    if (o.worm) { c.strokeStyle = 'rgba(20,24,18,.7)'; c.lineWidth = 3; for (let i = 0; i < 6; i++) { const x = 2 * CW + (0.1 + i / 6 * 0.85) * CW; c.beginPath(); c.moveTo(x, BH + FH * 0.2); c.quadraticCurveTo(x + 9, BH + FH * 0.55, x - 3, BH + FH * 0.9); c.stroke(); } }
+  }
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  return t;
+}
 function fishGeo(species) {
-  const [cb, cs, cv] = (FISH_COL[species] || FISH_COL.bachforelle).map(h => new THREE.Color(h));
-  const NS = 15, NR = 10, pos = [], col = [], idx = [], t3 = new THREE.Color();
-  const hw = t => 0.012 + 0.1 * Math.pow(Math.sin(Math.PI * Math.pow(t, 0.58)), 0.8) + 0.016 * t;
+  const o = FISH_LOOK[species] || FISH_LOOK.bachforelle;
+  const NS = 30, NR = 14, pos = [], uv = [], idx = [], BV = SKIN_B / SKIN_H, FV = (SKIN_H - SKIN_B) / SKIN_H;
+  const slim = o.slim ? 0.86 : 1, bh = o.bigHead ? 0.13 : 0;
+  const hw = t => (0.012 + 0.1 * Math.pow(Math.sin(Math.PI * Math.pow(t, 0.58)), 0.8) + 0.016 * t) * slim * (1 + bh * clamp(1 - t / 0.28, 0, 1));
+  const tz = z => clamp((z + 0.5) / 0.87, 0, 1), top = z => hw(tz(z)) - 0.01, bot = z => -hw(tz(z)) - 0.01, wid = z => hw(tz(z)) * 0.56;
   for (let s = 0; s <= NS; s++) {
     const t = s / NS, h = hw(t), w = h * 0.56, z = -0.5 + t * 0.87;
     for (let j = 0; j < NR; j++) {
-      const a = j / NR * Math.PI * 2, sy = Math.sin(a);
-      pos.push(Math.cos(a) * w, sy * h - 0.01, z);
-      if (sy > 0.35) t3.copy(cb); else if (sy > -0.45) t3.copy(cb).lerp(cs, clamp((0.35 - sy) / 0.5, 0, 1)); else t3.copy(cs).lerp(cv, clamp((-0.45 - sy) / 0.4, 0, 1));
-      col.push(t3.r, t3.g, t3.b);
+      const a = j / NR * Math.PI * 2, sy = Math.sin(a), ang = Math.abs(((a - Math.PI / 2 + Math.PI * 3) % (Math.PI * 2)) - Math.PI) / Math.PI;   // 0 = Ruecken, 1 = Bauch
+      pos.push(Math.cos(a) * w * (sy < 0 ? 1 + 0.12 * -sy : 1), sy * h - 0.01, z);                                                                   // unten etwas voller
+      uv.push(0.004 + t * 0.992, 1 - (0.012 + ang * 0.976) * BV);
     }
   }
   for (let s = 0; s < NS; s++) for (let j = 0; j < NR; j++) {
     const a = s * NR + j, b = s * NR + (j + 1) % NR, c = a + NR, d = b + NR;
     idx.push(a, c, b, b, c, d);
   }
-  const fin = (pts, c) => { const o = pos.length / 3; for (let i = 0; i < pts.length; i += 3) { pos.push(pts[i], pts[i + 1], pts[i + 2]); col.push(c.r, c.g, c.b); } for (let i = 1; i < pts.length / 3 - 1; i++) idx.push(o, o + i, o + i + 1); };
-  const fc = cb.clone().lerp(cs, 0.5);
-  fin([0, 0.027, 0.36, 0, 0.125, 0.5, 0, 0, 0.445, 0, -0.125, 0.5, 0, -0.027, 0.36], fc);
-  const dh = species === 'aesche' ? 0.15 : 0.07;
-  fin([0, 0.1, -0.1, 0, 0.1 + dh, 0.0, 0, 0.1 + dh * 0.8, 0.1, 0, 0.085, 0.14], species === 'aesche' ? new THREE.Color(0x7a4a7a) : fc);
-  for (const sx of [-1, 1]) fin([sx * 0.05, -0.04, -0.27, sx * 0.14, -0.07, -0.17, sx * 0.05, -0.05, -0.19], fc);
+  // Flosse als Faecher: Punkte [x, y, z, s, t] mit s = entlang der Flossenbasis, t = Basis (0) bis Saum (1) im Flossenfeld
+  const fin = (cell, P) => { const o0 = pos.length / 3; for (const q of P) { pos.push(q[0], q[1], q[2]); uv.push((cell + 0.04 + q[3] * 0.92) / 3, (0.04 + q[4] * 0.92) * FV); } for (let i = 1; i < P.length - 1; i++) idx.push(o0, o0 + i, o0 + i + 1); };
+  // Schwanzflosse, gegabelt
+  fin(1, [[0, 0, 0.352, 0, 0.5], [0, 0.034, 0.36, 0.03, 0.63], [0, 0.085, 0.43, 0.5, 0.86], [0, 0.135, 0.5, 1, 1], [0, 0.055, 0.468, 0.8, 0.7], [0, 0, 0.45, 0.68, 0.5],
+    [0, -0.055, 0.468, 0.8, 0.3], [0, -0.135, 0.5, 1, 0], [0, -0.085, 0.43, 0.5, 0.14], [0, -0.034, 0.36, 0.03, 0.37]]);
+  // Rueckenflosse; bei der Aesche die Fahne: lang, hoch, nach hinten gerundet
+  if (o.dorsalBig) { const z0 = -0.17, z1 = 0.21, y = z => top(z) - 0.012, k = z => (z - z0) / (z1 + 0.06 - z0);
+    fin(2, [[0, y(z0), z0, 0, 0], [0, y(z0) + 0.1, z0 + 0.02, k(z0 + 0.02), 0.55], [0, y(z0) + 0.155, z0 + 0.09, k(z0 + 0.09), 0.9], [0, y(0) + 0.175, z0 + 0.2, k(z0 + 0.2), 1], [0, y(0.1) + 0.18, z0 + 0.31, k(z0 + 0.31), 1],
+      [0, y(z1) + 0.15, z1 + 0.04, k(z1 + 0.04), 0.85], [0, y(z1) + 0.07, z1 + 0.06, 1, 0.4], [0, y(z1), z1, k(z1), 0], [0, y(0.02), 0.02, k(0.02), 0]]);
+  } else { const z0 = -0.1, z1 = 0.13, y = z => top(z) - 0.012;
+    fin(2, [[0, y(z0), z0, 0, 0], [0, y(z0) + 0.078, z0 + 0.045, 0.12, 1], [0, y(0) + 0.07, z0 + 0.13, 0.6, 1], [0, y(z1) + 0.032, z1 + 0.03, 1, 0.55], [0, y(z1), z1, 1, 0], [0, y(0.015), 0.015, 0.5, 0]]); }
+  if (!o.barbel) fin(0, [[0, top(0.225) - 0.006, 0.225, 0.4, 0], [0, top(0.25) + 0.034, 0.282, 0.5, 0.8], [0, top(0.268) - 0.006, 0.268, 0.6, 0]]);   // Fettflosse (Salmoniden und Aesche)
+  fin(0, [[0, bot(0.14) + 0.01, 0.14, 0, 0], [0, bot(0.16) - 0.066, 0.2, 0.03, 1], [0, bot(0.24) - 0.038, 0.262, 1, 0.8], [0, bot(0.25) + 0.01, 0.25, 1, 0]]);   // Afterflosse
+  for (const sx of [-1, 1]) {
+    fin(0, [[sx * 0.018, bot(-0.02) + 0.022, -0.02, 0, 0], [sx * 0.062, bot(0) - 0.036, 0.05, 0.03, 1], [sx * 0.046, bot(0.04) - 0.03, 0.092, 1, 0.8], [sx * 0.018, bot(0.06) + 0.022, 0.06, 1, 0]]);   // Bauchflossen
+    const w = wid(-0.28);
+    fin(0, [[sx * w * 0.85, -0.04, -0.29, 0, 0], [sx * (w + 0.075), -0.078, -0.2, 0.03, 1], [sx * (w + 0.052), -0.088, -0.158, 1, 0.85], [sx * w * 0.85, -0.055, -0.24, 1, 0]]);                   // Brustflossen
+    if (o.barbel) for (const dz of [0, 0.022]) fin(0, [[sx * 0.01, -0.022, -0.492 + dz, 0.5, 0], [sx * 0.02, -0.062, -0.47 + dz, 0.5, 0.2], [sx * 0.015, -0.022, -0.478 + dz, 0.55, 0]]);             // Barteln
+  }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.setIndex(idx); g.computeVertexNormals();
   return g;
 }
@@ -581,7 +655,7 @@ export class World {
 
     this.env = new THREE.Group(); this.scene.add(this.env);
     this.fishGroup = new THREE.Group(); this.scene.add(this.fishGroup);
-    this.fishMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.45, metalness: 0.1, side: THREE.DoubleSide });
+    this.fishMats = {};   // je Art ein Material mit eigener Haut
     this.fishGeos = {};
 
     this.waterU = {
@@ -734,7 +808,7 @@ export class World {
     add(T, new THREE.CapsuleGeometry(0.078, 0.2, 6, 14), pack, 0.03, 0.27, 0.158, 0, 0, 0.42).scale.set(1.25, 0.9, 0.62);
     add(T, new THREE.CapsuleGeometry(0.05, 0.1, 4, 10), packLt, 0.035, 0.25, 0.2, 0, 0, 0.42).scale.set(1.15, 0.9, 0.42);                                                     // Aussentasche
     // Kescher: Holzrahmen in Tropfenform, Griff mit Korkwicklung, gummiertes Netz; haengt am Magnet zwischen den Schulterblaettern
-    const net = new THREE.Group(); net.position.set(-0.115, 0.4, 0.15); net.rotation.set(-0.07, 0, 0.16); T.add(net);
+    const net = new THREE.Group(); net.position.set(-0.115, 0.4, 0.15); net.rotation.set(-0.07, 0, 0.16); T.add(net); this.backNet = net;
     const NW = 0.27, NL = 0.4, HL = 0.2;
     const hoopAt = a => new THREE.Vector3(NW / 2 * Math.sin(a) * (1 - 0.35 * Math.cos(a)) / 1.06, -HL - NL * (1 - Math.cos(a)) / 2, 0);
     const hoopPts = []; for (let k = 0; k < 40; k++) hoopPts.push(hoopAt(k / 40 * Math.PI * 2));
@@ -1134,6 +1208,7 @@ export class World {
 
   buildRevier(rv, cond) {
     for (const c of [...this.env.children]) { this.env.remove(c); c.traverse?.(o => { o.geometry?.dispose?.(); o.material?.dispose?.(); }); }
+    this._catch = null; this._cv = 0; if (this.catchNet) this.catchNet.visible = false; if (this.backNet) this.backNet.visible = true;
     this.clearFish();
     const river = makeRiver(rv);
     this.river = river;
@@ -1459,7 +1534,7 @@ export class World {
   makeFish(len, species) {
     const base = this.fishGeos[species] || (this.fishGeos[species] = fishGeo(species));
     const g = base.clone();
-    const m = new THREE.Mesh(g, this.fishMat);
+    const m = new THREE.Mesh(g, this.fishMats[species] || (this.fishMats[species] = new THREE.MeshStandardMaterial({ map: fishSkin(species), roughness: 0.4, metalness: 0.1, side: THREE.DoubleSide })));
     m.userData.base = Float32Array.from(base.attributes.position.array);
     m.scale.setScalar(len / 100 * 1.15);
     m.castShadow = true; m.frustumCulled = false; m.layers.enable(1);
@@ -1472,6 +1547,86 @@ export class World {
     p.needsUpdate = true;
   }
   removeFish(m) { this.fishGroup.remove(m); m.geometry.dispose(); }
+
+  // ---------- Fang im Kescher ----------
+  // Nach dem Landen liegt der Fisch im Kescher am Wasser; die Kamera geht nah heran, bis er zurueckgesetzt wird.
+  _buildCatchNet() {
+    const g = new THREE.Group(); g.visible = false; this.scene.add(g);
+    const wood = new THREE.MeshStandardMaterial({ color: 0x7a5230, roughness: 0.65 }), cork = new THREE.MeshStandardMaterial({ color: 0xb98f5e, roughness: 0.95 });
+    const NW = 0.4, NL = 0.6, HL = 0.34;   // Rahmen liegt flach, Spitze bei -z, Griff bei +z
+    const hoopAt = a => new THREE.Vector3(NW / 2 * Math.sin(a) * (1 - 0.35 * Math.cos(a)) / 1.06, 0, -NL * (1 - Math.cos(a)) / 2);
+    const pts = []; for (let k = 0; k < 40; k++) pts.push(hoopAt(k / 40 * Math.PI * 2));
+    g.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, true), 80, 0.012, 8, true), wood));
+    const h = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.018, HL, 10), wood); h.rotation.x = Math.PI / 2; h.position.z = HL / 2; g.add(h);
+    const c = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.14, 12), cork); c.rotation.x = Math.PI / 2; c.position.z = HL - 0.09; g.add(c);
+    const tex = canvasTex(128, (c2, S) => {
+      c2.clearRect(0, 0, S, S); c2.strokeStyle = '#1b211c'; c2.lineWidth = 5;
+      for (let k = 0; k <= 4; k++) { c2.beginPath(); c2.moveTo(k * S / 4, 0); c2.lineTo(k * S / 4, S); c2.stroke(); c2.beginPath(); c2.moveTo(0, k * S / 4); c2.lineTo(S, k * S / 4); c2.stroke(); }
+    }, true);
+    tex.repeat.set(11, 4);
+    const NU = 36, NV = 8, bp = [], bu = [], bi = [], low = new THREE.Vector3(0, -0.15, -NL / 2);
+    for (let v = 0; v <= NV; v++) for (let u = 0; u <= NU; u++) {
+      const t = v / NV, q = hoopAt(u / NU * Math.PI * 2), k = Math.pow(t, 1.25);
+      q.x += (low.x - q.x) * k; q.z += (low.z - q.z) * k; q.y = -0.15 * Math.sin(t * Math.PI / 2);   // flacher Sack: der Fisch liegt knapp unter dem Rahmen
+      bp.push(q.x, q.y, q.z); bu.push(u / NU, t);
+    }
+    for (let v = 0; v < NV; v++) for (let u = 0; u < NU; u++) { const a = v * (NU + 1) + u, b = a + NU + 1; bi.push(a, b, a + 1, a + 1, b, b + 1); }
+    const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.Float32BufferAttribute(bp, 3)); bg.setAttribute('uv', new THREE.Float32BufferAttribute(bu, 2)); bg.setIndex(bi); bg.computeVertexNormals();
+    g.add(new THREE.Mesh(bg, new THREE.MeshLambertMaterial({ map: tex, alphaTest: 0.5, side: THREE.DoubleSide })));
+    g.traverse(o => { o.layers.enable(1); if (o.isMesh) o.castShadow = true; });
+    g.userData.NL = NL;
+    return g;
+  }
+  // mesh: Fisch aus makeFish; (px, pz): Standort des Anglers; wide: Infoleiste steht rechts (sonst unten)
+  showCatch(mesh, len, px, pz, wide) {
+    if (this._catch) { this.removeFish(this._catch.mesh); this._catch = null; }
+    const net = this.catchNet || (this.catchNet = this._buildCatchNet()), rv = this.river;
+    // Platz fuer den Kescher: flaches Wasser neben dem Angler, nicht in einem Stein
+    let best = null;
+    for (let k = 0; k < 12; k++) {
+      const a = k / 12 * Math.PI * 2, x = px + Math.sin(a) * 0.95, z = pz + Math.cos(a) * 0.95, d = rv.depthAt(x, z);
+      let sc = d > 0.04 ? -Math.abs(d - 0.22) : -1.5 - rv.heightAt(x, z);
+      sc -= Math.abs(x - rv.cx(z)) * 0.02 + (z > pz ? 0.05 : 0);                       // im Zweifel zur Flussmitte und stromauf
+      for (const r of rv.rocks) if (Math.hypot(x - r.x, z - r.z) < (r.vr || r.r * 1.3) + 0.45) sc -= 9;
+      if (!best || sc > best.sc) best = { sc, x, z, d };
+    }
+    const cx = best.x, cz = best.z, wy = best.d > 0.04 ? 0 : rv.heightAt(cx, cz) + 0.02;
+    let dx = cx - px, dz = cz - pz; const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;   // Blickrichtung vom Angler zum Kescher
+    const L = len / 100 * 1.15, sc = clamp(L / 0.5, 0.6, 1.45), NL = net.userData.NL * sc;
+    // Hochformat: der Fisch liegt laengs zur Blickrichtung (hoch im Bild); Querformat: quer dazu
+    const ax = wide ? -dz : dx, az = wide ? dx : dz, yaw = Math.atan2(-ax, -az);
+    net.scale.setScalar(sc); net.rotation.set(0, yaw, 0); net.position.set(cx - ax * NL / 2, wy + 0.035, cz - az * NL / 2); net.visible = true;
+    if (this.backNet) this.backNet.visible = false;
+    mesh.visible = true; mesh.rotation.order = 'YZX';
+    const D = Math.max(0.8, L * (wide ? 1.75 : 2.3) + 0.25);
+    this._cvPos = (this._cvPos || new THREE.Vector3()).set(cx - dx * D * 0.42, wy + D * 0.92, cz - dz * D * 0.42);
+    // Blickpunkt versetzt, damit der Fisch nicht unter der Infoleiste liegt
+    this._cvLook = (this._cvLook || new THREE.Vector3()).set(cx, wy, cz);
+    if (wide) this._cvLook.x += -dz * D * 0.2, this._cvLook.z += dx * D * 0.2; else this._cvLook.x -= dx * D * 0.2, this._cvLook.z -= dz * D * 0.2;
+    this._catch = { mesh, x: cx, y: wy + 0.03 + 0.025 * L, z: cz, yaw, s: L, view: true, ph: 0.6, seed: Math.random() * 6, ax, az, sp: false, rel: 0 };
+    this.splash(cx, cz, 0.5);
+  }
+  releaseCatch() { const C = this._catch; if (C && !C.rel) { C.rel = 1e-4; C.view = false; this.splash(C.x, C.z, 0.6); } }
+  _tickCatch(dt, t) {
+    const C = this._catch, m = C.mesh, net = this.catchNet;
+    if (!C.rel) {
+      C.ph += dt;
+      const cyc = (C.ph % 4.4) / 4.4, b = cyc < 0.3 ? Math.sin(cyc / 0.3 * Math.PI) : 0;   // alle gut vier Sekunden ein paar kraeftige Schlaege, dazwischen liegt er ruhig und atmet
+      if (b > 0.5 && !C.sp) { C.sp = true; this.splash(C.x, C.z, 0.35); } else if (b === 0) C.sp = false;
+      this.animFish(m, t * (4 + 18 * b) + C.seed, 0.45 + 2.8 * b);
+      m.position.set(C.x + Math.sin(t * 17) * 0.012 * b, C.y + Math.abs(Math.sin(t * 19)) * 0.04 * b * C.s, C.z + Math.cos(t * 15) * 0.012 * b);
+      m.rotation.set(Math.sin(t * 9) * 0.05 * b, C.yaw + Math.sin(t * 11) * 0.14 * b, Math.PI / 2 + Math.sin(t * 13) * 0.25 * b + Math.sin(t * 1.3) * 0.04);
+      net.rotation.z = Math.sin(t * 15) * 0.035 * b;
+    } else {
+      C.rel += dt; const k = Math.min(1, C.rel / 1.4), up = Math.min(1, C.rel / 0.4), go = Math.max(0, k - 0.2) / 0.8;
+      this.animFish(m, t * (10 + 12 * go) + C.seed, 0.8 + 1.6 * go);
+      const dist = 3.4 * go * go;
+      m.position.set(C.x + C.ax * dist, C.y - 0.2 * Math.min(1, go * 3) * (C.y < 0.01 ? 1 : 0), C.z + C.az * dist);
+      m.rotation.set(0, C.yaw, Math.PI / 2 * (1 - up));
+      net.rotation.z = 0;
+      if (k >= 1) { this.removeFish(m); this._catch = null; net.visible = false; if (this.backNet) this.backNet.visible = true; }
+    }
+  }
   clearFish() { for (const c of [...this.fishGroup.children]) this.removeFish(c); }
 
   splash(x, z, size = 1) {
@@ -1533,7 +1688,15 @@ export class World {
       this.camera.position.set(g.x - ys * 0.2, g.y + 1.16 + Math.sin(t * 0.7) * 0.006, g.z - yc * 0.2);
       this._look.set(g.x - ys * 6, g.y - 0.2 + pit * 8, g.z - yc * 6);
     }
-    this.camera.lookAt(this._look);
+    // Fang im Kescher: weich zur Nahaufnahme und zurueck
+    const lk = this._lk || (this._lk = new THREE.Vector3()); lk.copy(this._look);
+    if (this._catch) this._tickCatch(dt, t);
+    this._cv = (this._cv || 0) + ((this._catch && this._catch.view ? 1 : 0) - (this._cv || 0)) * Math.min(1, dt * 3.4);
+    if (this._cv > 0.002 && this._cvPos) { const e = this._cv * this._cv * (3 - 2 * this._cv); this.camera.position.lerp(this._cvPos, e); lk.lerp(this._cvLook, e); }
+    // in der Nahaufnahme liegt die Rute beiseite, sonst ragt die Rolle gross ins Bild
+    const hid = this._cv > 0.35;
+    if (hid !== !!this._rodHid) { this._rodHid = hid; for (const m of [...this.rodSegs, ...this.inLine, ...this.lineSegs, ...this.guides.map(g => g.m), this.handle, this.line, this.angler]) if (m) m.visible = !hid; }   // auch der Angler: bei grossen Fischen steht die Kamera hoeher und saehe sonst seinen Kopf
+    this.camera.lookAt(lk);
     this.sky.position.copy(this.camera.position);
     // Sonne & Schatten folgen dem Angler
     this.sun.target.position.set(cxp - 1, 0, cz - 9); this.sun.target.updateMatrixWorld();
@@ -1592,7 +1755,7 @@ export class World {
         this.water.visible = false; R.shadowMap.autoUpdate = false;
         if (this.grass) this.grass.visible = false;
         const m = this.mirror; m.fov = cam.fov; m.aspect = cam.aspect; m.near = cam.near; m.far = cam.far; m.updateProjectionMatrix();
-        m.position.set(cam.position.x, -cam.position.y, cam.position.z); m.lookAt(this._look.x, -this._look.y, this._look.z);
+        m.position.set(cam.position.x, -cam.position.y, cam.position.z); m.lookAt(this._lk.x, -this._lk.y, this._lk.z);
         R.clippingPlanes = this.clipUp;
         R.setRenderTarget(this.reflRT); R.render(this.scene, m);
         R.clippingPlanes = this.noClip; R.setRenderTarget(null);
