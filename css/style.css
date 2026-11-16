@@ -224,3 +224,104 @@ label.slider { display: block; padding: 10px 0 6px; border-top: 1px solid var(--
 #menuBtns #btnPov { font-size: 11.5px; font-weight: 700; letter-spacing: .04em; }
 #menuBtns #btnPov.on { background: #e6b84a; color: #1a1a10; }
 @media (max-width: 520px) { #menuBtns { flex-wrap: wrap; justify-content: flex-end; max-width: 140px; } }
+
+/* ---------- Aufgeraeumtes HUD: je Spielphase nur die Bedienelemente, die dort etwas tun ---------- */
+:root { --cb: clamp(78px, 23vw, 104px); }
+#strike, #strikeL { width: var(--cb); height: var(--cb); font-size: clamp(13px, 3.9vw, 16px); }
+#rodPad { width: calc(var(--cb) - 6px); height: calc(var(--cb) - 6px); margin-left: calc(var(--cb) / -2 + 3px); bottom: calc(19px + var(--sab)); }
+#hud:not([data-mode=idle]) #menuBtns button:not(#btnPov) { display: none; }
+#hud:not([data-mode=idle]) #leftBtns .col { display: none; }
+#hud.fighting #tip, #hud.fighting #revierInfo { display: none; }
+#hud.fighting #fightUI { top: calc(8px + var(--sat)); left: calc(8px + var(--sal)); right: calc(58px + var(--sar)); width: auto; max-width: 420px; transform: none; }
+#hud.fighting #toast { top: calc(100px + var(--sat)); }
+#fightArrow { top: 38%; }
+@media (max-height: 520px) { :root { --cb: 84px; } #hud.fighting #fightUI { max-width: 300px; } }
+@media (min-width: 800px) { :root { --cb: 116px; } }
+
+/* ---------- Rig-Baukasten ---------- */
+#modalCard.wide { width: min(100%, 920px); }
+.lo-top { position: sticky; top: -18px; z-index: 1; margin: -18px -16px 10px; padding: 14px 16px 8px; background: #12332f; border-radius: 18px 18px 0 0; border-bottom: 1px solid var(--line); }
+.lo-top h2 { margin: 0 44px 8px 0 !important; font-size: 20px !important; letter-spacing: .04em; }
+#loPrev { display: block; width: 100%; height: auto; border-radius: 12px; border: 1px solid var(--line); }
+.lo-slots { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.slot { position: relative; text-align: left; padding: 9px 26px 10px 11px; min-height: 58px; border-radius: 12px; background: rgba(255, 255, 255, .06); border: 1.5px solid var(--line); border-left: 4px solid #e6b84a; display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 0; }
+.slot::after { content: "›"; position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-size: 20px; opacity: .55; }
+.slot .k { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; opacity: .7; display: flex; align-items: center; gap: 5px; }
+.slot .k i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.slot b { font-size: 14px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.slot .s { position: absolute; right: 26px; top: 8px; font-size: 11px; opacity: .8; }
+.slot.on { background: rgba(230, 184, 74, .16); border-color: #e6b84a; }
+.slot.warn { border-left-color: #ffd978; } .slot.bad { border-left-color: var(--red); } .slot.bad .s { color: #ff9c94; opacity: 1; }
+.slot:active, .opt[data-act]:active { transform: scale(.98); }
+.lo-stats { margin: 12px 0 4px; padding: 10px 12px; border-radius: 12px; background: rgba(0, 0, 0, .18); }
+.bar.neg i b { background: #ff8a5a; }
+.lo-hint { text-align: center; margin: 8px 0 2px; }
+.lo-oh { display: flex; align-items: center; gap: 10px; margin: 2px 0 6px; }
+.lo-oh h3 { margin: 0 !important; }
+.opt { position: relative; display: flex; gap: 10px; padding: 10px 34px 10px 10px; margin: 8px 0; border: 1.5px solid var(--line); border-radius: 13px; background: rgba(255, 255, 255, .05); cursor: pointer; }
+.opt.sel { border-color: #e6b84a; background: rgba(230, 184, 74, .13); cursor: default; }
+.opt.locked { opacity: .5; cursor: default; } .opt.empty { cursor: default; }
+.opt .eq { position: absolute; right: 9px; top: 9px; width: 22px; height: 22px; border-radius: 50%; background: #e6b84a; color: #2a1e00; font-size: 13px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+.opt canvas { width: 58px; height: 58px; flex: none; background: var(--cream); border-radius: 10px; }
+.opt .fi { flex: 1; min-width: 0; }
+.opt .im { color: var(--green); opacity: 1; }
+.opt .mini { margin-top: 7px; }
+.opt .dot { flex: 0 0 26px; height: 26px; border-radius: 50%; margin-top: 2px; box-shadow: inset -3px -4px 6px rgba(0, 0, 0, .28); }
+.opt .dot.bead { background: radial-gradient(circle at 35% 30%, #fff3c0, #c9952a 55%, #6a4a10); align-self: center; margin: 0 4px; }
+.opt .dot.tip { background: none; box-shadow: none; display: flex; align-items: center; }
+.opt .dot.tip u { display: block; width: 100%; min-height: 2px; background: #e9e6d6; border-radius: 3px; }
+.opt.stat { cursor: default; padding-right: 10px; } .opt.stat .eq { display: none; }
+#depV { font-size: 22px; color: #e6b84a; }
+.lo-top { margin-bottom: 10px; }
+@media (max-width: 759px) {
+  .lo.detail .lo-side { display: none; }
+  .lo:not(.detail) .lo-opts { display: none; }
+}
+@media (min-width: 760px) {
+  .lo { display: grid; grid-template-columns: 330px 1fr; grid-template-rows: auto 1fr; column-gap: 18px; align-items: start; }
+  .lo-top { position: static; margin: 0 0 10px; padding: 0; border: 0; background: none; }
+  .lo-opts { grid-column: 2; grid-row: 1 / span 2; }
+  .lo-oh { margin-right: 44px; }
+  .lo-slots { grid-template-columns: 1fr 1fr; }
+  .lo-back, .lo-ok, .lo-hint { display: none !important; }
+}
+@media (max-height: 480px) and (max-width: 759px) { .lo-top { position: static; } #loPrev { max-width: 340px; } }
+#menuBtns { margin-left: auto; }
+
+/* Drillpfeil dezent: klein, halb durchsichtig, direkt ueber der Rutenanzeige statt mitten im Bild */
+#fightArrow { top: auto; bottom: calc(var(--cb) + 30px + var(--sab)); width: 40px; height: 40px; margin: 0 0 0 -20px; filter: drop-shadow(0 1px 3px rgba(0, 0, 0, .5)); }
+#fightArrow svg { fill: rgba(255, 70, 70, .9); stroke: rgba(255, 255, 255, .85); stroke-width: 5; animation: arrowPulse2 .6s ease-in-out infinite alternate; }
+#fightArrow.right { opacity: .7; transform: translateX(46px); }
+#fightArrow.left { opacity: .7; transform: translateX(-46px) rotate(180deg); }
+#fightArrow.down { opacity: .7; transform: rotate(90deg); }
+#fightArrow.up { opacity: .7; transform: rotate(-90deg); }
+#fightArrow.good { opacity: .3; }
+@keyframes arrowPulse2 { from { transform: translateX(-3px); } to { transform: translateX(4px); } }
+
+/* Rutenstick: bedienbar, und die untere Haelfte leuchtet, wenn Druck fehlt */
+#rodPad { pointer-events: auto !important; touch-action: none; width: var(--cb); height: var(--cb); margin-left: calc(var(--cb) / -2); bottom: calc(16px + var(--sab)); }
+#rodPad i.d { left: 0; right: 0; top: 50%; bottom: 0; width: auto; background: linear-gradient(0deg, rgba(255, 60, 60, .6), transparent); }
+#rodPad.wantD i.d { opacity: 1; }
+#rodPad::before { content: "◀  ▶"; position: absolute; left: 0; right: 0; top: 7px; text-align: center; font-size: 9px; letter-spacing: .3em; opacity: .55; }
+
+/* ---------- Punkte: Aufschluesselung im Fangbild, Stufenbalken, Stufenliste ---------- */
+.xpl { margin: 10px auto 4px; max-width: 320px; font-size: 13px; text-align: left; }
+.xpl > div { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; opacity: .9; }
+.xpl .sum { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 5px; font-size: 15px; opacity: 1; color: var(--gold); }
+.xpn { margin: 10px 0 6px; padding: 9px 11px; border-radius: 12px; background: rgba(0, 0, 0, .2); text-align: left; }
+.xpn .row { font-size: 13.5px; } .xpn .row span { opacity: .85; font-variant-numeric: tabular-nums; }
+.xpn .xb { height: 7px; border-radius: 4px; background: rgba(255, 255, 255, .14); overflow: hidden; margin: 6px 0 5px; }
+.xpn .xb i { display: block; height: 100%; background: var(--gold); border-radius: 4px; }
+.lvls { margin: 6px 0 10px; font-size: 13px; }
+.lvls summary { cursor: pointer; padding: 8px 0; font-weight: 600; color: #e6b84a; }
+.lvls > div { display: grid; grid-template-columns: 92px 1fr; gap: 8px; padding: 5px 0; border-top: 1px solid var(--line); opacity: .6; }
+.lvls > div.ok { opacity: 1; } .lvls > div.ok b { color: var(--green); }
+#xptext { white-space: nowrap; }
+
+/* Menue oben rechts: eine Zeile, vier gleich grosse Knoepfe (Fangbuch liegt im Tagebuch, die Fliegendose im Rig) */
+#menuBtns { flex-wrap: nowrap !important; max-width: none !important; gap: 6px; flex: none; }
+#menuBtns button { width: 40px; height: 40px; border-radius: 11px; font-size: 18px; display: flex; align-items: center; justify-content: center; padding: 0; }
+#menuBtns #btnPov, #menuBtns #btnRig { font-size: 11px; font-weight: 800; letter-spacing: .05em; color: #fff; }
+#menuBtns #btnRig { color: #e6b84a; border-color: rgba(230, 184, 74, .55); }
+#menuBtns #btnPov.on { background: #e6b84a; color: #1a1a10; border-color: #e6b84a; }
+#revierInfo { flex: 0 1 auto; }

@@ -25,10 +25,18 @@ Dann `http://localhost:8123` öffnen.
 | Werfen | Finger aufs Wasser, Zielring schieben, loslassen | wie am Handy mit der Maus |
 | Rute führen | nach unten ziehen | Maus ziehen |
 | Anhieb | nach oben wischen oder ANHIEB | Leertaste / Rechtsklick |
-| Drill | nach unten ziehen = Druck, seitlich = Seitendruck | Maus ziehen oder Leertaste, A/D |
-| Rig (Rute, Methode, Indikator) | Knopf „Rig“ oben rechts | R |
+| Drill | auf dem Bild oder am Rutenstick unten Mitte: nach unten ziehen = Druck, seitlich = Seitendruck; DRILL (links oder rechts) halten = fester Druck | Maus ziehen oder Leertaste, A/D |
+| Rig-Baukasten | Knopf „Rig“ oben rechts | R, Fliegen direkt mit F |
+| Anglersicht | Knopf „POV“ | V |
+| Tagebuch, Opas Seiten, Fangbuch | Knopf 📖 | T |
 
-Drei Methoden: Euro-Nymphe mit Sighter, Nymphe unter einem schwimmenden Indikator (sechs Typen mit eigener Tragkraft) und Trockenfliege auf steigende Fische.
+Drei Methoden: Euro-Nymphe mit Sighter, ab Staffel 2 Nymphe unter einem schwimmenden Indikator (sechs Typen mit eigener Tragkraft) und Trockenfliege auf steigende Fische.
+
+**Rig-Baukasten.** Oben zeigt eine Vorschau das montierte Rig, darunter liegen die Steckplätze Rute, Fliege, Perle, Vorfach und beim Indikator zusätzlich Indikator und Tiefe. Ein Steckplatz öffnet seine Auswahl mit Balken für Sinkrate, Unauffälligkeit, Reißfestigkeit, Reizwert und Hängerrisiko; Antippen montiert. Gesperrtes steht ausgegraut mit „ab Stufe X“ oder „ab Staffel 2“ da. Am Handy sind Übersicht und Auswahl zwei Ansichten, ab 760 px Breite stehen sie nebeneinander.
+
+**HUD.** Oben rechts liegen im Stehen vier Knöpfe (📖, POV, Rig, ⚙️); in Wurf, Drift und Drill bleibt nur POV. Im Drill leuchtet am Rutenstick die Seite, in die du ziehen sollst, und die untere Hälfte, wenn Druck fehlt; ein kleiner Pfeil darüber zeigt dasselbe. Ein frisch erschienener Dialog reagiert 0,45 s lang nicht, damit Tippen aus dem Drill nichts auslöst.
+
+**Kamera.** Sie folgt im Wurf dem Ziel, in der Drift der Fliege und im Drill dem Fisch, und steigt dabei gut 2 m höher, damit der Angler die Fliege nicht verdeckt und man ins Wasser statt auf die Spiegelung schaut.
 
 ## Regelwerk
 
@@ -46,7 +54,7 @@ Standplätze entstehen beim Aufbau eines Reviers aus dem Flussmodell (`js/river.
 | Kante | an der Strömungsnaht neben einem Stein | |
 | Rinne | links oder rechts der Stromrinne, alle 6 m | die Rinne liegt in der Außenkurve |
 
-Pro Stein gibt es genau einen Platz (Tasche, Kissen oder Kante, zufällig gewichtet 30 / 32 / 38 %). Beim Betreten eines Reviers werden so viele Plätze zufällig besetzt, wie das Revier Fische hat (9 bis 12). Art und Länge werden pro Fisch gewürfelt: die Art nach den Gewichten des Reviers, die Länge zwischen Mindest- und Höchstmaß der Art, kleine Fische deutlich häufiger als große.
+Pro Stein gibt es genau einen Platz (Tasche, Kissen oder Kante, zufällig gewichtet 30 / 32 / 38 %). Beim Betreten eines Reviers wird das 1,4-Fache des Revierwerts `fishN` besetzt (13 bis 17 Fische, höchstens so viele wie Plätze). Die Plätze werden dafür der Länge nach in gleich viele Abschnitte geteilt und in jedem genau einer zufällig besetzt, damit keine Teilstrecke leer bleibt. Art und Länge werden pro Fisch gewürfelt: die Art nach den Gewichten des Reviers, die Länge zwischen Mindest- und Höchstmaß der Art, kleine Fische deutlich häufiger als große.
 
 Ein gefangener Fisch kommt nach 100 Sekunden am selben Platz wieder, sobald du mehr als 7 m entfernt bist. Der Alte im Smaragdgumpen erscheint erst, wenn dort die ersten beiden Aufgaben erfüllt sind, und steht immer am tiefsten Punkt.
 
@@ -63,18 +71,24 @@ Ein gefangener Fisch kommt nach 100 Sekunden am selben Platz wieder, sobald du m
 | Anhieb mit zu loser Schnur | 20 s misstrauisch |
 | Fisch im Drill verloren | flieht für 80 s |
 
+Ein fliehender Fisch verschwindet nicht einfach: Er schießt vom Angler weg die Rinne entlang, weicht Steinen aus und wird erst nach gut 3 s oder 24 m Abstand ausgeblendet. Beim Biss schwimmt der Fisch sichtbar von seinem Platz zur Fliege; wird der Biss verpasst, kehrt er an den Platz zurück.
+
 ### Steigen: Nymphe oder Trockenfliege
+
+Gestiegen wird erst, wenn die Trockenfliegen-Rute freigeschaltet ist (ab Staffel 2). Vorher bleiben alle Fische am Grund.
 
 Nicht jeder Fisch steigt. Beim Besetzen wird pro Fisch gewürfelt, ob er überhaupt an die Oberfläche kommt: Barbe nie, Huchen 25 %, Marmorata 45 %, Seeforelle 60 %, Bachforelle, Regenbogenforelle und Saibling 72 %, Äsche 90 %. Der Alte steigt nie. Fische, die nicht steigen, bleiben immer am Grund und nehmen nur Nymphen.
 
-Die übrigen wechseln ständig zwischen zwei Zuständen:
+Die übrigen wechseln selten zwischen zwei Zuständen:
 
 | Zustand | Dauer | Nimmt |
 |---|---|---|
-| am Grund | 45 bis 115 s, geteilt durch die Aktivität des Lichts | nur Nymphen (Euro oder Indikator) |
-| steigend | 25 bis 50 s; der Fisch steht dicht unter der Oberfläche und macht alle 2,5 bis 7 s einen Ring | nur Trockenfliegen |
+| am Grund | 200 bis 400 s, geteilt durch die Aktivität des Lichts | nur Nymphen (Euro oder Indikator) |
+| steigend | 150 bis 300 s; der Fisch steht dicht unter der Oberfläche und macht alle 2,5 bis 7 s einen Ring | nur Trockenfliegen |
 
-Zu Beginn steigen etwa 30 % der steigfähigen Fische, und jeder startet an einer zufälligen Stelle seines Abschnitts, damit sie nicht alle gleichzeitig hochkommen. Bei Morgennebel und Abendlicht sind die Pausen am Grund kürzer, es steigen also mehr Fische.
+Die Uhr eines Fischs läuft nur, solange du weiter als 16 m entfernt bist. Ein Fisch in deiner Nähe bleibt also bei dem, was er gerade tut – wer sein Rig auf ihn abstimmt, trifft ihn auch so an.
+
+Zu Beginn steigen etwa 35 % der steigfähigen Fische, und jeder startet an einer zufälligen Stelle seines Abschnitts, damit sie nicht alle gleichzeitig hochkommen. Bei Morgennebel und Abendlicht sind die Pausen am Grund kürzer, es steigen also mehr Fische.
 
 ### Wann ein Fisch beißt
 
@@ -180,7 +194,43 @@ Stärke des Fischs = Kampfwert der Art × (Länge / 40 cm)^1,1.
 
 ### Erfahrung
 
-XP je Fisch = Länge in cm × Artwert (Bachforelle und Regenbogen 1,0 · Saibling 1,2 · Äsche 1,3 · Barbe 1,4 · Seeforelle 1,6 · Marmorata 2,0 · Huchen 2,4). Ohne Bisshilfe +25 %, ohne Führungshilfe +15 %, ohne „Klare Sicht“ +35 XP, je erfüllter Aufgabe +60 XP, der Alte +300 XP.
+XP je Fisch = Länge in cm × Artwert (Bachforelle und Regenbogen 1,0 · Saibling 1,2 · Äsche 1,3 · Barbe 1,4 · Seeforelle 1,6 · Marmorata 2,0 · Huchen 2,4). Dazu kommen, jeweils einzeln addiert: ohne Bisshilfe +25 % des Grundwerts, ohne Führungshilfe +15 %, ohne „Klare Sicht“ +35 XP, je erfüllter Aufgabe 60 XP × Staffelnummer, der Alte +300 XP. Das Fangbild schlüsselt die Punkte auf; Stand und Bedarf stehen im HUD („Stufe 4 · 345 / 400 XP“) und in den Einstellungen unter „Punkte & Stufen“.
+
+Es gibt 30 Stufen. Bis zur nächsten Stufe braucht man `160 + 60 × Stufe` XP, höchstens 640 (ab Stufe 8 gleichbleibend). Gedacht ist: Staffel 1 endet etwa mit Stufe 8, Staffel 2 mit 15, Staffel 3 mit 22, Staffel 4 mit 30.
+
+### Freischaltung
+
+Ruten kommen mit der Staffel, alles andere mit der Stufe. Die Werte stehen in `js/data.js` (`season` bei `RIGS`, `level` bei `FLIES`, `BEADS`, `TIPPETS`, `INDICATORS`, Extras in `LEVEL_UNLOCKS`).
+
+| Wann | Was |
+|---|---|
+| Start | Euro-Nymphe, Pheasant Tail, Walt's Worm, Perlen 2,5 und 3,0 mm, Vorfach 0,16 und 0,14 mm |
+| Staffel 2 | Indikator-Rute (Palsa, New-Zealand-Wolle), Trockenfliegen-Rute (je 4 Parachute Adams und Elk Hair Caddis); ab jetzt steigen Fische |
+| Stufe 2 | Polbrille, Perle 3,5 mm |
+| Stufe 3 | Perdigon Olive |
+| Stufe 4 | Vorfach 0,12 mm |
+| Stufe 5 | Frenchie |
+| Stufe 6 | Peeping Caddis |
+| Stufe 7 | Perle 4,0 mm |
+| Stufe 8 | Squirmy Wormy |
+| Stufe 9 | Loon Biostrike |
+| Stufe 10 | Steinfliegennymphe |
+| Stufe 11 | Klinkhåmer |
+| Stufe 12 | Airlock |
+| Stufe 13 | Red Tag Jig |
+| Stufe 14 | Vorfach 0,10 mm |
+| Stufe 15 | Oros |
+| Stufe 16 | Stimulator |
+| Stufe 17 | Mop Fly |
+| Stufe 18 | Thingamabobber |
+| Stufe 20 | Vorfach 0,18 mm |
+| Stufe 22 | Royal Wulff |
+| Stufe 23 | Eggstasy |
+| Stufe 25 | Huchen-Jig |
+| Stufe 27 | Binden kostet 1 statt 2 Bindematerial |
+| Stufe 30 | ein Bindematerial mehr pro Fisch |
+
+Jede neu freigeschaltete Fliege liegt dreimal in der Dose. Aufgaben, die bestimmtes Material verlangen, liegen hinter dessen Freischaltung (3,5-mm-Perle in der Rausche, 0,12er Vorfach im Äschenzug, 4-mm-Perle ab Staffel 2, 0,10er Vorfach in Staffel 4). Ältere Spielstände werden beim Laden umgerechnet: die gesammelten XP zählen auf der neuen Kurve, und noch nicht freigeschaltetes Material wird abmontiert.
 
 ## Sprachen
 

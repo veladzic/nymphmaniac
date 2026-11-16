@@ -30,81 +30,78 @@ export const INSECTS = {
 export const FLIES = [
   { id: 'pt', name: 'Pheasant Tail', level: 1, imitates: ['baetis', 'stone'], attractor: 0, sink: 1.0, col: '#7a4a25', bead: '#d9a531',
     desc: 'Fasanenschwanz, Kupferdraht. Der Klassiker – imitiert fast jede Eintagsfliegenlarve.' },
-  { id: 'perdigon', name: 'Perdigon Olive', level: 1, imitates: ['baetis'], attractor: 0.2, sink: 1.25, col: '#6b7a2a', bead: '#c9c9c9',
+  { id: 'perdigon', name: 'Perdigon Olive', level: 3, imitates: ['baetis'], attractor: 0.2, sink: 1.25, col: '#6b7a2a', bead: '#c9c9c9',
     desc: 'Glatt lackiert, kein Widerstand. Sinkt wie ein Stein – ideal für schnelles Wasser.' },
   { id: 'walt', name: "Walt's Worm", level: 1, imitates: ['gammarus', 'caddis'], attractor: 0, sink: 0.95, col: '#a89c84', bead: '#d9a531',
     desc: 'Nur Hasenohr-Dubbing. Unscheinbar, struppig – und für Bachflohkrebs-Fresser unwiderstehlich.' },
-  { id: 'frenchie', name: 'Frenchie', level: 2, imitates: ['baetis'], attractor: 0.6, sink: 1.0, col: '#7a4a25', bead: '#d9a531', hot: '#ff4fa0',
+  { id: 'frenchie', name: 'Frenchie', level: 5, imitates: ['baetis'], attractor: 0.6, sink: 1.0, col: '#7a4a25', bead: '#d9a531', hot: '#ff4fa0',
     desc: 'Pheasant Tail mit pinkem Hotspot. Fällt auf, wenn das Wasser Farbe hat.' },
-  { id: 'caddis', name: 'Peeping Caddis', level: 3, imitates: ['caddis'], attractor: 0.1, sink: 0.9, col: '#6a5a40', bead: '#3a3a3a', hot: '#9be03a',
+  { id: 'caddis', name: 'Peeping Caddis', level: 6, imitates: ['caddis'], attractor: 0.1, sink: 0.9, col: '#6a5a40', bead: '#3a3a3a', hot: '#9be03a',
     desc: 'Köcher aus Hasenhaar, chartreuse Kopf. Wenn die Fische Köcher samt Larve fressen.' },
-  { id: 'squirmy', name: 'Squirmy Wormy', level: 4, imitates: ['worm'], attractor: 0.9, sink: 0.85, col: '#e0507a', bead: '#d9a531',
+  { id: 'squirmy', name: 'Squirmy Wormy', level: 8, imitates: ['worm'], attractor: 0.9, sink: 0.85, col: '#e0507a', bead: '#d9a531',
     desc: 'Gummiwurm in Pink. Puristen rümpfen die Nase – bei trübem Wasser fängt er trotzdem.' },
-  { id: 'stone', name: 'Steinfliegennymphe', level: 5, imitates: ['stone'], attractor: 0.1, sink: 1.1, col: '#3a2a1a', bead: '#3a3a3a', big: 0.35,
+  { id: 'stone', name: 'Steinfliegennymphe', level: 10, imitates: ['stone'], attractor: 0.1, sink: 1.1, col: '#3a2a1a', bead: '#3a3a3a', big: 0.35,
     desc: 'Groß, dunkel, mit Gummibeinchen. Ein Happen, für den auch die Großen aufstehen.' },
-  { id: 'redtag', name: 'Red Tag Jig', level: 6, imitates: ['gammarus'], attractor: 0.5, sink: 1.0, col: '#2f5a2a', bead: '#d9a531', hot: '#e02020', loves: ['aesche'],
+  { id: 'redtag', name: 'Red Tag Jig', level: 13, imitates: ['gammarus'], attractor: 0.5, sink: 1.0, col: '#2f5a2a', bead: '#d9a531', hot: '#e02020', loves: ['aesche'],
     desc: 'Pfauengras und roter Schwanz. Äschen können nicht widerstehen.' },
-  { id: 'mop', name: 'Mop Fly', level: 7, imitates: ['caddis'], attractor: 0.8, sink: 0.9, col: '#b7c94a', bead: '#d9a531',
+  { id: 'mop', name: 'Mop Fly', level: 17, imitates: ['caddis'], attractor: 0.8, sink: 0.9, col: '#b7c94a', bead: '#d9a531',
     desc: "Ein Stück Wischmopp am Haken. Sieht albern aus, treibt wie eine fette Larve – und fängt, wenn nichts anderes geht." },
-  { id: 'egg', name: 'Eggstasy', level: 9, imitates: ['gammarus'], attractor: 1.0, sink: 0.8, col: '#f29a3a', bead: '#e8e8e8', loves: ['seeforelle', 'regenbogen'],
+  { id: 'egg', name: 'Eggstasy', level: 23, imitates: ['gammarus'], attractor: 1.0, sink: 0.8, col: '#f29a3a', bead: '#e8e8e8', loves: ['seeforelle', 'regenbogen'],
     desc: "Ein leuchtendes Fischei aus Chenille. Im kalten Wasser fressen Forellen den Laich der anderen." },
-  { id: 'huchenjig', name: 'Huchen-Jig', level: 10, imitates: ['stone'], attractor: 0.6, sink: 1.3, col: '#2a2a2a', bead: '#3a3a3a', big: 0.6, loves: ['huchen'],
+  { id: 'huchenjig', name: 'Huchen-Jig', level: 25, imitates: ['stone'], attractor: 0.6, sink: 1.3, col: '#2a2a2a', bead: '#3a3a3a', big: 0.6, loves: ['huchen'],
     desc: "Schwer, dunkel, lang wie ein Finger. Kein Imitat für Zaghafte – gebaut für den Kolk und das, was darin jagt." },
   // Trockenfliegen: treiben auf der Oberflaeche, nur steigende Fische nehmen sie
   { id: 'adams', dry: true, name: 'Parachute Adams', level: 1, imitates: ['baetis'], attractor: 0.1, sink: 1, col: '#8a8a86', bead: '#8a8a86',
     desc: "Grauer Körper, weißer Sichtflügel. Die eine Trockenfliege, die fast jede schlüpfende Eintagsfliege abdeckt." },
   { id: 'elk', dry: true, name: 'Elk Hair Caddis', level: 1, imitates: ['caddis'], attractor: 0.1, sink: 1, col: '#b89a60', bead: '#b89a60',
     desc: "Flügel aus Hirschhaar, schwimmt wie ein Korken. Für Abende, an denen die Köcherfliegen über dem Wasser tanzen." },
-  { id: 'klink', dry: true, name: 'Klinkhåmer', level: 3, imitates: ['caddis', 'baetis'], attractor: 0.2, sink: 1, col: '#a8763a', bead: '#a8763a',
+  { id: 'klink', dry: true, name: 'Klinkhåmer', level: 11, imitates: ['caddis', 'baetis'], attractor: 0.2, sink: 1, col: '#a8763a', bead: '#a8763a',
     desc: "Der Körper hängt im Oberflächenfilm wie ein Insekt beim Schlüpfen. Für Fische, die knapp unter der Oberfläche fressen." },
-  { id: 'stimu', dry: true, name: 'Stimulator', level: 5, imitates: ['stone'], attractor: 0.4, sink: 1, col: '#d08a2a', bead: '#d08a2a', big: 0.3,
+  { id: 'stimu', dry: true, name: 'Stimulator', level: 16, imitates: ['stone'], attractor: 0.4, sink: 1, col: '#d08a2a', bead: '#d08a2a', big: 0.3,
     desc: "Groß, buschig, orange. Imitiert die erwachsene Steinfliege – ein Bissen, für den auch große Forellen hochkommen." },
-  { id: 'wulff', dry: true, name: 'Royal Wulff', level: 7, imitates: [], attractor: 0.9, sink: 1, col: '#b02a2a', bead: '#b02a2a',
+  { id: 'wulff', dry: true, name: 'Royal Wulff', level: 22, imitates: [], attractor: 0.9, sink: 1, col: '#b02a2a', bead: '#b02a2a',
     desc: "Rot, Pfauengras, weiße Flügel. Imitiert nichts – und wird im schnellen Wasser trotzdem genommen, weil man sie einfach sieht." },
 ];
 
 // Rig: Rute und Methode
 export const RIGS = [
-  { id: 'euro', name: "Euro-Nymphe", desc: "Nymphenrute 10′ #3. Kurze Schnur, hohe Rute, direkter Kontakt über den Sighter. Am genauesten auf kurze Distanz, bis etwa 7 m." },
-  { id: 'indi', name: "Indikator", desc: "Allroundrute 9′6″ #4. Die Nymphe hängt unter einem schwimmenden Bissanzeiger. Würfe bis 10 m, lose Schnur schadet nicht – aber die Tiefe stellst du selbst ein, und der Indikator muss die Perle tragen können." },
-  { id: 'dry', name: "Trockenfliege", desc: "Trockenfliegenrute 9′ #4. Die Fliege treibt auf der Oberfläche. Nur steigende Fische nehmen sie – achte auf die Ringe im Wasser. Würfe bis 12 m. In der Fliegendose siehst du mit dieser Rute nur Trockenfliegen." },
+  { id: 'euro', season: 1, name: "Euro-Nymphe", desc: "Nymphenrute 10′ #3. Kurze Schnur, hohe Rute, direkter Kontakt über den Sighter. Am genauesten auf kurze Distanz, bis etwa 7 m." },
+  { id: 'indi', season: 2, name: "Indikator", desc: "Allroundrute 9′6″ #4. Die Nymphe hängt unter einem schwimmenden Bissanzeiger. Würfe bis 10 m, lose Schnur schadet nicht – aber die Tiefe stellst du selbst ein, und der Indikator muss die Perle tragen können." },
+  { id: 'dry', season: 2, name: "Trockenfliege", desc: "Trockenfliegenrute 9′ #4. Die Fliege treibt auf der Oberfläche. Nur steigende Fische nehmen sie – achte auf die Ringe im Wasser. Würfe bis 12 m. In der Fliegendose siehst du mit dieser Rute nur Trockenfliegen." },
 ];
 // Schwimmende Bissanzeiger. cap = Tragkraft (Perle x Fliege), sens = wie deutlich er Bisse zeigt,
 // splash = Scheuchradius beim Aufsetzen in m, drift = wie natuerlich die Nymphe darunter treibt
 export const INDICATORS = [
-  { id: 'nz', name: "New-Zealand-Wolle", col: '#f2f0e4', size: 0.05, cap: 0.30, sens: 1.3, splash: 0.5, drift: 1.0, desc: "Ein Büschel Schafwolle im Silikonschlauch. Landet wie eine Feder und zeigt jedes Zupfen – trägt aber nur leichte Nymphen." },
-  { id: 'palsa', name: "Palsa-Klebeschaum", col: '#ff7a1a', size: 0.036, cap: 0.24, sens: 1.2, splash: 0.6, drift: 0.97, desc: "Selbstklebender Schaumstreifen ums Vorfach. Winzig und unauffällig, trägt am wenigsten von allen." },
-  { id: 'loon', name: "Loon Biostrike (Knete)", col: '#ff3fa0', size: 0.04, cap: 0.36, sens: 1.15, splash: 0.7, drift: 0.98, desc: "Schwimmende Knetmasse, die du in beliebiger Größe aufs Vorfach rollst. Empfindlich und leise, mittlere Tragkraft." },
-  { id: 'airlock', name: "Airlock", col: '#c8f03a', size: 0.055, cap: 0.5, sens: 1.0, splash: 1.2, drift: 0.93, desc: "Schaumkörper mit Schraubmutter, schnell verstellbar. Solider Allrounder für mittlere Gewichte." },
-  { id: 'oros', name: "Oros (Styroporkugel)", col: '#ffd21a', size: 0.064, cap: 0.62, sens: 0.9, splash: 1.5, drift: 0.9, desc: "Zweiteilige Styroporkugel zum Zusammenschrauben. Trägt auch schwere Perlen, setzt aber hörbar auf." },
-  { id: 'thing', name: "Thingamabobber", col: '#ff4a2a', size: 0.072, cap: 0.85, sens: 0.8, splash: 2.0, drift: 0.86, desc: "Luftgefüllte Plastikkugel. Trägt alles und geht nie unter – klatscht aber aufs Wasser und zeigt feine Bisse schlecht." },
+  { id: 'nz', level: 1, name: "New-Zealand-Wolle", col: '#f2f0e4', size: 0.05, cap: 0.30, sens: 1.3, splash: 0.5, drift: 1.0, desc: "Ein Büschel Schafwolle im Silikonschlauch. Landet wie eine Feder und zeigt jedes Zupfen – trägt aber nur leichte Nymphen." },
+  { id: 'palsa', level: 1, name: "Palsa-Klebeschaum", col: '#ff7a1a', size: 0.036, cap: 0.24, sens: 1.2, splash: 0.6, drift: 0.97, desc: "Selbstklebender Schaumstreifen ums Vorfach. Winzig und unauffällig, trägt am wenigsten von allen." },
+  { id: 'loon', level: 9, name: "Loon Biostrike (Knete)", col: '#ff3fa0', size: 0.04, cap: 0.36, sens: 1.15, splash: 0.7, drift: 0.98, desc: "Schwimmende Knetmasse, die du in beliebiger Größe aufs Vorfach rollst. Empfindlich und leise, mittlere Tragkraft." },
+  { id: 'airlock', level: 12, name: "Airlock", col: '#c8f03a', size: 0.055, cap: 0.5, sens: 1.0, splash: 1.2, drift: 0.93, desc: "Schaumkörper mit Schraubmutter, schnell verstellbar. Solider Allrounder für mittlere Gewichte." },
+  { id: 'oros', level: 15, name: "Oros (Styroporkugel)", col: '#ffd21a', size: 0.064, cap: 0.62, sens: 0.9, splash: 1.5, drift: 0.9, desc: "Zweiteilige Styroporkugel zum Zusammenschrauben. Trägt auch schwere Perlen, setzt aber hörbar auf." },
+  { id: 'thing', level: 18, name: "Thingamabobber", col: '#ff4a2a', size: 0.072, cap: 0.85, sens: 0.8, splash: 2.0, drift: 0.86, desc: "Luftgefüllte Plastikkugel. Trägt alles und geht nie unter – klatscht aber aufs Wasser und zeigt feine Bisse schlecht." },
 ];
 
 export const BEADS = [
-  { mm: 2.5, sink: 0.16 }, { mm: 3.0, sink: 0.26 }, { mm: 3.5, sink: 0.38 }, { mm: 4.0, sink: 0.54 },
+  { mm: 2.5, level: 1, sink: 0.16 }, { mm: 3.0, level: 1, sink: 0.26 }, { mm: 3.5, level: 2, sink: 0.38 }, { mm: 4.0, level: 7, sink: 0.54 },
 ];
 
 export const TIPPETS = [
-  { d: 0.18, level: 8, limit: 1.06, take: 0.58, sink: 0.82 },
+  { d: 0.18, level: 20, limit: 1.06, take: 0.58, sink: 0.82 },
   { d: 0.16, level: 1, limit: 0.95, take: 0.72, sink: 0.9 },
   { d: 0.14, level: 1, limit: 0.88, take: 0.9, sink: 1.0 },
-  { d: 0.12, level: 3, limit: 0.8, take: 1.06, sink: 1.1 },
-  { d: 0.10, level: 6, limit: 0.72, take: 1.2, sink: 1.2 },
+  { d: 0.12, level: 4, limit: 0.8, take: 1.06, sink: 1.1 },
+  { d: 0.10, level: 14, limit: 0.72, take: 1.2, sink: 1.2 },
 ];
 
+// Freischaltung: Ruten kommen mit der Staffel (RIGS.season), Fliegen, Perlen, Vorfaecher und Indikatoren mit der Stufe (level).
+// Hier stehen nur die Extras, die an keinem Gegenstand haengen.
 export const LEVEL_UNLOCKS = {
-  2: 'Frenchie & Polbrille – du siehst Fische jetzt deutlicher im Wasser',
-  3: 'Peeping Caddis & 0,12er Fluorocarbon',
-  4: 'Squirmy Wormy',
-  5: 'Steinfliegennymphe',
-  6: 'Red Tag Jig & 0,10er Fluorocarbon',
-  7: "Mop Fly",
-  8: "0,18er Vorfach – für die ganz Großen",
-  9: "Eggstasy",
-  10: "Huchen-Jig",
+  2: 'Polbrille – du siehst Fische jetzt deutlicher im Wasser',
+  27: 'Fliegen binden kostet nur noch 1 Bindematerial',
+  30: 'Ein Bindematerial mehr pro Fisch',
 };
-export const MAX_LEVEL = 12;
-export const xpNeed = lvl => 70 + 50 * lvl;
+export const MAX_LEVEL = 30;
+// Staffel 1 endet etwa mit Stufe 8, danach kostet jede Stufe gleich viel; Aufgaben bringen in spaeteren Staffeln mehr
+export const xpNeed = lvl => Math.min(160 + 60 * lvl, 640);
 
 export const CLARITY = ['glasklar', 'leicht angetrübt', 'trüb'];
 export const LIGHTS = [

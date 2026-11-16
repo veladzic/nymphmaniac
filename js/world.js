@@ -1388,7 +1388,10 @@ export class World {
     // Umschauen: yaw dreht Kamera und Blickpunkt um den Angler, pitch hebt/senkt den Blick
     const yaw = this.yaw || 0, pit = this.pitch || 0, yc = Math.cos(yaw), ys = Math.sin(yaw), fw = Math.max(0, yc);
     const cu = cxp - (this.river ? this.river.cx(cz) : 0);   // Abstand des Anglers von der Flussmitte
-    const ox = clamp(cu * (por ? 0.13 : 0.42), -1.6, 1.6) * fw, cy = (por ? 2.75 : 2.25) - pit * 1.3, back0 = por ? 3.7 : 3.9;
+    const ox = clamp(cu * (por ? 0.13 : 0.42), -1.6, 1.6) * fw, back0 = por ? 3.7 : 3.9;
+    // Drift und Drill: Kamera steigt und schaut steiler aufs Wasser - sonst verdeckt der Angler die Fliege, und die Spiegelung den Fisch darunter
+    this._lift = (this._lift || 0) + ((this.lift || 0) - (this._lift || 0)) * Math.min(1, dt * 2.2);
+    const lift = this._lift, cy = (por ? 2.75 : 2.25) - pit * 1.3 + lift * (por ? 2.3 : 1.9);
     // Steht hinter dem Angler ein Baum oder Busch, rueckt die Kamera naeher heran statt ins Laub zu geraten
     let want = back0;
     if (this.obst && this.obst.length) {
@@ -1410,7 +1413,9 @@ export class World {
     this._look = this._look || new THREE.Vector3(px - 2, 0.3, -4);
     const lo = (-clamp(cu * (por ? 0.42 : 0.68), -2.4, 2.4) + (focus ? (focus.x - cxp) * 0.12 : 0)) * fw;
     const turned = yaw !== this._yawPrev || pit !== this._pitPrev; this._yawPrev = yaw; this._pitPrev = pit;
-    this._look.lerp(_d.set(cxp + lo * yc - 4.6 * ys, 0.45 + pit * 7, cz - lo * ys - 4.6 * yc), turned ? Math.min(1, dt * 14) : kk);
+    _d.set(cxp + lo * yc - 4.6 * ys, 0.45 + pit * 7 - lift * 0.45, cz - lo * ys - 4.6 * yc);
+    if (focus && lift > 0.01) { const b = lift * 0.75; _d.x += (focus.x - _d.x) * b; _d.z += (focus.z - _d.z) * b; }   // Blickpunkt wandert zur Fliege bzw. zum Fisch
+    this._look.lerp(_d, turned ? Math.min(1, dt * 14) : kk);
     if (this.pov) {   // Sicht des Anglers: Kamera knapp vor dem Gesicht, damit Arme und Rute im Bild sind, der eigene Kopf aber nicht
       const g = this.angler.position;
       this.camera.position.set(g.x - ys * 0.2, g.y + 1.16 + Math.sin(t * 0.7) * 0.006, g.z - yc * 0.2);
