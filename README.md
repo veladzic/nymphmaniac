@@ -54,7 +54,7 @@ Standplätze entstehen beim Aufbau eines Reviers aus dem Flussmodell (`js/river.
 | Kante | an der Strömungsnaht neben einem Stein | |
 | Rinne | links oder rechts der Stromrinne, alle 6 m | die Rinne liegt in der Außenkurve |
 
-Pro Stein gibt es genau einen Platz (Tasche, Kissen oder Kante, zufällig gewichtet 30 / 32 / 38 %). Beim Betreten eines Reviers wird das 1,4-Fache des Revierwerts `fishN` besetzt (13 bis 17 Fische, höchstens so viele wie Plätze). Die Plätze werden dafür der Länge nach in gleich viele Abschnitte geteilt und in jedem genau einer zufällig besetzt, damit keine Teilstrecke leer bleibt. Art und Länge werden pro Fisch gewürfelt: die Art nach den Gewichten des Reviers, die Länge zwischen Mindest- und Höchstmaß der Art, kleine Fische deutlich häufiger als große.
+Pro Stein gibt es genau einen Platz (Tasche, Kissen oder Kante, zufällig gewichtet 30 / 32 / 38 %). Beim Betreten eines Reviers wird das 1,4-Fache des Revierwerts `fishN` besetzt (13 bis 17 Fische, höchstens so viele wie Plätze). Die Plätze werden dafür der Länge nach in gleich viele Abschnitte geteilt und in jedem genau einer zufällig besetzt, damit keine Teilstrecke leer bleibt. Zusätzlich stehen an jeder Art von Standplatz mindestens zwei Fische (soweit es so viele Plätze gibt), damit Standplatz-Aufgaben bei jedem Besuch lösbar sind. Verlangt eine offene Aufgabe ein bestimmtes Licht (Moorbach: Morgennebel oder Abendlicht), herrscht es bei jedem Besuch, bis sie erfüllt ist. Art und Länge werden pro Fisch gewürfelt: die Art nach den Gewichten des Reviers, die Länge zwischen Mindest- und Höchstmaß der Art, kleine Fische deutlich häufiger als große.
 
 Ein gefangener Fisch kommt nach 100 Sekunden am selben Platz wieder, sobald du mehr als 7 m entfernt bist. Der Alte im Smaragdgumpen erscheint erst, wenn dort die ersten beiden Aufgaben erfüllt sind, und steht immer am tiefsten Punkt.
 
@@ -72,6 +72,10 @@ Ein gefangener Fisch kommt nach 100 Sekunden am selben Platz wieder, sobald du m
 | Fisch im Drill verloren | flieht für 80 s |
 
 Ein fliehender Fisch verschwindet nicht einfach: Er schießt vom Angler weg die Rinne entlang, weicht Steinen aus und wird erst nach gut 3 s oder 24 m Abstand ausgeblendet. Beim Biss schwimmt der Fisch sichtbar von seinem Platz zur Fliege; wird der Biss verpasst, kehrt er an den Platz zurück.
+
+Ein Ladebildschirm deckt den Start und jeden Revierwechsel ab, bis Texturen, Anglerfigur und die ersten Bilder da sind. Der Balken zählt die wirklich geladenen Dateien; beim Revierwechsel stehen Staffel, Reviername und ein Rat von Opa darauf. „Weiterfischen“ baut die Strecke nicht mehr neu, sie steht seit dem Laden.
+
+Steine sind für alles fest, bei jeder Rute: Die Schnur legt sich auf die Steinoberfläche, statt hindurchzugehen, und hält die Fliege dann fest. Fliege und Nymphe treiben am echten Steinumriss vorbei; eine Euro-Nymphe, die unter Wasser von vorn gegen einen Stein treibt, verklemmt sich mit 12 % Wahrscheinlichkeit (Hänger). Im Drill weicht der Fisch an den Rand eines Steins aus, statt hindurchzuschwimmen.
 
 ### Steigen: Nymphe oder Trockenfliege
 
@@ -196,7 +200,7 @@ Stärke des Fischs = Kampfwert der Art × (Länge / 40 cm)^1,1.
 
 XP je Fisch = Länge in cm × Artwert (Bachforelle und Regenbogen 1,0 · Saibling 1,2 · Äsche 1,3 · Barbe 1,4 · Seeforelle 1,6 · Marmorata 2,0 · Huchen 2,4). Dazu kommen, jeweils einzeln addiert: ohne Bisshilfe +25 % des Grundwerts, ohne Führungshilfe +15 %, ohne „Klare Sicht“ +35 XP, je erfüllter Aufgabe 60 XP × Staffelnummer, der Alte +300 XP. Das Fangbild schlüsselt die Punkte auf; Stand und Bedarf stehen im HUD („Stufe 4 · 345 / 400 XP“) und in den Einstellungen unter „Punkte & Stufen“.
 
-Es gibt 30 Stufen. Bis zur nächsten Stufe braucht man `160 + 60 × Stufe` XP, höchstens 640 (ab Stufe 8 gleichbleibend). Gedacht ist: Staffel 1 endet etwa mit Stufe 8, Staffel 2 mit 15, Staffel 3 mit 22, Staffel 4 mit 30.
+Es gibt 30 Stufen. Bis zur nächsten Stufe braucht man `160 + 60 × Stufe` XP, höchstens 640 (ab Stufe 8 gleichbleibend). Mit dem Durchspiel-Bot (`tools/playthrough.js`, 50 Läufe) gemessen: Staffel 1 endet etwa mit Stufe 10, Staffel 2 mit 15, Staffel 3 mit 22, Staffel 4 mit 30.
 
 ### Freischaltung
 

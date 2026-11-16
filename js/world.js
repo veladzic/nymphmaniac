@@ -765,8 +765,10 @@ export class World {
 
   // Realistische Figur (Microsoft Rocketbox, MIT-Lizenz) laden; bis dahin - oder wenn das Laden scheitert - bleibt die gebaute Figur
   loadAnglerModel() {
+    this.anglerPending = true;   // der Ladebildschirm wartet auf die Figur
     const mgr = new THREE.LoadingManager(); mgr.addHandler(/\.tga$/i, { setPath() { return this; }, load: () => new THREE.Texture() });   // TGA-Verweise der Datei ignorieren, Texturen kommen als JPG
     import('./vendor/FBXLoader.js').then(({ FBXLoader }) => new FBXLoader(mgr).load('assets/angler.fbx', o => {
+      this.anglerPending = false;
       const tex = f => { const t = this.loader.load('assets/' + f); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };
       const mats = [new THREE.MeshStandardMaterial({ map: tex('angler_body.jpg'), roughness: 0.9 }), new THREE.MeshStandardMaterial({ map: tex('angler_head.jpg'), roughness: 0.78 })];
       const rm = [];
@@ -790,7 +792,7 @@ export class World {
       // gebaute Figur ausblenden, Ausruestung bleibt
       this.body.traverse(m => { if (!m.isMesh) return; if (!m.userData.gear) m.visible = false; else if (m.parent === this.torso && m.position.z < 0) m.position.z += 0.045; });   // Brusttasche an die schmalere Brust ruecken
       for (const a of this.arms) { for (const m of [a.up, a.fo, a.el, a.sd, a.hand]) m.visible = false; a.bones = a.sx > 0 ? this.rig.R : this.rig.L; }
-    }, undefined, () => {})).catch(() => {});
+    }, undefined, () => { this.anglerPending = false; })).catch(() => { this.anglerPending = false; });
   }
 
   // st: {px,pz,gy,face,walk,ten,look,fight}
@@ -1052,6 +1054,15 @@ export class World {
 
   _drawLine(t0, t1) {
     const N = this.NL, L = this._lp, pos = this.line.geometry.attributes.position;
+    // Die Schnur geht nie durch einen Stein: wo sie einen kreuzt, legt sie sich auf dessen Oberflaeche (gilt fuer jede Rute, auch im Drill)
+    if (this.river) for (let i = 1; i < N - 1; i++) {
+      const p = L[i];
+      for (const k of this.river.rocks) {
+        if (!k.mesh || p.y > k.top + 0.02) continue;
+        const dx = p.x - k.x, dz = p.z - k.z, R = k.vr + 0.02; if (dx * dx + dz * dz > R * R) continue;
+        const top = this.rockTop(k, p.x, p.z); if (top !== null && p.y < top + 0.012) p.y = top + 0.012;
+      }
+    }
     for (let i = 0; i < N; i++) pos.setXYZ(i, L[i].x, L[i].y, L[i].z);
     pos.needsUpdate = true;
     const cut = Math.round(this.flyFrac * (N - 1));

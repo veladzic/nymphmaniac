@@ -3,7 +3,7 @@ import { T, LANGS, getLang, setLang, loc } from './i18n.js';
 import { World } from './world.js';
 import { SPECIES, FLIES, INSECTS, REVIERE, SEASONS, RIGS, INDICATORS, PAGES, BEADS, TIPPETS, LEVEL_UNLOCKS, MAX_LEVEL, xpNeed, CLARITY, LIGHTS } from './data.js';
 import { LANE_X, Z_MIN, Z_MAX } from './river.js';
-import { Vector3 as THREE_V3 } from './three.module.min.js';
+import { Vector3 as THREE_V3, DefaultLoadingManager } from './three.module.min.js';
 import { drawFish, drawFly } from './fishart.js';
 import { Sfx } from './audio.js';
 
@@ -64,6 +64,42 @@ function xpBarHtml() {
   return `<div class="xpn"><div class="row"><b>${T('Stufe {0}', save.level)}</b><span>${mx ? T('höchste Stufe erreicht') : save.xp + ' / ' + need + ' XP'}</span></div><div class="xb"><i style="width:${mx ? 100 : Math.round(save.xp / need * 100)}%"></i></div>${nx <= MAX_LEVEL ? `<div class="small">${T('Nächste Freischaltung – Stufe {0}:', nx)} ${unlocksAt(nx).join(', ')}</div>` : ''}</div>`;
 }
 
+// ---------- Ladebildschirm ----------
+// Deckt den Start und jeden Revierwechsel ab, bis Texturen, Figur und die ersten Bilder da sind. Der Balken zeigt die wirklich geladenen Dateien.
+const LD_TIPS = ['Fische stehen vor, neben und hinter Steinen – dort, wo die Strömung ihnen Futter bringt und wenig Kraft kostet.', 'Dreh einen Stein um, bevor du die Fliege wählst.',
+  'Langsam waten. Wer hastet, fischt in leerem Wasser.', 'Trübes Wasser verzeiht auffällige Fliegen, klares verlangt feines Zeug.', 'Bei Fluchten nachgeben – aber nie ganz locker lassen.', 'Stoppt der Sighter, sofort anschlagen.'];
+const Load = { on: true, busy: false, n: 0, tot: 0, n0: 0, tot0: 0, t0: performance.now(), frames: 0, p: 0, min: 700 };
+DefaultLoadingManager.onStart = () => { Load.busy = true; };
+DefaultLoadingManager.onProgress = (u, n, tot) => { Load.n = n; Load.tot = tot; };
+DefaultLoadingManager.onLoad = () => { Load.busy = false; };
+function showLoader(pre, title, sub, status, boot) {
+  const el = $('loader');
+  $('ldPre').textContent = pre || '\u00a0'; $('ldSub').textContent = sub || '\u00a0'; $('ldStatus').textContent = status;
+  if (title) $('ldTitle').textContent = title; else $('ldTitle').innerHTML = 'NYMPH<span>MANIAC</span>';
+  $('ldTip').innerHTML = `<b>${T('Opas Rat')}</b>${T(pick(LD_TIPS))}`;
+  if (boot) return;   // beim Start steht er schon seit dem ersten Bild da
+  Object.assign(Load, { on: true, n0: Load.n, tot0: Load.tot, t0: performance.now(), frames: 0, p: 0, min: 900 });
+  $('ldFill').style.transition = 'none'; $('ldFill').style.width = '0'; $('ldPct').textContent = '0 %';
+  el.classList.remove('hidden', 'out'); el.classList.add('in'); void el.offsetWidth; el.classList.remove('in'); $('ldFill').style.transition = '';
+}
+function loadTick() {   // jedes Bild: Fortschritt nachfuehren und ausblenden, sobald alles da ist
+  if (!Load.on) return;
+  Load.frames++;
+  const el = performance.now() - Load.t0, tot = Load.tot - Load.tot0, files = tot > 0 ? (Load.n - Load.n0) / tot : 1;
+  const ready = (!Load.hold && !Load.busy && !world.anglerPending && Load.frames > 3 && el > Load.min) || el > 20000;
+  // ohne neue Dateien (Revier schon im Speicher) laeuft der Balken ueber die Zeit; fertig ist erst, wenn auch ein paar Bilder gezeichnet sind
+  const p = ready ? 1 : Math.min(0.96, 0.9 * Math.min(files, tot > 0 ? 1 : el / Load.min) + 0.06 * Math.min(1, Load.frames / 4));
+  if (p > Load.p) { Load.p = p; $('ldFill').style.width = (p * 100).toFixed(1) + '%'; $('ldPct').textContent = Math.round(p * 100) + ' %'; }
+  if (ready) { Load.on = false; const e = $('loader'); e.classList.add('out'); setTimeout(() => { if (!Load.on) e.classList.add('hidden'); }, 600); }
+}
+// Revierwechsel hinter dem Ladebildschirm: erst einblenden, dann die Strecke bauen (das Bauen haelt das Bild kurz an)
+function travel(i, fn) {
+  const rv = REVIERE[i];
+  showLoader(T(SEASONS[rv.season - 1]), rv.name, rv.sub, T('Unterwegs zum Revier …'));
+  Load.hold = true;
+  setTimeout(() => { fn(); Load.hold = false; Load.frames = 0; }, 600);
+}
+
 // ---------- Welt & Zustand ----------
 const canvas = $('gl');
 const world = new World(canvas);
@@ -107,7 +143,9 @@ const vibrate = p => { if (save.set.vib && navigator.vibrate) { try { navigator.
 function enterRevier(i, keep) {
   save.revier = i;
   const rv = REVIERE[i];
-  cond = { clarity: pick(rv.clarity), light: pick(rv.lights ? LIGHTS.filter(l => rv.lights.includes(l.id)) : LIGHTS), sampled: false };
+  // verlangt eine offene Aufgabe ein bestimmtes Licht, herrscht es bei jedem Besuch - sonst waere sie nur mit Glueck loesbar
+  const ql = rv.quests.find(q => q.light && !save.quests[q.id]), lset = ql ? ql.light : rv.lights;
+  cond = { clarity: pick(rv.clarity), light: pick(lset ? LIGHTS.filter(l => lset.includes(l.id)) : LIGHTS), sampled: false };
   const ins = [...rv.insects].sort(() => Math.random() - 0.5);
   if (cond.clarity === 2 && ins.includes('worm')) { ins.splice(ins.indexOf('worm'), 1); ins.unshift('worm'); }
   cond.i1 = ins[0]; cond.i2 = ins[1];
@@ -122,6 +160,8 @@ function enterRevier(i, keep) {
   // Besatz: 40 % mehr als frueher und gleichmaessig ueber die Strecke verteilt, damit nicht zufaellig ganze Abschnitte leer bleiben
   const all = river.lies.filter(l => !l.big).sort((a, b) => b.z - a.z), want = Math.min(all.length, Math.round(rv.fishN * 1.4)), lies = [];
   for (let i = 0; i < want; i++) { const a = Math.floor(i * all.length / want), b = Math.max(a + 1, Math.floor((i + 1) * all.length / want)); lies.push(all[a + ((Math.random() * (b - a)) | 0)]); }
+  // jede Art von Standplatz ist mit mindestens zwei Fischen besetzt (soweit vorhanden), damit Standplatz-Aufgaben bei jedem Besuch loesbar sind
+  for (const t of new Set(all.map(l => l.type))) { const pool = all.filter(l => l.type === t && !lies.includes(l)); for (let k = lies.filter(l => l.type === t).length; k < 2 && pool.length; k++) lies.push(pool.splice((Math.random() * pool.length) | 0, 1)[0]); }
   for (const l of lies) fish.push(makeFish(l));
   checkOld(false);
   if (S.mode !== 'title') S.mode = 'idle';
@@ -250,7 +290,7 @@ function updateCast(dt) {
     const tp = curTippet(), fly = curFly();
     S.sinkRate = curBead().sink * fly.sink * tp.sink;
     for (const f of fish) f.match = flyMatch(fly, f);
-    S.indSunk = false; S.indLow = false; S.rockHold = null;
+    S.indSunk = false; S.indLow = false; S.rockHold = null; S.rockTouch = null;
     if (rigMode() === 'indi') {   // traegt der Indikator die Nymphe? Und wie laut setzt er auf?
       const k = curInd(), load = curBead().sink * fly.sink;
       S.indSunk = load > k.cap; S.indLow = !S.indSunk && load > k.cap * 0.85;
@@ -287,10 +327,6 @@ function updateDrift(dt) {
     const frac = euro ? Math.min(1, n.d / bottom) : 0;   // Indikator und Trockenfliege treiben mit der Oberflaeche
     let vz = Math.max(0.16, v * (1 - 0.5 * frac)); if (S.onBottom) vz *= 0.75;
     n.z += vz * dt; n.x += river.dcx(n.z) * vz * dt;   // die Stroemung folgt dem Flusslauf
-    for (const k of river.rocks) {
-      const dx = n.x - k.x, dz = n.z - k.z, d = Math.hypot(dx, dz);
-      if (d < k.r * 0.95) n.x += (dx >= 0 ? 1 : -1) * (k.r * 0.95 - d);
-    }
   }
   let pull = 0;
   const constrain = count => {
@@ -306,7 +342,7 @@ function updateDrift(dt) {
   S.s = constrain(true);
   // Indikator / Trockenfliege: die Schnur liegt auf dem Wasser. Kreuzt sie einen Stein, bleibt sie dort haengen;
   // die Fliege kann dann nur noch so weit treiben, wie Schnur hinter dem Stein liegt - danach wird sie gebremst und furcht.
-  if (!euro && !held) {
+  if (!held) {
     const ax = TP.x + (n.x - TP.x) * 0.3, az = TP.z + (n.z - TP.z) * 0.3, vx = n.x - ax, vz = n.z - az, ll = vx * vx + vz * vz || 1;
     let hit = null, hx = 0, hz = 0;
     for (const k of river.rocks) {
@@ -314,7 +350,7 @@ function updateDrift(dt) {
       const dc = Math.hypot(cx - k.x, cz - k.z);
       if (t < 0.96 && dc < (k.vr || k.r * 1.2) && dc < rockR(k, cx - k.x, cz - k.z) * 0.95) {
         // nur wenn die Schnur dort wirklich aufliegt: nahe der Rutenspitze haengt sie noch hoch in der Luft ueber dem Stein
-        const Dl = Math.hypot(n.x - TP.x, n.z - TP.z) || 1, tdl = Math.min(Dl * 0.45, 2.6), sl = Math.hypot(cx - TP.x, cz - TP.z), yl = sl < tdl ? TP.y * Math.pow(1 - sl / tdl, 1.7) : 0, top = world.rockTop(k, cx, cz);
+        const Dl = Math.hypot(n.x - TP.x, n.z - TP.z) || 1, tdl = Math.min(Dl * 0.45, 2.6), sl = Math.hypot(cx - TP.x, cz - TP.z), yl = euro ? TP.y - (TP.y + n.d) * (0.3 + 0.7 * t) : sl < tdl ? TP.y * Math.pow(1 - sl / tdl, 1.7) : 0, top = world.rockTop(k, cx, cz);   // Euro: die Schnur laeuft gerade von der Spitze zur Nymphe
         if (top !== null && yl <= top + 0.05) { hit = k; hx = cx; hz = cz; break; }
       }   // die Schnur liegt quer ueber diesem Stein
     }
@@ -324,7 +360,7 @@ function updateDrift(dt) {
       const h = S.rockHold, dx = h.x - n.x, dz = h.z - n.z, d = Math.hypot(dx, dz);
       if (d > h.len) {
         const ex = d - h.len; n.x += dx / d * ex; n.z += dz / d * ex; pull = Math.max(pull, Math.min(1.5, ex / dt));
-        if (!S.rockHint) { S.rockHint = true; toast(T("Die Schnur liegt über einem Stein und hält die Fliege fest – sie furcht. Rute heben und so werfen, dass kein Stein dazwischen liegt."), 5200); }
+        if (!S.rockHint) { S.rockHint = true; toast(euro ? T("Die Schnur liegt über einem Stein und hält die Nymphe fest. Rute heben oder so stellen, dass kein Stein zwischen dir und der Nymphe liegt.") : T("Die Schnur liegt über einem Stein und hält die Fliege fest – sie furcht. Rute heben und so werfen, dass kein Stein dazwischen liegt."), 5200); }
       }
     }
   }
@@ -338,10 +374,12 @@ function updateDrift(dt) {
     else if (indi) nd = Math.min(n.d + (sink - lift * 0.5) * dt, Math.min(save.rig.depth, bottom));   // haengt in der eingestellten Tiefe unter dem Indikator
     n.d = clamp(nd, 0, bottom);
     constrain(false);
-    if (!euro) for (const k of river.rocks) {   // Fliege und Indikator schwimmen um den Stein herum, nie darueber
+    for (const k of river.rocks) {   // Fliege, Nymphe und Indikator treiben um den Stein herum, nie hindurch
       const dx = n.x - k.x, dz = n.z - k.z, d = Math.hypot(dx, dz); if (d > (k.vr || k.r * 1.3) + 0.1) continue;
       const R = rockR(k, dx, dz) + 0.05;
-      if (d < R) {   // die Stroemung schiebt sie seitlich am Stein vorbei, statt sie davor festzuhalten
+      if (d < R) {
+        // eine Nymphe, die unter Wasser gegen den Stein treibt, kann sich dort verklemmen
+        if (euro && S.rockTouch !== k) { S.rockTouch = k; if (dz < 0 && n.d > 0.15 && Math.random() < 0.12) { S.snag = true; S.snagT = 0; sfx.bite(); } }   // die Stroemung schiebt sie seitlich am Stein vorbei, statt sie davor festzuhalten
         const sg = S.rockHold && S.rockHold.k === k ? (S.rockHold.x >= k.x ? 1 : -1) : dx >= 0 ? 1 : -1;   // haengt die Schnur am Stein, rutscht die Fliege auf deren Seite vorbei
         const ex = dx + sg * Math.max(0.45, v) * dt * 2.2, e = Math.hypot(ex, dz) || 1;
         n.x = k.x + ex / e * R; n.z = k.z + dz / e * R;
@@ -471,7 +509,16 @@ function startFight(f) {
   toast(f.old ? T('Die Rute biegt sich bis ins Handteil. DAS IST ER!') : T('Fisch hängt!'), 1800);
   updateTip();
 }
-function fightPos() { const F = S.fight, w = river.halfW - 0.9, z = S.pz - Math.cos(F.ang) * F.dist, c = river.cx(z); return { x: clamp(S.px - Math.sin(F.ang) * F.dist, c - w, c + w), z }; }
+function fightPos() {
+  const F = S.fight, w = river.halfW - 0.9; let z = S.pz - Math.cos(F.ang) * F.dist; const c = river.cx(z); let x = clamp(S.px - Math.sin(F.ang) * F.dist, c - w, c + w);
+  // der Fisch schwimmt um Steine herum, nie hindurch: liegt sein Platz in einem Stein, weicht er an dessen Rand aus
+  for (let pass = 0; pass < 2; pass++) for (const k of river.rocks) {
+    const ox = x - k.x, oz = z - k.z, d = Math.hypot(ox, oz); if (d > (k.vr || k.r * 1.3) + 0.4) continue;
+    const R = rockR(k, ox, oz) + 0.3;
+    if (d < R) { const e = d || 0.01; x = k.x + (d ? ox / e : F.side) * R; z = k.z + oz / e * R; }
+  }
+  return { x, z };
+}
 function updateFight(dt) {
   const F = S.fight, f = F.f, sp = SPECIES[f.species], lim = curTippet().limit;
   let p = fightPos();
@@ -906,7 +953,7 @@ $('modalBody').addEventListener('click', e => {
   const a = b.dataset.act;
   if (a === 'close') closeModal();
   else if (a === 'release') { closeModal(); const f = S.afterRelease; S.afterRelease = null; f && f(); }
-  else if (a === 'goto') { closeModal(); enterRevier(+b.dataset.i); toast(REVIERE[save.revier].name + ' – ' + REVIERE[save.revier].sub); if (b.dataset.p) showPage(REVIERE[save.revier].id, false); }
+  else if (a === 'goto') { closeModal(); const pg = b.dataset.p; travel(+b.dataset.i, () => { enterRevier(+b.dataset.i); toast(REVIERE[save.revier].name + ' – ' + REVIERE[save.revier].sub); if (pg) showPage(REVIERE[save.revier].id, false); }); }
   else if (a === 'jtab') showJournal(b.dataset.t);
   else if (a === 'selfly') { save.sel[flyKey()] = b.dataset.id; applyRig(); persist(); sfx.tick(); rerig(); }
   else if (a === 'slot') { showRig(b.dataset.s || undefined); }
@@ -952,7 +999,7 @@ joy.addEventListener('pointerdown', e => { e.preventDefault(); sfx.start(); joyI
 joy.addEventListener('pointermove', e => { if (e.pointerId === joyId) joySet(e); });
 for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) joy.addEventListener(ev, () => { joyId = null; S.joy.x = S.joy.z = 0; knob.style.transform = ''; });
 $('btnStone').addEventListener('click', () => canMenu() && kickSample());
-$('btnRestart').addEventListener('click', () => { if (S.mode !== 'idle') return; S.yaw = 0; S.pitch = 0; enterRevier(save.revier); toast(T('Zurück am Einstieg. Die Fische stehen neu.'), 2600); });
+$('btnRestart').addEventListener('click', () => { if (S.mode !== 'idle' || Load.on) return; S.yaw = 0; S.pitch = 0; travel(save.revier, () => { enterRevier(save.revier); toast(T('Zurück am Einstieg. Die Fische stehen neu.'), 2600); }); });
 
 // Anhieb / Drill
 function pressDown() { sfx.start(); if (S.mode === 'fight') S.hold = true; else if (S.mode === 'drift') strike(); }
@@ -1281,6 +1328,7 @@ function frame(now) {
   world.lift = S.mode === 'drift' || S.mode === 'cast' ? 1 : S.mode === 'fight' ? 0.7 : 0;
   world.update(dt, S.t, S.px, S.pz, groundY(), focus);
   if (S.mode !== 'title') { drawLupe(); updateGauges(); }
+  loadTick();
 }
 
 // ---------- Start ----------
@@ -1291,8 +1339,9 @@ function startGame(fresh) {
   save.started = true;
   $('title').classList.add('hidden'); $('hud').classList.remove('hidden');
   S.mode = 'idle';
-  enterRevier(Math.min(save.revier, save.unlocked - 1), !fresh);
-  if (isNew) showPage('intro', true);
+  // Weiterfischen: die Strecke steht seit dem Laden schon; nur ein neues Spiel baut sie neu (hinter dem Ladebildschirm)
+  if (fresh) travel(0, () => { enterRevier(0); if (isNew) showPage('intro', true); });
+  else { updateHUD(); updateTip(); if (isNew) showPage('intro', true); }
 }
 $('btnStart').addEventListener('click', () => startGame(false));
 $('btnNew').addEventListener('click', () => { if (!save.started) startGame(true); else askSure(T('Neues Spiel beginnen? Der alte Spielstand geht verloren.'), T('Neues Spiel'), 'newgame2', 'close'); });
@@ -1346,7 +1395,8 @@ $('langs').addEventListener('click', e => { const b = e.target.closest('[data-la
 world.setPov(save.set.pov); $('btnPov').classList.toggle('on', !!save.set.pov);
 applyRig();
 setLang(getLang()); applyLang();
+showLoader(T('Ein Euro-Nymphing-Abenteuer'), '', T('Das Erbe der Smaragda'), T('Fluss, Ufer und Licht werden geladen …'), true);
 
 enterRevier(Math.min(save.revier, save.unlocked - 1), true);
 requestAnimationFrame(frame);
-window.__nm = { S, world, get save() { return save; }, get fish() { return fish; }, get river() { return river; }, get cond() { return cond; }, doCast, strike, startFight, landed, enterRevier, hand, fleeFish, startBite };
+window.__nm = { S, world, get save() { return save; }, get fish() { return fish; }, get river() { return river; }, get cond() { return cond; }, doCast, strike, startFight, landed, enterRevier, hand, fleeFish, startBite, kickSample, closeModal, makeFish, flyMatch, get respawn() { return respawn; } };

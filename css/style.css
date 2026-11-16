@@ -325,3 +325,34 @@ label.slider { display: block; padding: 10px 0 6px; border-top: 1px solid var(--
 #menuBtns #btnRig { color: #e6b84a; border-color: rgba(230, 184, 74, .55); }
 #menuBtns #btnPov.on { background: #e6b84a; color: #1a1a10; border-color: #e6b84a; }
 #revierInfo { flex: 0 1 auto; }
+
+/* ---------- Ladebildschirm (Start und Revierwechsel) ---------- */
+#loader { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; overflow: hidden;
+  padding: calc(24px + var(--sat)) 24px calc(24px + var(--sab)); background: radial-gradient(120% 85% at 50% 32%, #1c5d52 0%, #0f3b36 46%, #061a19 100%); opacity: 1; transition: opacity .55s ease; }
+#loader::before { content: ""; position: absolute; inset: -40% -20%; pointer-events: none; opacity: .07;
+  background: repeating-linear-gradient(100deg, transparent 0 46px, #bff5e4 46px 48px, transparent 48px 110px); animation: ldFlow 14s linear infinite; }
+#loader.in { opacity: 0; } #loader.out { opacity: 0; pointer-events: none; }
+.ld-in { position: relative; width: min(100%, 360px); }
+.ld-pre { font-size: 11px; letter-spacing: .24em; text-transform: uppercase; opacity: .75; min-height: 14px; }
+#loader h1 { font-family: Georgia, "Times New Roman", serif; font-size: clamp(30px, 9vw, 46px); margin: 6px 0 0; letter-spacing: .03em; line-height: 1.1; text-shadow: 0 3px 18px rgba(0, 0, 0, .5); }
+#loader h1 span { color: var(--gold); }
+.ld-sub { font-family: Georgia, serif; font-style: italic; font-size: 16px; opacity: .9; margin-top: 4px; min-height: 20px; }
+.ld-art { display: block; width: min(100%, 250px); margin: 14px auto 10px; overflow: visible; }
+.ld-art path, .ld-art ellipse { fill: none; stroke-linecap: round; }
+.ld-art .rod { stroke: #b08a56; stroke-width: 2.6; } .ld-art .wt { stroke: rgba(191, 245, 228, .28); stroke-width: 1; }
+.ld-art .ln { stroke: #f0eedc; stroke-width: 1.2; stroke-dasharray: 150; stroke-dashoffset: 150; animation: ldLine 2.6s ease-in-out infinite; }
+.ld-art .sg { stroke-width: 2.4; opacity: 0; animation: ldSg 2.6s ease-in-out infinite; } .ld-art .sg.a { stroke: #ff5a2a; } .ld-art .sg.b { stroke: #e9ff3a; }
+.ld-art .rg { stroke: rgba(191, 245, 228, .75); stroke-width: 1.1; transform-box: fill-box; transform-origin: center; opacity: 0; animation: ldRing 2.6s ease-out infinite; }
+.ld-art .r2 { animation-delay: .35s; } .ld-art .r3 { animation-delay: .7s; }
+.ld-bar { height: 4px; border-radius: 4px; background: rgba(255, 255, 255, .14); overflow: hidden; }
+.ld-bar i { display: block; height: 100%; width: 0; border-radius: 4px; background: linear-gradient(90deg, #c9952a, var(--gold)); transition: width .25s ease-out; }
+.ld-st { display: flex; justify-content: space-between; gap: 12px; margin-top: 8px; font-size: 12.5px; opacity: .8; }
+.ld-st b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.ld-tip { position: absolute; left: 24px; right: 24px; bottom: calc(22px + var(--sab)); max-width: 440px; margin: 0 auto; font-family: Georgia, serif; font-style: italic; font-size: 14px; line-height: 1.45; opacity: .78; }
+.ld-tip b { display: block; font: 600 10px/1.6 system-ui, sans-serif; letter-spacing: .2em; text-transform: uppercase; font-style: normal; color: var(--gold); }
+@keyframes ldFlow { to { transform: translateX(110px); } }
+@keyframes ldLine { 0% { stroke-dashoffset: 150; } 38%, 86% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; opacity: 0; } }
+@keyframes ldSg { 0%, 30% { opacity: 0; } 42%, 86% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes ldRing { 0%, 36% { transform: scale(.05); opacity: 0; } 44% { opacity: .9; } 100% { transform: scale(1); opacity: 0; } }
+@media (max-height: 430px) { .ld-art { width: 150px; margin: 6px auto; } .ld-tip { display: none; } #loader h1 { font-size: 28px; } }
+@media (prefers-reduced-motion: reduce) { #loader::before, .ld-art * { animation: none !important; } .ld-art .ln { stroke-dashoffset: 0; } .ld-art .sg { opacity: 1; } .ld-art .rg { opacity: .5; } }

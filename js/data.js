@@ -100,7 +100,7 @@ export const LEVEL_UNLOCKS = {
   30: 'Ein Bindematerial mehr pro Fisch',
 };
 export const MAX_LEVEL = 30;
-// Staffel 1 endet etwa mit Stufe 8, danach kostet jede Stufe gleich viel; Aufgaben bringen in spaeteren Staffeln mehr
+// Staffel 1 endet etwa mit Stufe 10 (per Durchspiel-Bot gemessen), danach kostet jede Stufe gleich viel; Aufgaben bringen in spaeteren Staffeln mehr
 export const xpNeed = lvl => Math.min(160 + 60 * lvl, 640);
 
 export const CLARITY = ['glasklar', 'leicht angetrübt', 'trüb'];
@@ -242,7 +242,7 @@ export const REVIERE = [
     clarity: [1, 1, 2], insects: ['worm', 'caddis', 'gammarus'],
     quests: [
       { id: 'o1', text: "Fange 5 Fische bei angetrübtem oder trübem Wasser", test: s => (s.murky || 0) >= 5 },
-      { id: 'o2', text: "Fange 2 Fische im Morgennebel oder Abendlicht", test: s => (s.dusk || 0) >= 2 },
+      { id: 'o2', text: "Fange 2 Fische im Morgennebel oder Abendlicht", light: ['morgen', 'abend'], test: s => (s.dusk || 0) >= 2 },
       { id: 'o3', text: "Fange eine Bachforelle ab 45 cm", test: s => (s.spMax.bachforelle || 0) >= 45 },
     ],
   },
