@@ -58,6 +58,15 @@ function fixSel() {       // nichts montiert lassen, was (noch) gesperrt ist
   if (save.level < curInd().level) save.rig.ind = 'nz';
   for (const k of ['fly', 'dry']) { const f = FLIES.find(f => f.id === save.sel[k]); if (!f || save.level < f.level) save.sel[k] = k === 'dry' ? 'adams' : 'pt'; }
 }
+const rigTag = m => m === 'dry' ? 'Dry Rig' : m === 'indi' ? T('Indikator Rig') : 'Nymph Rig';
+// Schnellwechsel: zurueck zur zuletzt gefischten Rute; gab es noch keine, zwischen Nymphe und Trockenfliege
+const swapTarget = () => { const l = save.rig.last; return l && l !== save.rig.mode && rigOpen(l) ? l : isDry() ? 'euro' : 'dry'; };
+function swapRig() {
+  if (!hasDry()) return;
+  const to = swapTarget(); save.rig.last = save.rig.mode; save.rig.mode = to;
+  fixSel(); applyRig(); persist(); sfx.tick(); updateHUD(); updateTip();
+  toast(T('Rute gewechselt: {0}', rigTag(to)), 1800);
+}
 function xpBarHtml() {
   const mx = save.level >= MAX_LEVEL, need = xpNeed(save.level);
   let nx = save.level + 1; while (nx <= MAX_LEVEL && !unlocksAt(nx).length) nx++;
@@ -751,6 +760,8 @@ function updateHUD() {
   $('xptext').textContent = T('Stufe {0}', save.level) + (save.level >= MAX_LEVEL ? '' : ` · ${save.xp} / ${xpNeed(save.level)} XP`);
   const rm = rigMode();
   $('rig').innerHTML = `<b>${fly.name}</b> ×${save.flies[fly.id] || 0}<br>` + (rm === 'dry' ? `${T(RIGS[2].name)} · ${fmt(save.sel.tippet, 2)} mm` : rm === 'indi' ? `${T(curInd().name)} · ${fmt(save.rig.depth)} m · ${fmt(save.sel.bead)} mm` : `${fmt(save.sel.bead)} mm · ${fmt(save.sel.tippet, 2)} mm`);
+  $('rig').innerHTML += `<br><i>${rigTag(rm)}</i>`;
+  const sw = $('btnSwap'); sw.classList.toggle('hidden', !hasDry()); sw.querySelector('small').textContent = rigTag(swapTarget()).replace(' Rig', '');   // zeigt, wohin er wechselt
   const open = rv.quests.filter(q => !save.quests[q.id]);
   $('quest').textContent = open.length ? '◦ ' + open[0].text : T('✓ Alle Aufgaben hier erfüllt');
 }
@@ -959,7 +970,7 @@ $('modalBody').addEventListener('click', e => {
   else if (a === 'jtab') showJournal(b.dataset.t);
   else if (a === 'selfly') { save.sel[flyKey()] = b.dataset.id; applyRig(); persist(); sfx.tick(); rerig(); }
   else if (a === 'slot') { showRig(b.dataset.s || undefined); }
-  else if (a === 'rigmode') { save.rig.mode = b.dataset.v; applyRig(); persist(); sfx.tick(); rerig(); updateTip(); }
+  else if (a === 'rigmode') { if (b.dataset.v !== save.rig.mode) save.rig.last = save.rig.mode; save.rig.mode = b.dataset.v; applyRig(); persist(); sfx.tick(); rerig(); updateTip(); }
   else if (a === 'ind') { save.rig.ind = b.dataset.id; applyRig(); persist(); sfx.tick(); rerig(); }
   else if (a === 'box') showBox();
   else if (a === 'rig') showRig();
@@ -984,11 +995,11 @@ $('modalBody').addEventListener('input', e => {   // Schieberegler: Lautstaerke 
 $('modalClose').addEventListener('click', closeModal);
 $('modal').addEventListener('pointerdown', e => { if (e.target === $('modal') && modalOpts && !modalOpts.lock) closeModal(); });
 const canMenu = () => S.mode === 'idle' && !modalOpen();
+const lowOk = () => canMenu() && !$('hud').classList.contains('late');   // die Knoepfe unten links sind 2 s nach Drift und Drill gesperrt
 $('btnJournal').addEventListener('click', () => canMenu() && showJournal());
-$('btnRig').addEventListener('click', () => canMenu() && showRig());
 const togglePov = () => { save.set.pov = !save.set.pov; world.setPov(save.set.pov); $('btnPov').classList.toggle('on', save.set.pov); persist(); };
 $('btnPov').addEventListener('click', togglePov);
-$('rig').addEventListener('click', () => canMenu() && showRig());
+$('rig').addEventListener('click', () => lowOk() && showRig());
 $('btnSet').addEventListener('click', () => canMenu() && showSettings());
 const joy = $('joy'), knob = $('joyKnob'); let joyId = null;
 const joySet = e => {
@@ -1000,7 +1011,8 @@ const joySet = e => {
 joy.addEventListener('pointerdown', e => { e.preventDefault(); sfx.start(); joyId = e.pointerId; try { joy.setPointerCapture(e.pointerId); } catch (err) { /* */ } joySet(e); });
 joy.addEventListener('pointermove', e => { if (e.pointerId === joyId) joySet(e); });
 for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) joy.addEventListener(ev, () => { joyId = null; S.joy.x = S.joy.z = 0; knob.style.transform = ''; });
-$('btnStone').addEventListener('click', () => canMenu() && kickSample());
+$('btnStone').addEventListener('click', () => lowOk() && kickSample());
+$('btnSwap').addEventListener('click', () => lowOk() && swapRig());
 $('btnRestart').addEventListener('click', () => { if (S.mode !== 'idle' || Load.on) return; S.yaw = 0; S.pitch = 0; travel(save.revier, () => { enterRevier(save.revier); toast(T('Zurück am Einstieg. Die Fische stehen neu.'), 2600); }); });
 
 // Anhieb / Drill
@@ -1154,9 +1166,15 @@ function drawLupe() {
   }
   c.restore();
 }
+let lateT = 0;
 function updateGauges() {
   const drift = S.mode === 'drift';
-  if ($('hud').dataset.mode !== S.mode) $('hud').dataset.mode = S.mode;   // das Layout richtet sich nach der Spielphase
+  if ($('hud').dataset.mode !== S.mode) {
+    const was = $('hud').dataset.mode;
+    $('hud').dataset.mode = S.mode;
+    // zurueck im Leerlauf nach Wurf, Drift, Drill oder Fang: Stein, Rutenwechsel und Rig-Anzeige kommen erst nach 2 s wieder
+    if (S.mode === 'idle' && was && was !== 'title') { $('hud').classList.add('late'); clearTimeout(lateT); lateT = setTimeout(() => $('hud').classList.remove('late'), 2000); }
+  }   // das Layout richtet sich nach der Spielphase
   $('btnRestart').classList.toggle('show', S.mode === 'idle' && S.pz < Z_MIN + 4 && !modalOpen());
   const euroG = isEuro();
   $('read').classList.toggle('off', !drift);

@@ -26,7 +26,7 @@ Dann `http://localhost:8123` öffnen.
 | Rute führen | nach unten ziehen | Maus ziehen |
 | Anhieb | nach oben wischen oder ANHIEB | Leertaste / Rechtsklick |
 | Drill | auf dem Bild oder am Rutenstick unten Mitte: nach unten ziehen = Druck, seitlich = Seitendruck; DRILL (links oder rechts) halten = fester Druck | Maus ziehen oder Leertaste, A/D |
-| Rig-Baukasten | Knopf „Rig“ oben rechts | R, Fliegen direkt mit F |
+| Rig-Baukasten | Rig-Anzeige unten neben dem Watstick antippen | R, Fliegen direkt mit F |
 | Anglersicht | Knopf „POV“ | V |
 | Tagebuch, Opas Seiten, Fangbuch | Knopf 📖 | T |
 
@@ -80,6 +80,10 @@ Wasserfälle: Oberhalb der befischbaren Strecke (12 m und 27 m hinter ihrem ober
 Nach dem Landen liegt der Fisch im Kescher am Wasser: Die Kamera fährt nah heran, der Fisch liegt auf der Seite, atmet und schlägt alle gut vier Sekunden ein paar Mal kräftig. Name, Länge und Gewicht stehen oben, Punkte, Aufgaben und Stufenbalken in einer Leiste unten (Hochformat) oder rechts (Querformat). „Zurücksetzen“ lässt ihn sich aufrichten und davonschwimmen. In der Leiste steht oben das gezeichnete Porträt der Art.
 
 Das 3D-Fischmodell trägt je Art eine eigene Haut, erzeugt aus denselben Farben und Zeichnungen wie das Porträt (`LOOK` in `js/fishart.js`): Rücken-, Flanken- und Bauchfarbe, Flecken, rote Punkte mit Hof, der rosa Streifen der Regenbogenforelle, die Marmorierung der Marmorata, Schuppen bei Äsche und Barbe, dazu Auge, Kiemendeckel und Maulspalte. Alle Flossen sind ausgeformt: gegabelte Schwanzflosse, Rücken-, Fett-, After-, Bauch- und Brustflossen, weißer Saum beim Saibling, Barteln bei der Barbe – und bei der Äsche die hohe, gefleckte Fahne.
+
+Stein, Schnellwechsel und Rig-Anzeige stehen unten rechts neben dem Watstick. Nach Wurf, Drift, Drill oder Fang erscheinen sie erst 2 s später wieder, damit ein letzter Tipper auf ANHIEB oder DRILL nicht versehentlich den Stein umdreht oder die Rute wechselt.
+
+Schnellwechsel: Neben dem Stein-Knopf wechselt ⇄ zur zuletzt gefischten Rute und beim nächsten Tippen wieder zurück (ohne Vorgeschichte zwischen Nymphe und Trockenfliege). Der Knopf erscheint ab Staffel 2 und zeigt, wohin er wechselt. Die Rig-Anzeige nennt in der dritten Zeile die Montage: Nymph Rig, Indikator Rig oder Dry Rig.
 
 Steine sind für alles fest, bei jeder Rute: Die Schnur legt sich auf die Steinoberfläche, statt hindurchzugehen, und hält die Fliege dann fest. Fliege und Nymphe treiben am echten Steinumriss vorbei; eine Euro-Nymphe, die unter Wasser von vorn gegen einen Stein treibt, verklemmt sich mit 12 % Wahrscheinlichkeit (Hänger). Im Drill weicht der Fisch an den Rand eines Steins aus, statt hindurchzuschwimmen.
 

@@ -181,7 +181,6 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; touch-action
 }
 #modalBody h3.season{margin:18px 0 6px;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#e6b84a;border-bottom:1px solid rgba(230,184,74,.3);padding-bottom:4px}
 
-#btnRig { font-size: 12.5px; font-weight: 700; letter-spacing: .04em; color: #e6b84a; }
 .inds { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; }
 .ind { display: flex; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.03); }
 .ind.sel { border-color: #e6b84a; background: rgba(230,184,74,.08); }
@@ -321,8 +320,7 @@ label.slider { display: block; padding: 10px 0 6px; border-top: 1px solid var(--
 /* Menue oben rechts: eine Zeile, vier gleich grosse Knoepfe (Fangbuch liegt im Tagebuch, die Fliegendose im Rig) */
 #menuBtns { flex-wrap: nowrap !important; max-width: none !important; gap: 6px; flex: none; }
 #menuBtns button { width: 40px; height: 40px; border-radius: 11px; font-size: 18px; display: flex; align-items: center; justify-content: center; padding: 0; }
-#menuBtns #btnPov, #menuBtns #btnRig { font-size: 11px; font-weight: 800; letter-spacing: .05em; color: #fff; }
-#menuBtns #btnRig { color: #e6b84a; border-color: rgba(230, 184, 74, .55); }
+#menuBtns #btnPov { font-size: 11px; font-weight: 800; letter-spacing: .05em; color: #fff; }
 #menuBtns #btnPov.on { background: #e6b84a; color: #1a1a10; border-color: #e6b84a; }
 #revierInfo { flex: 0 1 auto; }
 
@@ -379,3 +377,15 @@ label.slider { display: block; padding: 10px 0 6px; border-top: 1px solid var(--
 }
 #modal.sheetmode .catch canvas { display: block; width: 100%; height: auto; max-height: 96px; object-fit: contain; margin: 0 0 4px; }
 @media (min-width: 760px), (orientation: landscape) { #modal.sheetmode .catch canvas { max-height: 130px; } }
+
+/* Schnellwechsel zur zuletzt gefischten Rute, neben dem Stein */
+#leftBtns .pair { display: flex; gap: 7px; }
+#btnSwap { width: 54px; height: 54px; font-size: 19px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; }
+#btnSwap small { font-size: 9px; opacity: .8; white-space: nowrap; }
+#rig i { font-style: normal; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--gold); font-weight: 700; }
+
+/* Stein, Rutenwechsel und Rig-Anzeige stehen wieder unten rechts neben dem Watstick. Nach Drift und Drill erscheinen sie erst
+   2 s spaeter: dort liegen ANHIEB und DRILL, und ein letzter Tipper soll nicht den Stein umdrehen oder die Rute wechseln. */
+#leftBtns { flex-direction: row; align-items: flex-end; gap: 9px; }
+#leftBtns .col { transition: opacity .25s; }
+#hud.late #leftBtns .col { opacity: 0; pointer-events: none; }
