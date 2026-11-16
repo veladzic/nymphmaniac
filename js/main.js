@@ -104,13 +104,17 @@ function restTip() { const h = hand(), a = S.face + 0.25; S.tip.x = h.x - Math.s
 const vibrate = p => { if (save.set.vib && navigator.vibrate) { try { navigator.vibrate(p); } catch (e) { /* */ } } };
 
 // ---------- Revier ----------
-function enterRevier(i) {
+function enterRevier(i, keep) {
   save.revier = i;
   const rv = REVIERE[i];
   cond = { clarity: pick(rv.clarity), light: pick(rv.lights ? LIGHTS.filter(l => rv.lights.includes(l.id)) : LIGHTS), sampled: false };
   const ins = [...rv.insects].sort(() => Math.random() - 0.5);
   if (cond.clarity === 2 && ins.includes('worm')) { ins.splice(ins.indexOf('worm'), 1); ins.unshift('worm'); }
   cond.i1 = ins[0]; cond.i2 = ins[1];
+  // Beim Neuladen der Seite bleiben Wasser, Licht, Insekten und der umgedrehte Stein erhalten; nur ein neuer Besuch wuerfelt neu
+  const sc = save.cond;
+  if (keep && sc && sc.revier === i && rv.insects.includes(sc.i1) && LIGHTS.some(l => l.id === sc.light)) cond = { clarity: sc.clarity, light: LIGHTS.find(l => l.id === sc.light), sampled: !!sc.sampled, i1: sc.i1, i2: sc.i2 };
+  save.cond = { revier: i, clarity: cond.clarity, light: cond.light.id, i1: cond.i1, i2: cond.i2, sampled: cond.sampled };
   river = world.buildRevier(rv, cond);
   world.setPolar(save.level >= 2);
   S.px = LANE_X; S.pz = 0; world.camZ = 0; world.camX = LANE_X; S.wade = null; S.fight = null; S.bite = null; S.snag = false;
@@ -543,7 +547,7 @@ function landed(f) {
   const w = Math.round(0.0105 * f.len ** 3 / 10) * 10;
   st.n++; st.sp[f.species] = (st.sp[f.species] || 0) + 1;
   st.spMax[f.species] = Math.max(st.spMax[f.species] || 0, f.len); st.maxLen = Math.max(st.maxLen, f.len);
-  if (cond.sampled && fly.imitates.includes(cond.i1)) st.matched++;
+  if (cond.sampled && (fly.imitates.includes(cond.i1) || fly.imitates.includes(cond.i2))) st.matched++;   // beide Insekten vom Stein zaehlen
   if (f.lie.rock) st.pocket++;
   if (save.sel.bead >= 3.5 && !isDry()) st.heavy++;   // Perlen-Aufgaben zaehlen nur, wenn wirklich eine Perle am Vorfach ist
   if (save.sel.tippet <= 0.12) st.fine++;
@@ -659,7 +663,7 @@ function updateMove(dt) {
 }
 function kickSample() {
   if (S.mode !== 'idle') return;
-  cond.sampled = true;
+  cond.sampled = true; if (save.cond) save.cond.sampled = true; persist();
   const a = INSECTS[cond.i1], b = INSECTS[cond.i2];
   const pat = (dry, ins) => FLIES.filter(f => !!f.dry === dry && f.imitates.includes(ins)).map(f => f.name + (save.level >= f.level ? '' : ' 🔒')).join(', ');
   const good = pat(false, cond.i1);
@@ -1287,7 +1291,7 @@ function startGame(fresh) {
   save.started = true;
   $('title').classList.add('hidden'); $('hud').classList.remove('hidden');
   S.mode = 'idle';
-  enterRevier(Math.min(save.revier, save.unlocked - 1));
+  enterRevier(Math.min(save.revier, save.unlocked - 1), !fresh);
   if (isNew) showPage('intro', true);
 }
 $('btnStart').addEventListener('click', () => startGame(false));
@@ -1343,6 +1347,6 @@ world.setPov(save.set.pov); $('btnPov').classList.toggle('on', !!save.set.pov);
 applyRig();
 setLang(getLang()); applyLang();
 
-enterRevier(Math.min(save.revier, save.unlocked - 1));
+enterRevier(Math.min(save.revier, save.unlocked - 1), true);
 requestAnimationFrame(frame);
 window.__nm = { S, world, get save() { return save; }, get fish() { return fish; }, get river() { return river; }, get cond() { return cond; }, doCast, strike, startFight, landed, enterRevier, hand, fleeFish, startBite };

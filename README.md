@@ -119,7 +119,7 @@ Der Alte beißt zusätzlich nur bei Passung ab 1,0 und Driftgüte ab 0,9.
 
 ### Passung der Fliege
 
-Für jedes Revier werden beim Betreten aus dessen Insektenliste ein häufigstes und ein zweithäufigstes Insekt gewürfelt; bei trübem Wasser steht der Wurm vorn, wenn er im Revier vorkommt. Der umgedrehte Stein zeigt genau diese beiden an. Die Passung gilt für Nymphen und Trockenfliegen gleich und auch dann, wenn der Stein nicht umgedreht wurde.
+Für jedes Revier werden beim Betreten aus dessen Insektenliste ein häufigstes und ein zweithäufigstes Insekt gewürfelt; bei trübem Wasser steht der Wurm vorn, wenn er im Revier vorkommt. Der umgedrehte Stein zeigt genau diese beiden an. Wasser, Licht, Insekten und der umgedrehte Stein bleiben beim Neuladen der Seite erhalten; neu gewürfelt wird erst beim nächsten Betreten des Reviers. Für Aufgaben mit „passender Nymphe“ zählt ein Fang auf eine Fliege, die eines der beiden Insekten imitiert, nachdem der Stein umgedreht wurde. Die Passung gilt für Nymphen und Trockenfliegen gleich und auch dann, wenn der Stein nicht umgedreht wurde.
 
 | Baustein | Wert |
 |---|---|
