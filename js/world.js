@@ -2003,24 +2003,31 @@ export class World {
     this.remoteRod.castShadow = true; this.scene.add(this.remoteRod);
     // Schnur: eine feine Linie allein verschwindet auf Entfernung, deshalb zusaetzlich
     // ein duenner Zylinder - dasselbe, was die eigene Schnur macht.
-    const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(12), 3));
+    const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(14 * 3), 3));
     this.remoteLine = new THREE.Line(lg, new THREE.LineBasicMaterial({ color: 0xf6f4e0, transparent: true, opacity: 0.7 }));
     this.remoteLine.frustumCulled = false; this.scene.add(this.remoteLine);
-    // Sechs Abschnitte: Die Euro-Montage braucht allein drei fuer den Sighter, dazu
-    // Flugschnur, Vorfach und beim Indikator den Schenkel hinunter zur Nymphe.
+    // Vierzehn Abschnitte: Indikator und Trockenfliege brauchen einen Verlauf, keine
+    // Gerade - zwoelf Stuecke fuer den Bogen aufs Wasser, dazu der Schenkel hinunter
+    // zur Nymphe. Die Euro-Montage kommt mit fuenf aus (drei davon der Sighter).
     this.remoteSegs = [];
-    for (let i = 0; i < 6; i++) {
+    this._rpts = Array.from({ length: 13 }, () => new THREE.Vector3());
+    for (let i = 0; i < 14; i++) {
       const m = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 5), this.flyLineMat || M(0xdff06a, 0.6));
       m.frustumCulled = false; m.visible = false; this.scene.add(m); this.remoteSegs.push(m);
     }
     this.remoteLineSeg = this.remoteSegs[0];
-    // Dieselben Farben wie an der eigenen Montage, damit man sie wiedererkennt
+    // Dieselben Farben wie an der eigenen Montage, damit man sie wiedererkennt - aber
+    // eigene Materialien. Vorher teilte sich die fremde Schnur das Material mit der
+    // eigenen, und setRigStyle faerbt das um: Die fremde Flugschnur trug dann die Farbe
+    // der eigenen Montage, nicht die der fremden.
+    const LM = c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.6 });
     this.remoteMats = {
-      fly: this.flyLineMat || M(0xdff06a, 0.6),                                  // dicke Flugschnur
-      lead: this.leaderMat || M(0xe9e9da, 0.4),                                  // duennes Vorfach
+      euro: LM(0xf0eedc), indi: LM(0xff9a3a), dry: LM(0xcfe08a),                 // dicke Flugschnur je Montage
+      lead: LM(0xe9e9da),                                                        // duennes Vorfach
       pink: new THREE.MeshBasicMaterial({ color: 0xff2f7a }),
       gelb: new THREE.MeshBasicMaterial({ color: 0xf8e71c }),
     };
+    this.remoteMats.fly = this.remoteMats.euro;
     this.remoteInd = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), M(0xff7a1a, 0.7));
     this.remoteInd.frustumCulled = false; this.remoteInd.visible = false; this.scene.add(this.remoteInd);
     // Was am Ende der Schnur haengt: Nymphe mit Perle, oder die Trockenfliege obenauf
@@ -2172,6 +2179,7 @@ export class World {
     const wet = r.mode === 'drift' || r.mode === 'fight';
     const T = _rl0.set(r.tip.x, r.tip.y, r.tip.z);
     const plan = [];                                     // {a, b, mat, r}
+    Mt.fly = Mt[r.rig] || Mt.euro;
     this.remoteInd.visible = this.remoteFly.visible = this.remoteBead.visible = false;
 
     // Im Leerlauf haengt dieselbe Montage unter der Rutenspitze, wie bei der eigenen Figur
@@ -2187,18 +2195,23 @@ export class World {
         this.remoteFly.position.copy(E); this.remoteFly.visible = true;
         if (r.rig === 'indi') { this.remoteBead.position.set(E.x, E.y + 0.035, E.z); this.remoteBead.visible = true; }
       }
-    } else if (r.rig === 'indi') {
-      const I = _rl1.set(r.fly.x, 0.05, r.fly.z);
-      this.remoteInd.position.copy(I); this.remoteInd.visible = true;
-      const N = _rl2.set(r.fly.x, -r.fly.d, r.fly.z);
-      plan.push([T.clone(), I.clone(), Mt.fly, 0.004], [I.clone(), N.clone(), Mt.lead, 0.0022]);
-      this._remoteNymph(N);
-    } else if (r.rig === 'dry') {
-      const F = _rl2.set(r.fly.x, 0.02, r.fly.z);
-      const d = T.distanceTo(F);
-      const S1 = _rl1.copy(T).lerp(F, 0.55).setY(Math.max(0.05, T.y * 0.28 - d * 0.02));
-      plan.push([T.clone(), S1.clone(), Mt.fly, 0.004], [S1.clone(), F.clone(), Mt.fly, 0.004]);
-      this.remoteFly.position.set(F.x, 0.03, F.z); this.remoteFly.visible = true;
+    } else if (r.mode === 'fight' && r.rig !== 'euro') {
+      // Im Drill liegt nichts mehr auf dem Wasser: die Schnur zieht zum Fisch, mit dem
+      // Durchhang, den die Spannung zulaesst
+      const F = _rl2.set(r.fly.x, -0.05, r.fly.z);
+      this._remoteSag(T, F, Math.min(1.2, (1 - Math.min(1, r.s)) * 3.2), plan, Mt);
+    } else if (r.rig === 'indi' || r.rig === 'dry') {
+      const P = this._remotePath(r, T);
+      this._remoteStrand(P, plan, Mt);
+      if (r.rig === 'indi') {
+        const I = P[P.length - 1];
+        this.remoteInd.position.set(I.x, 0.05, I.z); this.remoteInd.visible = true;
+        const N = _rl2.set(r.fly.x, -r.fly.d, r.fly.z);
+        plan.push([new THREE.Vector3(I.x, 0.05, I.z), N.clone(), Mt.lead, 0.0012]);
+        this._remoteNymph(N);
+      } else {
+        this.remoteFly.position.set(r.fly.x, 0.03, r.fly.z); this.remoteFly.visible = true;
+      }
     } else {
       const N = _rl2.set(r.fly.x, -r.fly.d, r.fly.z);
       this._remoteEuro(T, N, plan, Mt);
@@ -2211,13 +2224,58 @@ export class World {
       m.visible = true; m.material = e[2];
       placeSeg(m, e[0], e[1], e[3]);
     }
-    // feine Linie obendrauf, damit die Schnur auch aus der Ferne sichtbar bleibt
-    const pos = this.remoteLine.geometry.attributes.position;
-    for (let i = 0; i < 4; i++) {
+    // feine Linie obendrauf, damit die Schnur auch aus der Ferne sichtbar bleibt.
+    // Sie folgt jedem Abschnitt - bei vier festen Punkten schnitt sie den Bogen ab.
+    const pos = this.remoteLine.geometry.attributes.position, np = pos.count;
+    for (let i = 0; i < np; i++) {
       const e = plan[Math.min(i, plan.length - 1)], q = i < plan.length ? e[0] : e[1];
       pos.setXYZ(i, q.x, q.y, q.z);
     }
     pos.needsUpdate = true;
+  }
+
+  // Der Verlauf der Flugschnur bei Indikator und Trockenfliege, genau wie bei der eigenen
+  // Figur: Sie faellt von der Rutenspitze aufs Wasser und treibt von dort lose in einem
+  // Bogen stromab. Vorher war es ein schnurgerader Strang von der Spitze zur Fliege.
+  _remotePath(r, T) {
+    const P = this._rpts, N = P.length;
+    const D = Math.hypot(r.fly.x - T.x, r.fly.z - T.z) || 1;
+    const td = Math.min(D * 0.45, 2.6);                       // Strecke, auf der sie herunterkommt
+    const slack = Math.min(1.2, (1 - Math.min(1, r.s)) * 2.2);
+    for (let i = 0; i < N; i++) {
+      const dist = i / (N - 1) * D, u = dist / D, q = P[i];
+      q.set(T.x + (r.fly.x - T.x) * u, 0.015, T.z + (r.fly.z - T.z) * u);
+      if (dist < td) q.y = 0.015 + T.y * Math.pow(1 - dist / td, 1.7);
+      else q.z += Math.sin(Math.PI * (dist - td) / Math.max(0.01, D - td)) * slack * 0.55;
+      if (this.river) for (const k of this.river.rocks) {   // nicht durch den Stein, sondern darauf
+        if (Math.hypot(q.x - k.x, q.z - k.z) > (k.vr || k.r * 1.3) + 0.02) continue;
+        const top = this.rockTop(k, q.x, q.z);
+        if (top !== null && q.y < top + 0.012) q.y = top + 0.012;
+      }
+    }
+    return P;
+  }
+
+  // Gerade Strecke mit Durchhang - im Drill, wo nichts mehr auf dem Wasser liegt
+  _remoteSag(T, F, sag, plan, Mt) {
+    const P = this._rpts, N = P.length;
+    for (let i = 0; i < N; i++) {
+      const t = i / (N - 1);
+      P[i].set(T.x + (F.x - T.x) * t, T.y + (F.y - T.y) * t - sag * 2 * t * (1 - t), T.z + (F.z - T.z) * t);
+    }
+    this._remoteStrand(P, plan, Mt);
+  }
+
+  // Aus einem Verlauf werden Abschnitte: die ersten 62 % dicke Flugschnur, die sich
+  // verjuengt, der Rest duennes Vorfach, das duenn auslaeuft - dieselben Masse wie an
+  // der eigenen Schnur. Vorher war alles gleich dick und gleich farbig.
+  _remoteStrand(P, plan, Mt) {
+    const n = P.length - 1, cut = Math.round(0.62 * n);
+    for (let i = 0; i < n; i++) {
+      const fly = i < cut, k = fly ? 0 : (i - cut) / Math.max(1, n - cut);
+      plan.push([P[i].clone(), P[i + 1].clone(), fly ? Mt.fly : Mt.lead,
+        fly ? 0.0042 - 0.0012 * (i / Math.max(1, cut)) : 0.0019 - 0.0009 * k]);
+    }
   }
   // Euro-Montage zwischen zwei Punkten: duennes Vorfach, der Sighter im oberen Drittel
   _remoteEuro(T, N, plan, Mt) {

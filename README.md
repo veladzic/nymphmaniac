@@ -71,6 +71,7 @@ Die Verbindung läuft danach direkt zwischen den beiden Rechnern (WebRTC). Der C
 | | |
 |---|---|
 | Bewegung | 20 Byte, 15-mal je Sekunde = **2,9 kbit/s je Spieler**; gezeichnet wird 120 ms verzögert (siehe unten) |
+| Im Paket | Ort, Blickrichtung, Zustand, Montage, Rutenspitze, Fliege mit Tiefe, Watschritt, **Spannung** |
 | Ereignisse | Begrüßung, Revierwechsel, Wurf, Fang, Abschied — über einen zuverlässigen Kanal |
 | Nicht übertragen | der Fluss (beide bauen ihn aus `rv.seed` identisch), die Fische, der Spielstand |
 
@@ -111,14 +112,20 @@ Die Verzögerung merkt man beim Zuschauen nicht.
 | Rute | was die Gegenseite sieht | Abschnitte |
 |---|---|---|
 | Euro-Nymphe | dünnes Vorfach mit **Sighter** (pink–gelb–pink) über dem Wasser, darunter die Nymphe mit Perle | 5 |
-| Indikator | dicke Flugschnur zur **orangen Kugel** an der Oberfläche, von dort dünnes Vorfach hinunter zur Nymphe | 2 |
-| Trockenfliege | dicke Flugschnur mit **Durchhang**, die Fliege sitzt obenauf | 2 |
+| Indikator | dicke Flugschnur zur **orangen Kugel** an der Oberfläche, von dort dünnes Vorfach hinunter zur Nymphe | 13 |
+| Trockenfliege | dicke Flugschnur, die aufs Wasser fällt und mittreibt, die Fliege sitzt obenauf | 12 |
 
-Farben und Größen sind dieselben wie an der eigenen Montage, damit man sie wiedererkennt: Indikator 0,05 m wie die New-Zealand-Wolle, Fliege 0,03 m gegenüber 0,024 m an der eigenen Nymphenperle. Nachgemessen bei 1,1 m Indikatortiefe: zwei Schenkel von 3,79 m und 1,15 m, Indikator auf y = 0,05; bei der Trockenfliege sackt die Schnur in der Mitte auf y = 0,67 ab, statt gerade durch die Luft zu ziehen.
+Farben und Größen sind dieselben wie an der eigenen Montage, damit man sie wiedererkennt: Indikator 0,05 m wie die New-Zealand-Wolle, Fliege 0,03 m gegenüber 0,024 m an der eigenen Nymphenperle.
+
+**Bei Indikator und Trockenfliege läuft die fremde Schnur denselben Weg wie die eigene.** Vorher war sie eine Gerade von der Rutenspitze zur Fliege – gleich dick, gleich farbig, straff gespannt. In Wirklichkeit fällt die Flugschnur von der Spitze aufs Wasser (über `min(Weite · 0,45; 2,6) m`, mit der Kurve `(1 − s/td)^1,7`), liegt dann auf der Oberfläche und treibt lose in einem Bogen stromab. Dazu teilt sie sich wie die eigene bei 62 % in dicke Flugschnur (0,0042 m, verjüngt auf 0,0032) und dünnes Vorfach (0,0019 m, ausgelaufen auf 0,0012), und wo ein Stein im Weg ist, legt sie sich darauf statt hindurchzugehen. Nachgemessen gegen die Formel der eigenen Schnur: **0 mm Abweichung** über alle dreizehn Stützpunkte. Im Drill liegt nichts mehr auf dem Wasser – dort zieht sie zum Fisch, mit dem Durchhang, den die Spannung zulässt.
+
+Dafür wandert die **Spannung** als zwanzigstes Byte mit. Ohne sie weiß die Gegenseite nicht, wie tief die Schnur durchhängt. Das Paket bleibt bei 20 Byte und ist damit voll.
+
+**Die Farben waren vertauscht.** Die fremde Flugschnur teilte sich das Material mit der eigenen, und `setRigStyle` färbt das bei jedem Rigwechsel um: Wer selbst Euro fischte, sah die fremde Indikatorschnur in Mono-Weiß statt Orange. Die Gegenseite hat jetzt eigene Materialien – Euro `#f0eedc`, Indikator `#ff9a3a`, Trockenfliege `#cfe08a`, Vorfach `#e9e9da`.
 
 **Auch im Leerlauf hängt die Montage** unter der Rutenspitze (1,9 m darunter), so wie bei der eigenen Figur. Vorher hing dort ein nackter 3,2-m-Strang bis zum Wasser, ohne Sighter und ohne Nymphe – man sah, dass der andere eine Rute hält, aber nicht, womit er fischt. Die Indikatorkugel bleibt im Leerlauf aus, genau wie bei der eigenen Montage.
 
-Geprüft über alle sechs Fälle: Euro im Leerlauf und in der Drift je 5 Abschnitte mit Sighter, Nymphe und Perle; Indikator in der Drift 2 Abschnitte mit Kugel; Trockenfliege in der Drift 2 Abschnitte, Fliege auf y = 0,03, keine Perle; im Leerlauf 1 Abschnitt. In der Drift sitzt der Schnuranfang auf 0,000 m an der Rutenspitze und das Ende auf 0,000 m an der Fliege.
+Geprüft über alle sechs Fälle: Euro im Leerlauf und in der Drift je 5 Abschnitte mit Sighter, Nymphe und Perle; Indikator in der Drift 13 Abschnitte (7 Flugschnur, 5 Vorfach, 1 Schenkel zur Nymphe) mit Kugel auf y = 0,05; Trockenfliege in der Drift 12 Abschnitte, Fliege auf y = 0,03, keine Perle; im Leerlauf je 1 Abschnitt mit der hängenden Montage. Der Schnuranfang sitzt an der Rutenspitze, das Ende an der Fliege.
 
 Was fehlt: **TURN.** Scheitert die direkte Verbindung — meist hinter symmetrischem NAT, erfahrungsgemäß 10 bis 20 % der Paarungen — kommt sie gar nicht zustande. Das ließe sich nur mit einem bezahlten Relais lösen und widerspräche dem Zweck. Der Dialog sagt es deshalb offen. Der ganze Entwurf samt verworfener Stufen steht in [MULTIPLAYER.md](MULTIPLAYER.md).
 

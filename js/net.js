@@ -347,6 +347,9 @@ export class Net {
     p16(tip.x); p16(tip.y); p16(tip.z);
     p16(S.nymph.x); p16(S.nymph.z); k8(Math.min(2.55, S.nymph.d || 0) / 2.55);
     k8(Math.min(1, S.walk || 0));
+    // Spannung: ohne sie weiss die Gegenseite nicht, wie tief die Schnur durchhaengt,
+    // und zeichnet einen schnurgeraden Strang, wo in Wirklichkeit ein Bogen liegt.
+    k8(Math.min(1, Math.max(0, S.s == null ? 1 : S.s)));
     if (!rel) return ch.send(b.buffer);
     let bin = ''; for (const x of new Uint8Array(b.buffer)) bin += String.fromCharCode(x);
     this._relay('m', btoa(bin));
@@ -363,8 +366,9 @@ export class Net {
     const tip = { x: p16(), y: p16(), z: p16() };
     const fly = { x: p16(), z: p16(), d: k8() * 2.55 };
     const walk = k8();
+    const s = o < b.byteLength ? k8() : 1;
     const now = performance.now();
-    this.peer = { px, pz, face, yaw, mode, rig, tip, fly, walk, t: now };
+    this.peer = { px, pz, face, yaw, mode, rig, tip, fly, walk, s, t: now };
     this.buf.push(this.peer);
     while (this.buf.length > 40) this.buf.shift();
   }
@@ -407,7 +411,7 @@ export class Net {
       px: l(a.px, c.px), pz: l(a.pz, c.pz), face: a.face + da * k,
       tip: { x: l(a.tip.x, c.tip.x), y: l(a.tip.y, c.tip.y), z: l(a.tip.z, c.tip.z) },
       fly: { x: l(a.fly.x, c.fly.x), z: l(a.fly.z, c.fly.z), d: l(a.fly.d, c.fly.d) },
-      mode: a.mode, rig: a.rig, walk: l(a.walk, c.walk),
+      mode: a.mode, rig: a.rig, walk: l(a.walk, c.walk), s: l(a.s, c.s),
     };
   }
 
@@ -437,7 +441,7 @@ export class Net {
       px: l(prev.px, a.px), pz: l(prev.pz, a.pz), face: a.face + da * k,
       tip: { x: l(prev.tip.x, a.tip.x), y: l(prev.tip.y, a.tip.y), z: l(prev.tip.z, a.tip.z) },
       fly: { x: l(prev.fly.x, a.fly.x), z: l(prev.fly.z, a.fly.z), d: a.fly.d },
-      mode: a.mode, rig: a.rig, walk: a.walk,
+      mode: a.mode, rig: a.rig, walk: a.walk, s: a.s,
     };
   }
 
