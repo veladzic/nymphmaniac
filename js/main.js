@@ -16,12 +16,12 @@ const fmt = (n, d = 1) => n.toFixed(d).replace('.', ',');
 const KEY = 'nymphmaniac_v1';
 function newSave() {
   return { level: 1, xp: 0, material: 4, flies: { pt: 4, walt: 4 }, sel: { fly: 'pt', dry: 'adams', bead: 3.0, tippet: 0.14 }, rig: { mode: 'euro', ind: 'nz', depth: 1.0 },
-    unlocked: 1, revier: 0, quests: {}, log: {}, stats: {}, pages: ['intro'], v: 3, tut: 0, set: { help: true, vib: true, sound: true, vol: 0.8, assist: true, gq: 'auto', clear: false }, total: 0, started: false };
+    unlocked: 1, revier: 0, quests: {}, log: {}, stats: {}, pages: ['intro'], v: 3, tut: 0, set: { help: true, vib: true, sound: true, vol: 0.8, assist: true, castAid: false, gq: 'auto', clear: false }, total: 0, started: false };
 }
 let save;
 try { save = JSON.parse(localStorage.getItem(KEY)); } catch (e) { save = null; }
 if (!save || !save.sel) save = newSave();
-save.set = Object.assign({ help: true, vib: true, sound: true, vol: 0.8, assist: true, gq: 'auto', clear: false }, save.set);
+save.set = Object.assign({ help: true, vib: true, sound: true, vol: 0.8, assist: true, castAid: false, gq: 'auto', clear: false }, save.set);
 // aus dem alten Ja/Nein-Schalter: wer die hohe Qualitaet abgeschaltet hatte, landet auf der niedrigen Stufe
 if (!save.set.gq || typeof save.set.gfx === 'boolean') { save.set.gq = save.set.gfx === false ? 'niedrig' : 'auto'; delete save.set.gfx; }
 save.rig = Object.assign({ mode: 'euro', ind: 'nz', depth: 1.0 }, save.rig);
@@ -122,7 +122,7 @@ const S = {
   mode: 'title', yaw: 0, yb: 0, pitch: 0, px: LANE_X, pz: 0, t: 0, joy: { x: 0, z: 0 }, face: 0, walk: 0, moveDir: 0, tip: { x: LANE_X - 0.6, z: -1.6 }, nymph: { x: 0, d: 0, z: 0 }, L: 4, s: 1, pullS: 0, g: 0, q: 1,
   kick: 0, driftT: 0, onBottom: false, tickT: 0, bite: null, snag: false, snagT: 0, fight: null, hold: false, wade: null,
   cast: null, maxFrac: 0, swingT: 0, sinkRate: 0.2, snagHint: false, aim: null, press: 0, rodX: -0.5,
-  sndT: 0, stepD: 0.55, sx: LANE_X, sz: 0,
+  sndT: 0, stepD: 0.55, sx: LANE_X, sz: 0, aimU: null, aimP0: null, aimBase: 0,
 };
 function gaugeLabels() {
   const q = (s, v) => { const e = document.querySelector(s); if (e) e.textContent = v; };
@@ -245,14 +245,51 @@ function castTarget(pt) {
   const tx = h.x + dx, tz = h.z + dz;
   return { tx, tz, dx, dz, ok: river.depthAt(tx, tz) >= 0.1 };
 }
-function doCast(pt) {
+// Wurf ohne Wurfhilfe: die Richtung kommt vom angetippten Punkt, die Weite aus der Laenge des Zugs.
+// Ein blosser Tipper wirft genau dorthin, wie frueher - erst das Ziehen aendert die Weite.
+const castBand = () => (RIGS.find(r => r.id === rigMode()) || {}).cast || { best: 5.5, max: 7.6 };
+const castAid = () => !!save.set.castAid;
+const MPP = () => 8 / Math.max(240, window.innerHeight * 0.35);   // Meter je Bildpunkt Zugweg
+function castAim(dist) {
+  const u = S.aimU; if (!u) return null;
+  const h = hand(), b = castBand();
+  const dd = clamp(dist, 2.6, b.max);
+  const tx = h.x + u.ux * dd, tz = h.z + u.uz * dd;
+  // Je weiter ueber der bequemen Weite der Rute, desto weniger genau - quadratisch, nicht linear
+  const over = Math.max(0, dd - b.best) / Math.max(0.1, b.max - b.best);
+  return { tx, tz, dd, over, spread: 0.1 + over * over * 0.6, ok: river.depthAt(tx, tz) >= 0.1 };
+}
+function aimStart(cx, cy) {
+  const pt = world.screenToWater(cx, cy);
+  if (!pt) { S.aimU = null; S.aim = null; return; }
+  const h = hand();
+  let dx = pt.x - h.x, dz = pt.z - h.z;
+  if (dz > 0.3) dz = 0.3;                                   // stromab wirft hier niemand
+  const l = Math.hypot(dx, dz) || 1;
+  S.aimU = { ux: dx / l, uz: dz / l }; S.aimP0 = { x: cx, y: cy }; S.aimBase = l;
+  S.aim = castAim(l);
+}
+function doCast(a, vy = 0) {
   if (S.mode !== 'idle' || S.wade) return;
   const fly = curFly();
   if (!(save.flies[fly.id] > 0)) { toast(T('Keine {0} mehr – öffne die Fliegendose.', fly.name)); return; }
-  const h = hand(), ct = castTarget(pt);
-  if (!ct) return;
-  if (!ct.ok) { toast(T('Dort ist kein Wasser.')); return; }
-  const { tx, tz, dx, dz } = ct;
+  if (a && a.tx === undefined) a = castTarget(a);           // alter Aufruf mit einem Punkt (Konsole, Bot)
+  if (!a) return;
+  if (!a.ok) { toast(T('Dort ist kein Wasser.')); return; }
+  const h = hand();
+  // Streuung um den Zielpunkt: Richtung gleichverteilt, Abstand glockenfoermig
+  let tx = a.tx, tz = a.tz;
+  const sp = a.spread || 0;
+  if (sp > 0.001) {
+    const ang = Math.random() * 6.2832, r = sp * Math.sqrt(-2 * Math.log(1 - Math.random() * 0.9));
+    tx += Math.cos(ang) * r; tz += Math.sin(ang) * r;
+    if (river.depthAt(tx, tz) < 0.05) { tx = a.tx; tz = a.tz; }   // nicht ans Ufer streuen
+  }
+  // Haerte des Aufsetzens: ein gerissener Zug und eine ueberzogene Weite klatschen
+  // Die volle Weite allein klatscht noch nicht - sie liegt knapp unter der Schwelle.
+  // Erst ein gerissener Zug obendrauf laesst es aufschlagen.
+  const hard = clamp((a.over || 0) * 0.45 + Math.max(0, vy - 1400) / 2600, 0, 1);
+  const dx = tx - h.x, dz = tz - h.z;
   const l = Math.hypot(dx, dz);
   S.tip.x = h.x + dx / l * 2.6; S.tip.z = h.z + dz / l * 2.6;
   const TP = tip3();
@@ -263,7 +300,8 @@ function doCast(pt) {
   st.push({ dir: 1, dur: rm === 'euro' ? 0.44 : 0.56, fin: true });
   const full = Math.hypot(tx - TP.x, tz - TP.z, TP.y);
   st.forEach((q, i) => { q.len = Math.max(2.2, full * (rm === 'euro' ? 1 : 0.45 + 0.55 * (i + 1) / st.length)); });   // beim Leerwurf wird Schnur verlaengert
-  S.cast = { t: 0, T: st.reduce((a, q) => a + q.dur, 0), st, k: -1, ux: dx / l, uz: dz / l, tx, tz, loop: rm === 'euro' ? 0.3 : rm === 'dry' ? 0.5 : 0.85, hang: { x: TP.x, y: Math.max(0.3, TP.y - 1.9), z: TP.z } };
+  S.castOver = a.over || 0;
+  S.cast = { t: 0, T: st.reduce((a, q) => a + q.dur, 0), st, k: -1, ux: dx / l, uz: dz / l, tx, tz, hard, loop: rm === 'euro' ? 0.3 : rm === 'dry' ? 0.5 : 0.85, hang: { x: TP.x, y: Math.max(0.3, TP.y - 1.9), z: TP.z } };
   S.mode = 'cast';
 }
 // Haltung von Rute und Schnur waehrend des Wurfs. Jeder Schlag bewegt die Rute zwischen 10 und 1 Uhr;
@@ -314,7 +352,22 @@ function updateCast(dt) {
     }
     if (isDry()) n.d = 0;
     S.mode = 'drift'; S.driftT = 0; S.bite = null; S.snag = false; S.snagHint = false; S.onBottom = false; S.maxFrac = 0; S.swingT = 0; S.pullS = 0; S.g = 0; S.kick = 0; S.tickT = 0.3;
-    world.splash(n.x, n.z, 0.5); sfx.plop(n.x, n.z);
+    // Geklatscht: der Vorfachbogen faellt zusammen, statt sich zu strecken. Die Fische in der Naehe ducken sich.
+    const hd = c.hard || 0;
+    world.splash(n.x, n.z, 0.5 + hd * 1.8); sfx.plop(n.x, n.z);
+    if (hd > 0.45) {
+      sfx.splash(n.x, n.z, 0.6 + hd);
+      const rad = 0.8 + hd * 1.8;
+      let sp = 0;
+      for (const f of fish) if (Math.hypot(f.x - n.x, f.z - n.z) < rad) { f.wary = Math.max(f.wary, 8 + hd * 8); sp++; }
+      toast(sp ? T('Geklatscht – die Fische hier sind jetzt misstrauisch. Kürzer werfen oder näher heranwaten.')
+               : T('Geklatscht – zu viel Weite für die Rute. Näher heranwaten.'), 3600);
+    }
+    // Beim ersten Wurf jenseits der bequemen Weite einmal erklaeren, warum der Ring aufgegangen ist
+    if ((a0 => a0 > 0.5 && !save.wideHint)(S.castOver || 0)) {
+      save.wideHint = true; persist();
+      toast(T('Das war weiter, als die Rute sauber trägt – deshalb ging der Zielring auf. Näher heranwaten trifft genauer als weiter werfen.'), 5200);
+    }
     if (save.tut < 2) { save.tut = Math.max(save.tut, 1); }
     updateTip();
   }
@@ -721,7 +774,7 @@ function updateMove(dt) {
   }
   if (ox === S.px && oz === S.pz) return;
   S.walk = f; S.moveDir = Math.atan2(-(S.px - ox), -(S.pz - oz));
-  S.aim = null;
+  S.aim = null; S.aimU = null;
   const land = onLand();
   if (!land && Math.random() < dt * 6 * f) world.splash(S.px + (Math.random() - 0.5) * 0.3, S.pz + 0.1, 0.3 + f * 0.25);
   const rad = land ? 0.5 + 0.4 * f : 1.5 + 1.3 * f; let spk = 0;   // am Ufer sieht und hört dich der Fisch kaum
@@ -962,6 +1015,7 @@ function showSettings() {
   openModal(`<h2>${T('Einstellungen')}</h2>
     ${tg('help', T('Bisshilfe'), T('Lupe leuchtet und Handy vibriert beim Biss. Ohne Hilfe: +25 % XP.'))}
     ${tg('assist', T('Führungshilfe'), T('Die Rute folgt der Drift ein Stück von selbst; in schnellem Wasser musst du nachhelfen. Ohne: +15 % XP.'))}
+    ${tg('castAid', T('Wurfhilfe'), T('Die Fliege landet genau im Ring. Ohne Hilfe gibt der angetippte Punkt nur die Richtung, die Weite kommt aus der Länge deines Zugs – und über der bequemen Weite der Rute streut der Wurf.'))}
     ${tg('clear', T('Klare Sicht'), T('Blendet die Spiegelung auf dem Wasser aus, damit du die Fische besser siehst. Ohne: +35 XP pro Fisch.'))}
     <div class="slider pick"><b>${T('Grafik')}</b>
       <div class="seg">${GQ.map(([v, n]) => `<button data-act="gq" data-v="${v}" class="${save.set.gq === v ? 'on' : ''}">${T(n)}</button>`).join('')}</div>
@@ -1065,7 +1119,22 @@ function isLookStart(e) {
   const pt = world.screenToWater(e.clientX, e.clientY);
   return !pt || river.depthAt(pt.x, pt.z) < 0.05 || Math.hypot(pt.x - S.px, pt.z - S.pz) > 15 || pt.z < Z_MIN - 6 || pt.z > Z_MAX + 20;
 }
-function aimAt(cx, cy) { const pt = world.screenToWater(cx, cy); S.aim = pt ? castTarget(pt) : null; }
+function aimAt(cx, cy, start) {
+  if (castAid()) { const pt = world.screenToWater(cx, cy); S.aim = pt ? castTarget(pt) : null; return; }
+  if (start) { aimStart(cx, cy); return; }
+  if (!S.aimU) return;
+  // Seitlich ziehen zielt weiter neu, nach oben ziehen wirft weiter.
+  // Die Richtung kommt dabei immer vom Finger - nur die Weite haengt am Zugweg.
+  const pt = world.screenToWater(cx, cy);
+  if (pt) {
+    const h = hand();
+    let dx = pt.x - h.x, dz = pt.z - h.z;
+    if (dz > 0.3) dz = 0.3;
+    const l = Math.hypot(dx, dz);
+    if (l > 0.4) S.aimU = { ux: dx / l, uz: dz / l };
+  }
+  S.aim = castAim(S.aimBase + (S.aimP0.y - cy) * MPP());
+}
 canvas.addEventListener('pointerdown', e => {
   sfx.start();
   if (modalOpen() || S.mode === 'title') return;
@@ -1075,7 +1144,7 @@ canvas.addEventListener('pointerdown', e => {
   ptr.id = e.pointerId; ptr.x = ptr.ax = e.clientX; ptr.y = ptr.ay = e.clientY; ptr.hist.length = 0;
   try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* */ }
   ptr.look = lk;
-  if (!lk && S.mode === 'idle' && !S.wade) aimAt(e.clientX, e.clientY);
+  if (!lk && S.mode === 'idle' && !S.wade) aimAt(e.clientX, e.clientY, true);
 });
 canvas.addEventListener('pointermove', e => {
   if (e.pointerId !== ptr.id) return;
@@ -1084,7 +1153,13 @@ canvas.addEventListener('pointermove', e => {
     const k = 3.2 / Math.min(window.innerWidth, 900), sg = e.pointerType === 'mouse' ? -1 : 1;   // Finger schiebt die Szene, Maus dreht den Blick
     S.yaw += dx * k * sg; S.pitch = clamp(S.pitch + dy * k * 0.7 * sg, -0.12, 0.55);
   }
-  else if (S.mode === 'idle') { if (!S.wade) aimAt(e.clientX, e.clientY); }
+  else if (S.mode === 'idle') {
+    if (S.wade) return;
+    const now = performance.now(), hs = ptr.hist;                     // fuer die Geschwindigkeit des Zugs beim Loslassen
+    hs.push({ t: now, y: e.clientY });
+    while (hs.length > 1 && now - hs[0].t > 120) hs.shift();
+    aimAt(e.clientX, e.clientY, false);
+  }
   else if (S.mode === 'drift') {
     const K = 3.6 / (Math.min(window.innerHeight, 900) * 0.42);
     const c = Math.cos(S.yaw + S.yb), sn = Math.sin(S.yaw + S.yb);
@@ -1104,8 +1179,15 @@ const ptrEnd = e => {
   if (e.pointerId !== ptr.id) return;
   ptr.id = null; S.press = 0;
   if (ptr.look) { ptr.look = false; return; }
-  const a = S.aim; S.aim = null;
-  if (S.mode === 'idle' && a && e.type === 'pointerup') { if (a.ok) doCast({ x: a.tx, z: a.tz }); else toast(T('Dort ist kein Wasser.')); }
+  const a = S.aim; S.aim = null; S.aimU = null;
+  if (S.mode === 'idle' && a && e.type === 'pointerup') {
+    // Geschwindigkeit des Zugs nach oben, in Bildpunkten je Sekunde: ein gerissener Zug klatscht
+    const hs = ptr.hist, n0 = hs.length;
+    let vy = 0;
+    if (n0 > 1) { const dts = (performance.now() - hs[0].t) / 1000; if (dts > 0.015) vy = (hs[0].y - hs[n0 - 1].y) / dts; }
+    if (a.ok) doCast(a, vy); else toast(T('Dort ist kein Wasser.'));
+  }
+  ptr.hist.length = 0;
 };
 canvas.addEventListener('pointerup', ptrEnd);
 canvas.addEventListener('pointercancel', ptrEnd);
@@ -1459,4 +1541,4 @@ showLoader(T('Ein Euro-Nymphing-Abenteuer'), '', T('Das Erbe der Smaragda'), T('
 
 enterRevier(Math.min(save.revier, save.unlocked - 1), true);
 requestAnimationFrame(frame);
-window.__nm = { S, world, sfx, get save() { return save; }, get fish() { return fish; }, get river() { return river; }, get cond() { return cond; }, doCast, strike, startFight, landed, enterRevier, hand, fleeFish, startBite, kickSample, closeModal, makeFish, flyMatch, get respawn() { return respawn; } };
+window.__nm = { S, world, sfx, castAim, aimStart, castBand, get save() { return save; }, get fish() { return fish; }, get river() { return river; }, get cond() { return cond; }, doCast, strike, startFight, landed, enterRevier, hand, fleeFish, startBite, kickSample, closeModal, makeFish, flyMatch, get respawn() { return respawn; } };

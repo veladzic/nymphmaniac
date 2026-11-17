@@ -64,10 +64,15 @@ export const FLIES = [
 ];
 
 // Rig: Rute und Methode
+// cast.best = Weite, bis zu der die Rute genau laeuft; cast.max = was ueberhaupt noch geht.
+// Dazwischen waechst die Streuung quadratisch. Die Werte richten sich nach dem, was im Spiel
+// wirklich vorkommt: die Standplaetze liegen im Median 2,6 m seitlich der Watspur, ein normaler
+// Wurf ist 3 bis 6 m. Lag best hoeher, lief der ganze Wurf immer in der genauen Zone und nichts
+// davon war je zu spueren.
 export const RIGS = [
-  { id: 'euro', season: 1, name: "Euro-Nymphe", desc: "Nymphenrute 10′ #3. Kurze Schnur, hohe Rute, direkter Kontakt über den Sighter. Am genauesten auf kurze Distanz, bis etwa 7 m." },
-  { id: 'indi', season: 2, name: "Indikator", desc: "Allroundrute 9′6″ #4. Die Nymphe hängt unter einem schwimmenden Bissanzeiger. Würfe bis 10 m, lose Schnur schadet nicht – aber die Tiefe stellst du selbst ein, und der Indikator muss die Perle tragen können." },
-  { id: 'dry', season: 2, name: "Trockenfliege", desc: "Trockenfliegenrute 9′ #4. Die Fliege treibt auf der Oberfläche. Nur steigende Fische nehmen sie – achte auf die Ringe im Wasser. Würfe bis 12 m. In der Fliegendose siehst du mit dieser Rute nur Trockenfliegen." },
+  { id: 'euro', season: 1, cast: { best: 4.0, max: 7.6 }, name: "Euro-Nymphe", desc: "Nymphenrute 10′ #3. Kurze Schnur, hohe Rute, direkter Kontakt über den Sighter. Am genauesten auf kurze Distanz, bis etwa 7 m." },
+  { id: 'indi', season: 2, cast: { best: 5.5, max: 10.5 }, name: "Indikator", desc: "Allroundrute 9′6″ #4. Die Nymphe hängt unter einem schwimmenden Bissanzeiger. Würfe bis 10 m, lose Schnur schadet nicht – aber die Tiefe stellst du selbst ein, und der Indikator muss die Perle tragen können." },
+  { id: 'dry', season: 2, cast: { best: 6.5, max: 12 }, name: "Trockenfliege", desc: "Trockenfliegenrute 9′ #4. Die Fliege treibt auf der Oberfläche. Nur steigende Fische nehmen sie – achte auf die Ringe im Wasser. Würfe bis 12 m. In der Fliegendose siehst du mit dieser Rute nur Trockenfliegen." },
 ];
 // Schwimmende Bissanzeiger. cap = Tragkraft (Perle x Fliege), sens = wie deutlich er Bisse zeigt,
 // splash = Scheuchradius beim Aufsetzen in m, drift = wie natuerlich die Nymphe darunter treibt

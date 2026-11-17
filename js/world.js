@@ -1310,8 +1310,14 @@ export class World {
     const v = !!a; this.aimRing.visible = this.aimDot.visible = v;
     if (!v) return;
     this.aimRing.position.set(a.tx, 0.03, a.tz); this.aimDot.position.set(a.tx, 0.03, a.tz);
-    const c = a.ok ? 0xffffff : 0xff5a4f; this.aimRing.material.color.setHex(c); this.aimDot.material.color.setHex(c);
-    const k = 1 + Math.sin(this.timeU.value * 6) * 0.08; this.aimRing.scale.setScalar(k);
+    // Der Punkt ist das Ziel, der Ring die Streuung: je weiter der Wurf ueber der bequemen Weite
+    // der Rute liegt, desto groesser wird er - man sieht die Unsicherheit, bevor man loslaesst.
+    // Er faerbt sich dabei von Weiss nach Orange.
+    const sp = a.spread === undefined ? 0.1 : a.spread;
+    const c = !a.ok ? 0xff5a4f : a.over > 0.55 ? 0xffa23a : 0xffffff;
+    this.aimRing.material.color.setHex(c); this.aimDot.material.color.setHex(c);
+    const k = 1 + Math.sin(this.timeU.value * 6) * 0.08;
+    this.aimRing.scale.setScalar(k * (0.7 + sp * 2.2));   // waechst von der ersten Streuung an, nicht erst ab einer Schwelle
   }
   setEntry(x, z, state) {
     const m = this.entryRing; m.visible = !!state;

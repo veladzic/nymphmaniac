@@ -22,7 +22,7 @@ Dann `http://localhost:8123` öffnen.
 |---|---|---|
 | Waten | Stick unten links | W/A/S/D |
 | Umschauen | am Himmel oder Ufer ziehen | Rechtsklick ziehen oder Q/E |
-| Werfen | Finger aufs Wasser, Zielring schieben, loslassen | wie am Handy mit der Maus |
+| Werfen | Finger aufs Wasser (Richtung), nach oben ziehen (Weite), loslassen | wie am Handy mit der Maus |
 | Rute führen | nach unten ziehen | Maus ziehen |
 | Anhieb | nach oben wischen oder ANHIEB | Leertaste / Rechtsklick |
 | Drill | auf dem Bild oder am Rutenstick unten Mitte: nach unten ziehen = Druck, seitlich = Seitendruck; DRILL (links oder rechts) halten = fester Druck | Maus ziehen oder Leertaste, A/D |
@@ -86,6 +86,40 @@ Stein, Schnellwechsel und Rig-Anzeige stehen unten rechts neben dem Watstick. Na
 Schnellwechsel: Neben dem Stein-Knopf wechselt ⇄ zur zuletzt gefischten Rute und beim nächsten Tippen wieder zurück (ohne Vorgeschichte zwischen Nymphe und Trockenfliege). Der Knopf erscheint ab Staffel 2 und zeigt, wohin er wechselt. Die Rig-Anzeige nennt in der dritten Zeile die Montage: Nymph Rig, Indikator Rig oder Dry Rig.
 
 Steine sind für alles fest, bei jeder Rute: Die Schnur legt sich auf die Steinoberfläche, statt hindurchzugehen, und hält die Fliege dann fest. Fliege und Nymphe treiben am echten Steinumriss vorbei; eine Euro-Nymphe, die unter Wasser von vorn gegen einen Stein treibt, verklemmt sich mit 12 % Wahrscheinlichkeit (Hänger). Im Drill weicht der Fisch an den Rand eines Steins aus, statt hindurchzuschwimmen.
+
+### Der Wurf
+
+Der angetippte Punkt gibt die **Richtung**, die Länge deines Zugs nach oben die **Weite**: 8 m je 35 % der Bildschirmhöhe. Ein bloßer Tipper ohne Zug wirft genau dorthin, wo du hingetippt hast – wer nichts davon wissen will, fischt also wie bisher weiter.
+
+Jede Rute hat eine bequeme Weite und eine Grenze (`cast` in `js/data.js`):
+
+| Rute | bequem | Grenze |
+|---|---|---|
+| Euro-Nymphe | 4,0 m | 7,6 m |
+| Indikator | 5,5 m | 10,5 m |
+| Trockenfliege | 6,5 m | 12 m |
+
+Diese Zahlen richten sich nach dem, was im Spiel wirklich vorkommt, nicht nach dem, was am Wasser realistisch wäre: Die Standplätze liegen im Median 2,6 m seitlich der Watspur, ein normaler Wurf ist 3 bis 6 m. Lag die bequeme Weite höher, lief jeder Wurf im genauen Bereich und von der ganzen Mechanik war nie etwas zu spüren.
+
+Bis zur bequemen Weite läuft die Rute genau. Darüber wächst die Streuung quadratisch: `0,1 m + über² × 0,6 m`, wobei `über` von 0 an der bequemen Weite auf 1 an der Grenze steigt. Die Fliege landet dann nicht im Ring, sondern glockenförmig darum herum. Gemessen über je 40 Würfe mit der Euro-Rute:
+
+| Wurf | Streuung | Fehler im Mittel | größter Fehler | geklatscht |
+|---|---|---|---|---|
+| 3 m | 0,10 m | 0,10 m | 0,20 m | 0 % |
+| 4 m (bequem) | 0,10 m | 0,10 m | 0,19 m | 0 % |
+| 5,8 m | 0,25 m | 0,30 m | 0,53 m | 0 % |
+| 7,6 m (Grenze), ruhiger Zug | 0,70 m | 0,86 m | 1,43 m | 0 % |
+| 7,6 m (Grenze), gerissener Zug | 0,70 m | 0,89 m | 1,42 m | 100 % |
+
+**Der Ring zeigt das vorher an.** Sein Durchmesser folgt der Streuung (`0,7 + Streuung × 2,2`), wächst also von der ersten Unsicherheit an statt erst ab einer Schwelle – von Skala 0,92 bei einem kurzen Wurf auf 2,24 an der Grenze. Ab `über > 0,55` färbt er sich zusätzlich orange. Der Punkt in der Mitte bleibt das Ziel.
+
+**Zielen bleibt frei.** Seitlich ziehen richtet die Richtung weiter neu aus, nach oben ziehen ändert nur die Weite: Die Richtung kommt immer vom Finger, die Weite allein vom Zugweg.
+
+**Geklatscht** wird aus `über × 0,45 + (Zuggeschwindigkeit − 1400 px/s) / 2600`, ab 0,45. Die volle Weite allein reicht dafür nicht ganz; erst ein gerissener Zug obendrauf lässt die Fliege aufschlagen. Dann spritzt es, und alle Fische im Umkreis von `0,8 + Härte × 1,8` m werden für 8 bis 16 s misstrauisch. Beim ersten Wurf jenseits der bequemen Weite erklärt eine Meldung einmalig, warum der Ring aufgegangen ist.
+
+Das Können liegt damit nicht im Zielen, sondern im **Waten**: Wer sich auf bequeme Weite heranarbeitet, ohne die Fische zu scheuchen, trifft. Wer vom Ufer aus über den halben Fluss wirft, streut und klatscht.
+
+Die Einstellung **Wurfhilfe** stellt das alte Verhalten wieder her – die Fliege landet dann genau im Ring. Sie ist ab Werk aus.
 
 ### Steigen: Nymphe oder Trockenfliege
 
