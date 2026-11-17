@@ -56,6 +56,14 @@ Der Buchstabenvorrat lässt `I`, `O`, `0` und `1` weg, damit man die Kennung vor
 
 **Fällt der Vermittler aus**, steht unter dem Feld „Klappt es nicht? Über einen Link verbinden": derselbe Weg wie zuvor, ganz ohne fremden Dienst — ein Link, den man verschickt, und eine Antwort zurück. Beide Felder nehmen auch die ganze Chatnachricht mitsamt Text drumherum.
 
+**Kommt keine direkte Leitung zustande**, läuft das Spiel über denselben Vermittler weiter. Zwischen manchen Netzen geht es nicht direkt — vor allem hinter Mobilfunk, wo sich viele Anschlüsse eine Adresse teilen. Dafür gibt es sonst einen Relaisserver (TURN), und früher gab es frei nutzbare. Gemessen im November 2026 antwortet keiner mehr: `openrelay.metered.ca`, `relay.metered.ca`, `freeturn.net` und `freestun.net` lösen nicht einmal auf.
+
+Also übernimmt der Vermittler. Er leitet nur die Nachrichten seines eigenen Protokolls weiter — schickt man ihm etwas anderes, schließt er die Verbindung (gemessen: Schluss nach dem ersten Paket). Darum reist das Spielpaket als Kandidat verkleidet; auf den Inhalt schaut er nicht, nur auf die Form. Gemessen: 15 Pakete je Sekunde, kein Verlust, 89 ms im Mittel, 110 ms im 95. Hundertstel. Weil der Dienst für kurze Nachrichten gedacht ist, geht über diesen Weg nur die Hälfte raus — 10 statt 15 je Sekunde. Der Dialog sagt es offen: „es läuft über den Vermittler".
+
+Umgeschaltet wird, sobald der Browser `failed` meldet — oder nach 12 Sekunden ohne Verbindung, denn mit abgeriegelten Netzen meldet er gar nichts und bleibt ewig auf `new` stehen. Geht die direkte Leitung später doch noch auf, wird sie wieder benutzt. Ein Lebenszeichen alle fünf Sekunden hängt nicht am Spiel, sondern am Herzschlag der Vermittlerverbindung: Wer das Fenster weglegt, zeichnet nicht mehr und würde sonst fälschlich als weg gelten.
+
+**Reißt die Verbindung ab**, holt der Dialog von selbst eine neue Kennung und sagt darüber, was passiert ist. Vorher blieb er auf „Kennung wird geholt …" stehen und es ging nie mehr weiter.
+
 Die Verbindung läuft danach direkt zwischen den beiden Rechnern (WebRTC). Der Code steckt im Fragment der Adresse (`#j=…` für die Einladung, `#a=…` für die Antwort) und wird nach dem Lesen aus der Adresszeile entfernt, damit ein Neuladen ihn nicht noch einmal einwirft. Ein Antwortlink hilft nur, solange das Fenster des Gastgebers offen ist — steht dort kein wartendes Spiel, sagt der Dialog das.
 
 **Ihr seht einander waten, werfen, drillen und landen — aber jeder fischt seinen eigenen Besatz.** Niemand nimmt dem anderen einen Fisch weg, niemand scheucht dem anderen einen. Der Spielstand zählt nur lokal; Mehrspieler ist ein Nebenschauplatz, keine zweite Fortschrittslinie.

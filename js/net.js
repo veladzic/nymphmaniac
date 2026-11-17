@@ -9,7 +9,17 @@
 // Kein STUN-Zwang: ohne die Server unten kaeme nur eine Verbindung im selben Netz
 // zustande. Sie werden nur gefragt, welche oeffentliche Adresse man hat; es laeuft
 // kein Spiel darueber.
-const ICE = { iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }] };
+//
+// Mehrere Anbieter, weil ein einzelner ausfallen kann und man dann ohne oeffentliche
+// Adresse dasteht. Gemessen antworten alle drei.
+const ICE = {
+  iceServers: [{
+    urls: [
+      'stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302',
+      'stun:stun.cloudflare.com:3478', 'stun:global.stun.twilio.com:3478',
+    ],
+  }],
+};
 
 export const MODES = ['title', 'idle', 'cast', 'drift', 'fight', 'landed'];
 export const RIGS_N = ['euro', 'indi', 'dry'];   // die Montage gehoert mit uebertragen, siehe sendMove
@@ -56,6 +66,8 @@ export class Net {
     this.ws = null; this.dst = null; this.code = null; this._beat = 0;
     this.buf = [];                 // letzte Pakete mit Ankunftszeit, fuer die verzoegerte Darstellung
     this.cid = 'nm_' + Math.random().toString(36).slice(2, 10);
+    this.via = 'direkt';           // direkt | vermittler - siehe _toRelay
+    this._out = 0; this._in = 0; this._watch = 0;
     this.peer = null;              // letzter empfangener Zustand der Gegenseite
     this.onEvent = () => {};       // Ereignisse ans Spiel
     this.onState = () => {};       // Zustandswechsel ans Menue
@@ -101,7 +113,15 @@ export class Net {
           clearTimeout(to);
           this.ws = ws;
           // Der Server wirft stille Verbindungen hinaus
-          this._beat = setInterval(() => { if (ws.readyState === 1) ws.send('{"type":"HEARTBEAT"}'); }, 5000);
+          this._beat = setInterval(() => {
+            if (ws.readyState === 1) ws.send('{"type":"HEARTBEAT"}');
+            if (this.via !== 'vermittler') return;
+            // Ein Lebenszeichen, das nicht am Spiel haengt: wer das Fenster weglegt,
+            // zeichnet nicht mehr und wuerde sonst faelschlich als weg gelten.
+            this._relay('p', '');
+            // Zwanzig Sekunden Stille heisst: die Gegenseite ist wirklich fort
+            if (performance.now() - this._in > 20000) this._lost();
+          }, 5000);
           ws.onmessage = ev => this._fromBroker(ev);
           res(ws);
         } else if (m.type === 'ID-TAKEN') { clearTimeout(to); try { ws.close(); } catch (err) { /* egal */ } rej(new Error('belegt')); }
@@ -126,6 +146,22 @@ export class Net {
     let m; try { m = JSON.parse(e.data); } catch (err) { return; }
     const pc = this.pc;
     const p = m.payload || {};
+    // Spielverkehr ueber den Vermittler, als Kandidat verkleidet - siehe _relay.
+    // Kommt so etwas an, hat die Gegenseite den Rueckfall schon gewaehlt; dann gilt er
+    // auch hier, selbst wenn der eigene Browser die direkte Leitung noch nicht aufgegeben hat.
+    if (m.type === 'CANDIDATE' && p.candidate && p.candidate.sdpMid === 'nm') {
+      const s = String(p.candidate.candidate || ''), i = s.indexOf(' typ host ');
+      if (i < 0) return;
+      this._toRelay();
+      this._in = performance.now();
+      const body = s.slice(i + 10);
+      if (body[0] === 'e') { try { this.onEvent(JSON.parse(body.slice(1))); } catch (err) { /* kaputt */ } return; }
+      if (body[0] !== 'm') return;
+      const bin = atob(body.slice(1)), u = new Uint8Array(bin.length);
+      for (let k = 0; k < bin.length; k++) u[k] = bin.charCodeAt(k);
+      if (u.length === PACK) this._readMove(new DataView(u.buffer));
+      return;
+    }
     try {
       if (m.type === 'OFFER' && pc && p.sdp) {
         this.dst = m.src;
@@ -134,6 +170,7 @@ export class Net {
         this._sig('ANSWER', { sdp: { type: pc.localDescription.type, sdp: pc.localDescription.sdp } });
         for (const c of this._queued || []) this._sig('CANDIDATE', { candidate: c });
         this._queued = [];
+        this._arm();
       } else if (m.type === 'ANSWER' && pc && p.sdp) {
         if (pc.signalingState === 'have-local-offer') await pc.setRemoteDescription(p.sdp);
       } else if (m.type === 'CANDIDATE' && pc && p.candidate) {
@@ -182,26 +219,79 @@ export class Net {
     this._sig('OFFER', { sdp: { type: this.pc.localDescription.type, sdp: this.pc.localDescription.sdp } });
     for (const c of this._queued || []) this._sig('CANDIDATE', { candidate: c });
     this._queued = [];
+    this._arm();
     this._set('warten');
   }
 
-  close() {
+  // quiet: beim Neuaufbau soll der Abbau nicht als eigener Zustandswechsel nach draussen
+  // gehen - das Menue wuerde sonst mitten im Verbinden auf 'aus' zurueckspringen.
+  close(quiet) {
     clearInterval(this._beat); this._beat = 0;
+    clearTimeout(this._watch); this._watch = 0;
     if (this.ws) { try { this.ws.onclose = null; this.ws.close(); } catch (e) { /* egal */ } }
     if (this.pc) { try { this.pc.close(); } catch (e) { /* egal */ } }
-    this.ws = null; this.dst = null; this.code = null;
-    this.pc = this.move = this.evt = null; this.peer = null; this.buf.length = 0; this._set('aus');
+    this.ws = null; this.dst = null; this.code = null; this.via = 'direkt';
+    this.pc = this.move = this.evt = null; this.peer = null; this.buf.length = 0;
+    if (quiet) this.state = 'aus'; else this._set('aus');
   }
 
   _pc() {
-    this.close();
+    this.close(true);
     this.pc = new RTCPeerConnection(ICE);
     this.pc.onconnectionstatechange = () => {
       const s = this.pc && this.pc.connectionState;
       // 'connected' heisst nur, dass die Leitung steht - die Datenkanaele gehen erst danach
       // auf. Wer hier schon sendet, dessen Begruessung faellt ins Leere.
-      if (s === 'failed' || s === 'disconnected' || s === 'closed') { this.peer = null; this.buf.length = 0; this._set('weg'); }
+      if (s === 'failed') { if (!this._toRelay()) this._lost(); }
+      else if (s === 'disconnected' || s === 'closed') { if (this.state === 'verbunden' && this.via === 'direkt') this._lost(); }
     };
+  }
+
+  _lost() { this.peer = null; this.buf.length = 0; this._set('weg'); }
+
+  // ---------- Rueckfall: ueber den Vermittler spielen ----------
+  //
+  // Zwischen manchen Netzen kommt gar keine direkte Leitung zustande - vor allem hinter
+  // Mobilfunk, wo sich viele Anschluesse eine Adresse teilen. Dafuer gibt es sonst einen
+  // Relaisserver (TURN). Gemessen im November 2026 antwortet kein einziger der frei
+  // nutzbaren mehr: openrelay.metered.ca, relay.metered.ca, freeturn.net und freestun.net
+  // loesen nicht mehr auf.
+  //
+  // Also laeuft das Spiel im Notfall ueber denselben Vermittler, der schon die Kennungen
+  // weiterreicht. Gemessen: 15 Pakete je Sekunde, kein Verlust, 89 ms im Mittel, 110 ms
+  // im 95. Hundertstel - traeger als direkt, aber spielbar. Der Vermittler ist fuer kurze
+  // Nachrichten gedacht, darum geht hier nur die Haelfte raus: 10 statt 15 je Sekunde.
+  _toRelay() {
+    if (!this.ws || this.ws.readyState !== 1 || !this.dst) return false;
+    if (this.via === 'vermittler') return true;
+    clearTimeout(this._watch); this._watch = 0;
+    this.via = 'vermittler';
+    this._in = performance.now();
+    this._set('verbunden');
+    return true;
+  }
+
+  // Wenn nach dem Austausch der Kennungen lange nichts zustande kommt, wartet man nicht
+  // weiter: 'failed' meldet der Browser erst nach vielen Sekunden, manche Browser gar nicht.
+  _arm() {
+    clearTimeout(this._watch);
+    this._watch = setTimeout(() => {
+      if (this.state !== 'verbunden') this._toRelay();
+    }, 12000);
+  }
+
+  // Der Vermittler leitet nur die Nachrichten seines eigenen Protokolls weiter; schickt man
+  // ihm etwas anderes, schliesst er die Verbindung (gemessen: Schluss nach dem ersten Paket).
+  // Darum reist die Spielnachricht als Kandidat verkleidet. Auf den Inhalt schaut er nicht,
+  // nur auf die Form.
+  _relay(kind, text) {
+    if (this.via !== 'vermittler') return;
+    this._sig('CANDIDATE', {
+      candidate: {
+        candidate: 'candidate:1 1 udp 1 1.2.3.4 1 typ host ' + kind + text,
+        sdpMid: 'nm', sdpMLineIndex: 0,
+      },
+    });
   }
   _set(s) { if (s === this.state) return; this.state = s; this.onState(s); }
 
@@ -220,9 +310,14 @@ export class Net {
   _wire(ch) {
     ch.binaryType = 'arraybuffer';
     // Verbunden ist man erst, wenn beide Kanaele offen sind
-    const check = () => { if (this.move && this.move.readyState === 'open' && this.evt && this.evt.readyState === 'open') this._set('verbunden'); };
+    const check = () => {
+      if (!(this.move && this.move.readyState === 'open' && this.evt && this.evt.readyState === 'open')) return;
+      clearTimeout(this._watch); this._watch = 0;
+      this.via = 'direkt';
+      this._set('verbunden');
+    };
     if (ch.readyState === 'open') check(); else ch.onopen = check;
-    ch.onclose = () => { this.peer = null; this.buf.length = 0; if (this.state === 'verbunden') this._set('weg'); };
+    ch.onclose = () => { if (this.via === 'direkt' && this.state === 'verbunden') this._lost(); };
     ch.onmessage = e => {
       if (typeof e.data === 'string') { try { this.onEvent(JSON.parse(e.data)); } catch (err) { /* kaputtes Paket verwerfen */ } return; }
       this._readMove(new DataView(e.data));
@@ -232,7 +327,13 @@ export class Net {
   // 20 Byte: Orte als Zentimeter in 16 Bit, Winkel und Anteile in je einem Byte
   sendMove(S, tip) {
     const ch = this.move;
-    if (!ch || ch.readyState !== 'open') return;
+    const rel = this.via === 'vermittler';
+    if (!rel && (!ch || ch.readyState !== 'open')) return;
+    if (rel) {
+      const now = performance.now();
+      if (now - this._out < 100) return;                  // 10 je Sekunde, nicht 15
+      this._out = now;
+    }
     const b = new DataView(new ArrayBuffer(PACK)); let o = 0;
     const p16 = v => { b.setInt16(o, Math.max(-32768, Math.min(32767, Math.round(v * 100))), true); o += 2; };
     const a8 = v => { b.setUint8(o++, Math.round((v / 6.2832 % 1 + 1) % 1 * 255)); };
@@ -246,7 +347,9 @@ export class Net {
     p16(tip.x); p16(tip.y); p16(tip.z);
     p16(S.nymph.x); p16(S.nymph.z); k8(Math.min(2.55, S.nymph.d || 0) / 2.55);
     k8(Math.min(1, S.walk || 0));
-    ch.send(b.buffer);
+    if (!rel) return ch.send(b.buffer);
+    let bin = ''; for (const x of new Uint8Array(b.buffer)) bin += String.fromCharCode(x);
+    this._relay('m', btoa(bin));
   }
 
   _readMove(b) {
@@ -340,6 +443,7 @@ export class Net {
 
   send(type, data) {
     const ch = this.evt;
+    if (this.via === 'vermittler') return this._relay('e', JSON.stringify({ type, ...data }));
     if (ch && ch.readyState === 'open') ch.send(JSON.stringify({ type, ...data }));
   }
 

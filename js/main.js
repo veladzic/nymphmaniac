@@ -120,7 +120,7 @@ const sfx = new Sfx(); sfx.on = save.set.sound; sfx.vol = save.set.vol;
 // netRevier ist das Revier der Gegenseite; nur wenn es mit dem eigenen uebereinstimmt,
 // wird die fremde Figur ueberhaupt gezeichnet.
 const net = new Net();
-let netRevier = -1, netName = '';
+let netRevier = -1, netName = '', netNote = '';
 net.onEvent = m => {
   if (m.type === 'hallo') { netName = (m.name || '').slice(0, 24); netRevier = m.revier; toast(T('{0} ist am Wasser.', netName || T('Jemand')), 3200); netHello(); }
   else if (m.type === 'revier') { netRevier = m.i; toast(T('{0} fischt jetzt: {1}', netName || T('Jemand'), T(REVIERE[m.i] ? REVIERE[m.i].name : '?')), 3000); }
@@ -131,13 +131,13 @@ net.onEvent = m => {
 let netSaidHello = false;
 const netHello = () => { if (netSaidHello) return; netSaidHello = true; net.send('hallo', { name: save.netName || '', revier: save.revier }); };
 net.onState = st => {
-  if (st === 'verbunden') { netSaidHello = false; netHello(); }
-  if (st === 'weg') { netRevier = -1; toast(T('Verbindung verloren.'), 3200); }
-  // Steht der Dialog offen, soll er den neuen Zustand zeigen - aber nur bei einem
-  // Ergebnis. Bei 'warten' wuerde er sich neu aufbauen und dabei einen neuen Antrag
-  // stellen, der wieder 'warten' meldet: eine Schleife.
-  if ((st === 'verbunden' || st === 'weg' || st === 'aus')
-    && ($('netStep') || document.querySelector('#modalBody [data-act="netoff"]'))) showMulti(true);
+  if (st === 'verbunden') { netSaidHello = false; netNote = ''; netHello(); }
+  if (st === 'weg') { netRevier = -1; netName = ''; netNote = T('Die Verbindung ist abgerissen.'); toast(T('Verbindung verloren.'), 3200); }
+  // Steht der Dialog offen, soll er den neuen Zustand zeigen. Bei 'weg' bleibt er sonst
+  // auf "Kennung wird geholt" stehen und es geht nie mehr weiter - darum wird dort eine
+  // neue Kennung geholt. Bei 'warten' wird nichts angefasst: das waere eine Schleife.
+  if ((st === 'verbunden' || st === 'weg')
+    && ($('netStep') || document.querySelector('#modalBody [data-act="netoff"]'))) showMulti(st === 'verbunden');
 };
 world.setGfxMode(save.set.gq); world.setAo(save.set.ao);
 world.setClearView(save.set.clear);
@@ -1068,11 +1068,13 @@ function showMulti(skipOffer) {
   const st = net.state;
   let h = `<h2>${T('Zu zweit fischen')}</h2>`;
   if (st === 'verbunden') {
-    h += `<p class="small"><b>${T('Verbunden.')}</b> ${netName ? T('Mit {0}.', netName) : ''} ${S.mode === 'title' ? T('Drück „Ans Wasser“ – ihr seht einander, sobald ihr im selben Revier steht.') : netRevier === save.revier ? T('Ihr steht im selben Revier.') : T('Ihr seid in verschiedenen Revieren – ihr seht einander erst im selben.')}</p>
-      <button class="ghost danger" data-act="netoff">${T('Verbindung trennen')}</button>`;
+    h += `<p class="small"><b>${T('Verbunden.')}</b> ${netName ? T('Mit {0}.', netName) : ''} ${S.mode === 'title' ? T('Drück „Ans Wasser“ – ihr seht einander, sobald ihr im selben Revier steht.') : netRevier === save.revier ? T('Ihr steht im selben Revier.') : T('Ihr seid in verschiedenen Revieren – ihr seht einander erst im selben.')}</p>`;
+    if (net.via === 'vermittler') h += `<p class="small">${T('Eure Netze lassen keine direkte Leitung zu – es läuft über den Vermittler. Das geht, ist aber einen Wimpernschlag träger.')}</p>`;
+    h += `<button class="ghost danger" data-act="netoff">${T('Verbindung trennen')}</button>`;
   } else {
-    h += `<p class="small">${T('Ihr seht einander waten, werfen und drillen. Die Fische bleiben eure eigenen – niemand nimmt dem anderen einen weg.')}</p>
-      <div id="netStep"><p class="small">${T('Kennung wird geholt …')}</p></div>`;
+    h += `<p class="small">${T('Ihr seht einander waten, werfen und drillen. Die Fische bleiben eure eigenen – niemand nimmt dem anderen einen weg.')}</p>`;
+    if (netNote) h += `<p class="small"><b>${netNote}</b></p>`;
+    h += `<div id="netStep"><p class="small">${T('Kennung wird geholt …')}</p></div>`;
   }
   h += `<button class="primary" data-act="close">${T('Schließen')}</button>`;
   openModal(h);
@@ -1091,6 +1093,7 @@ function netOffer() {
      <button class="primary" data-act="netgo">${T('Verbinden')}</button>
      <p class="small"><a href="#" data-act="netmanual">${T('Klappt es nicht? Über einen Link verbinden')}</a></p>`))
     .catch(() => netStep(`<p class="small">${T('Der Vermittlungsdienst ist gerade nicht erreichbar.')}</p>
+      <button class="primary" data-act="netagain">${T('Noch einmal versuchen')}</button>
       <p class="small"><a href="#" data-act="netmanual">${T('Über einen Link verbinden')}</a></p>`));
 }
 
@@ -1218,13 +1221,15 @@ $('modalBody').addEventListener('click', e => {
   }
   else if (a === 'godoff') { godDisable(); showSettings(); }
   else if (a === 'multi') showMulti();
-  else if (a === 'netoff') { net.send('tschuess', {}); net.close(); netRevier = -1; netName = ''; showMulti(); }
+  else if (a === 'netoff') { net.send('tschuess', {}); net.close(); netRevier = -1; netName = ''; netNote = ''; showMulti(); }
+  else if (a === 'netagain') { netNote = ''; showMulti(); }
   // Ein Knopf fuer beide Faelle: Das Feld entscheidet, ob eingeladen oder geantwortet wurde.
   else if (a === 'netgo') {
     const c = (($('netIn') || {}).value || '').trim().toUpperCase();
     if (c.length < 4) return toast(T('Da fehlt die Kennung.'));
     netStep(`<p class="small">${T('Verbinde …')}</p>`);
-    net.joinCode(c).catch(() => netStep(`<p class="small">${T('Unter dieser Kennung wartet niemand.')}</p>`));
+    net.joinCode(c).catch(() => netStep(`<p class="small">${T('Unter dieser Kennung wartet niemand.')}</p>
+      <button class="primary" data-act="netagain">${T('Noch einmal versuchen')}</button>`));
   }
   else if (a === 'netmanual') netManual();
   // Rueckfall: dasselbe Feld nimmt Antwort oder Einladung
