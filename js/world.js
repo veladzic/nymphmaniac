@@ -670,6 +670,9 @@ export class World {
 
     this.timeU = { value: 0 };
     this.noiseTex = makeNoiseTex();
+    // Staerke der Kaustiken, haengt am Licht des Reviers. Liegt hier und nicht im Revieraufbau,
+    // weil Fischmaterialien ueber Reviergrenzen hinweg bestehen bleiben.
+    this.causticU = { value: 1 };
     const TL = this.loader = new THREE.TextureLoader();
     const load = (f, srgb) => { const t = TL.load('assets/' + f); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; if (srgb) t.colorSpace = THREE.SRGBColorSpace; return t; };
     const loadA = f => { const t = TL.load('assets/' + f); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };   // freigestellte Fotos (Poly Haven, CC0)
@@ -992,7 +995,8 @@ export class World {
     import('./vendor/FBXLoader.js').then(({ FBXLoader }) => new FBXLoader(mgr).load('assets/angler.fbx', o => {
       this.anglerPending = false;
       const tex = f => { const t = this.loader.load('assets/' + f); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };
-      const mats = [new THREE.MeshStandardMaterial({ map: tex('angler_body.jpg'), roughness: 0.9 }), new THREE.MeshStandardMaterial({ map: tex('angler_head.jpg'), roughness: 0.78 })];
+      // auch die Beine des Anglers: er steht mitten im Wasser, da laeuft das Netz ueber die Wathose
+      const mats = [this.caustic(new THREE.MeshStandardMaterial({ map: tex('angler_body.jpg'), roughness: 0.9 }), 1.0, 0.88), new THREE.MeshStandardMaterial({ map: tex('angler_head.jpg'), roughness: 0.78 })];
       const rm = [];
       o.traverse(n => {
         if (n.isLight) rm.push(n);
@@ -1335,6 +1339,7 @@ export class World {
     this.sunDir.set(sd.dir[0] / hl * ce, Math.sin(sk.el), sd.dir[2] / hl * ce).normalize();
     const sunCol = new THREE.Color(1, lid === 'abend' ? 0.74 : lid === 'morgen' ? 0.84 : 0.96, lid === 'abend' ? 0.52 : lid === 'morgen' ? 0.7 : 0.88);
     this.sun.color.copy(sunCol); this.sun.intensity = overcast ? 0.8 : 3.1 * sunK;
+    this.causticU.value = overcast ? 0.3 : 1;   // bedeckt buendelt die Oberflaeche kaum noch Licht
     this.hemi.intensity = overcast ? 2.5 : 1.75 + 0.3 * sunK;
     this.hemi.color.setRGB(sk.mid[0], sk.mid[1], sk.mid[2], THREE.SRGBColorSpace).lerp(new THREE.Color(1, 1, 1), 0.45); this.hemi.groundColor.copy(C(0x5a6a3c));
     if (!this.skyTex[lid]) { const t = this.loader.load('assets/sky_' + lid + '.jpg'); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.ClampToEdgeWrapping; t.minFilter = THREE.LinearFilter; t.generateMipmaps = false; this.skyTex[lid] = t; }
@@ -1376,7 +1381,7 @@ export class World {
     const tm = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, map: this.tex.grass });
     tm.onBeforeCompile = s => {
       const T = this.tex;
-      Object.assign(s.uniforms, { uPeb: { value: T.peb }, uRockT: { value: T.cliff }, uGrassN: { value: T.grassN }, uPebN: { value: T.pebN }, uRockN: { value: T.cliffN }, uNz: { value: this.noiseTex }, uTime: this.timeU, uCaust: { value: overcast ? 0.3 : 1 } });
+      Object.assign(s.uniforms, { uPeb: { value: T.peb }, uRockT: { value: T.cliff }, uGrassN: { value: T.grassN }, uPebN: { value: T.pebN }, uRockN: { value: T.cliffN }, uNz: { value: this.noiseTex }, uTime: this.timeU, uCaust: this.causticU });
       s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nattribute vec3 aW; varying vec3 vWgt; varying vec3 vTp;')
         .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWgt=aW; vTp=position;');
       s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vWgt; varying vec3 vTp; uniform sampler2D uPeb,uRockT,uGrassN,uPebN,uRockN,uNz; uniform float uTime,uCaust;')
@@ -1475,7 +1480,7 @@ export class World {
     }
 
     // Felsen
-    const rockMat = new THREE.MeshStandardMaterial({ color: C(pal.rock).lerp(new THREE.Color(1, 1, 1), 0.55).multiplyScalar(1.5), roughness: 0.95, vertexColors: true, map: this.tex.rock, normalMap: this.tex.rockN, normalScale: new THREE.Vector2(1.3, 1.3) });
+    const rockMat = this.caustic(new THREE.MeshStandardMaterial({ color: C(pal.rock).lerp(new THREE.Color(1, 1, 1), 0.55).multiplyScalar(1.5), roughness: 0.95, vertexColors: true, map: this.tex.rock, normalMap: this.tex.rockN, normalScale: new THREE.Vector2(1.3, 1.3) }));
     const wetG = [0, 1, 2].map(k => rockGeo(k, true)), dryG = [3, 4, 5].map(k => rockGeo(k, false));
     for (const g of [...wetG, ...dryG]) { const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 2, uv.getY(i) * 1.2); }
     const addRock = (geos, x, y, z, r, flat = 1) => {
@@ -1566,7 +1571,7 @@ export class World {
     spray(sp, overcast ? 0.4 : 0.5);
 
     // Treibholz
-    const logMat = new THREE.MeshStandardMaterial({ color: C(0xd8cdbc), roughness: 1, map: this.tex.bark, normalMap: this.tex.barkN });
+    const logMat = this.caustic(new THREE.MeshStandardMaterial({ color: C(0xd8cdbc), roughness: 1, map: this.tex.bark, normalMap: this.tex.barkN }));
     for (let i = 0; i < 7; i++) {
       const side = rnd() < 0.5 ? -1 : 1, z = -70 + rnd() * 80, x = river.cx(z) + side * (river.halfW + 0.3 + rnd() * 1.6), len = 1.5 + rnd() * 3;
       const m = new THREE.Mesh(new THREE.CylinderGeometry(0.07 + rnd() * 0.05, 0.11 + rnd() * 0.07, len, 7), logMat);
@@ -1654,13 +1659,49 @@ export class World {
     return river;
   }
 
+  // Kaustiken auf ein beliebiges Material legen: das Sonnenlicht, das die bewegte Oberflaeche
+  // buendelt, wandert als helles Netz ueber alles unter Wasser - nicht nur ueber den Grund.
+  // Dieselben zwei gegenlaeufigen Rauschabgriffe wie im Bettshader, damit das Muster durchlaeuft:
+  // ein Stein im Flussbett traegt genau die Strahlen weiter, die neben ihm auf dem Kies liegen.
+  // Gerechnet wird in Weltkoordinaten, weil Steine, Fische und Treibholz anders als das Bett
+  // verschoben und gedreht sind; bei Instanzen kommt die Instanzmatrix dazu.
+  caustic(mat, k = 1.3, floor = 0.84) {
+    const prev = mat.onBeforeCompile;
+    // Die Staerke bleibt am Material haengen, damit sie sich spaeter noch drehen laesst
+    mat.userData.uCk = { value: k };
+    mat.onBeforeCompile = s => {
+      if (prev) prev(s);
+      Object.assign(s.uniforms, { uNz: { value: this.noiseTex }, uTime: this.timeU, uCaust: this.causticU, uCk: mat.userData.uCk, uCf: { value: floor } });
+      s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vCW;')
+        .replace('#include <begin_vertex>', `#include <begin_vertex>
+          #ifdef USE_INSTANCING
+            vCW=(modelMatrix*instanceMatrix*vec4(transformed,1.)).xyz;
+          #else
+            vCW=(modelMatrix*vec4(transformed,1.)).xyz;
+          #endif`);
+      s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vCW; uniform sampler2D uNz; uniform float uTime,uCaust,uCk,uCf;')
+        .replace('#include <map_fragment>', `#include <map_fragment>
+          if(vCW.y<0.0){
+            float shw=smoothstep(-1.8,-0.04,vCW.y), tt=uTime*0.5;
+            float c1=texture2D(uNz,vCW.xz*0.11+vec2(0.02*tt,-0.05*tt)).b;
+            float c2=texture2D(uNz,vCW.xz*0.14+vec2(0.31-0.03*tt,0.17-0.07*tt)).a;
+            float ca=pow(clamp(1.-abs(c1-c2)*3.4,0.,1.),7.)*shw;
+            diffuseColor.rgb*=uCf+ca*uCk*uCaust;
+          }`);
+    };
+    mat.customProgramCacheKey = () => 'caust' + k + '_' + floor;
+    return mat;
+  }
+
   setClearView(on) { this.waterU.uNoRefl.value = on ? 1 : 0; }   // Spiegelung ausblenden (Sichthilfe)
   setPolar(on) { this.waterU.uClear.value = on ? 1 : 0; }
 
   makeFish(len, species) {
     const base = this.fishGeos[species] || (this.fishGeos[species] = fishGeo(species));
     const g = base.clone();
-    const m = new THREE.Mesh(g, this.fishMats[species] || (this.fishMats[species] = new THREE.MeshStandardMaterial({ map: fishSkin(species), roughness: 0.4, metalness: 0.1, side: THREE.DoubleSide })));
+    const m = new THREE.Mesh(g, this.fishMats[species] || // Fische bekommen nur Licht dazu, nie weniger (Grundwert 1.0): einen Fisch zu entdecken ist Spielinhalt,
+// und der Grund um ihn herum steht im Bettshader schon auf 0.8 - ein Fisch darf davor nicht absaufen
+(this.fishMats[species] = this.caustic(new THREE.MeshStandardMaterial({ map: fishSkin(species), roughness: 0.4, metalness: 0.1, side: THREE.DoubleSide }), 0.8, 1.0)));
     m.userData.base = Float32Array.from(base.attributes.position.array);
     m.scale.setScalar(len / 100 * 1.15);
     m.castShadow = true; m.frustumCulled = false; m.layers.enable(1);

@@ -259,6 +259,14 @@ Deutsch, Englisch und Italienisch – Auswahl auf dem Startbildschirm. Die Texte
 - Alles Weitere (Fluss, Bäume, Angler, Fische, Sound) wird im Code erzeugt
 - Der Spielstand liegt im `localStorage` des Browsers
 
+### Licht unter Wasser
+
+Die bewegte Oberfläche bündelt das Sonnenlicht zu einem hellen Netz, das über den Grund wandert (Kaustiken). Gerechnet wird es aus zwei gegenläufig verschobenen Abgriffen derselben Rauschtextur, die auch die Wellen formt: Wo beide Abgriffe gleich hell sind, liegt ein Strahl – `pow(1 - |c1 - c2| * 3.4, 7)` macht daraus scharfe Linien statt weicher Flecken.
+
+Das Flussbett hat das im eigenen Shader. `World.caustic()` legt dasselbe Muster auf alles andere unter Wasser: Steine, Treibholz, Fische und die Beine des Anglers. Gerechnet wird in Weltkoordinaten – anders als das Bett sind diese Dinge verschoben und gedreht, bei Instanzen kommt die Instanzmatrix dazu. Weil das Muster aus derselben Formel an derselben Weltposition entsteht, läuft es durch: ein Stein im Flussbett trägt genau die Strahlen weiter, die neben ihm auf dem Kies liegen.
+
+Unterschiedlich sind nur zwei Werte je Material. Der Grundwert sagt, wie hell die Fläche ohne Strahl steht: Steine, Holz und Wathose stehen wie der Grund etwas dunkler (0,84 bis 0,88), **Fische auf 1,0** – sie bekommen nur Licht dazu, nie weniger. Einen Fisch zu entdecken ist Spielinhalt, und der Grund um ihn herum steht schon auf 0,8; ein Fisch darf davor nicht absaufen. Bei bedecktem Himmel fällt die Stärke auf 0,3, weil die Oberfläche dann kaum noch etwas zu bündeln hat.
+
 ### Klang
 
 Es gibt keine Sounddateien; alles entsteht in WebAudio (`js/audio.js`). Vier Stimmen laufen durchgehend und werden achtmal je Sekunde nachgeführt – in Lautstärke, Filter und **Seite**:
