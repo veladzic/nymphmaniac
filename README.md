@@ -81,7 +81,7 @@ Nach dem Landen liegt der Fisch im Kescher am Wasser: Die Kamera fährt nah hera
 
 Das 3D-Fischmodell trägt je Art eine eigene Haut, erzeugt aus denselben Farben und Zeichnungen wie das Porträt (`LOOK` in `js/fishart.js`): Rücken-, Flanken- und Bauchfarbe, Flecken, rote Punkte mit Hof, der rosa Streifen der Regenbogenforelle, die Marmorierung der Marmorata, Schuppen bei Äsche und Barbe, dazu Auge, Kiemendeckel und Maulspalte. Alle Flossen sind ausgeformt: gegabelte Schwanzflosse, Rücken-, Fett-, After-, Bauch- und Brustflossen, weißer Saum beim Saibling, Barteln bei der Barbe – und bei der Äsche die hohe, gefleckte Fahne.
 
-Stein, Schnellwechsel und Rig-Anzeige stehen unten rechts neben dem Watstick. Nach Wurf, Drift, Drill oder Fang erscheinen sie erst 2 s später wieder, damit ein letzter Tipper auf ANHIEB oder DRILL nicht versehentlich den Stein umdreht oder die Rute wechselt.
+Stein, Schnellwechsel und Rig-Anzeige stehen unten rechts neben dem Watstick. Nach Wurf, Drift, Drill oder Fang erscheinen sie erst 0,9 s später wieder, damit ein letzter Tipper auf ANHIEB oder DRILL nicht versehentlich den Stein umdreht oder die Rute wechselt.
 
 Schnellwechsel: Neben dem Stein-Knopf wechselt ⇄ zur zuletzt gefischten Rute und beim nächsten Tippen wieder zurück (ohne Vorgeschichte zwischen Nymphe und Trockenfliege). Der Knopf erscheint ab Staffel 2 und zeigt, wohin er wechselt. Die Rig-Anzeige nennt in der dritten Zeile die Montage: Nymph Rig, Indikator Rig oder Dry Rig.
 
@@ -258,6 +258,31 @@ Deutsch, Englisch und Italienisch – Auswahl auf dem Startbildschirm. Die Texte
 - FBX-Loader aus den Three.js-Beispielen (MIT) unter `js/vendor/`
 - Alles Weitere (Fluss, Bäume, Angler, Fische, Sound) wird im Code erzeugt
 - Der Spielstand liegt im `localStorage` des Browsers
+
+### Klang
+
+Es gibt keine Sounddateien; alles entsteht in WebAudio (`js/audio.js`). Vier Stimmen laufen durchgehend und werden achtmal je Sekunde nachgeführt – in Lautstärke, Filter und **Seite**:
+
+| Stimme | Was sie ist | Woran sie hängt |
+|---|---|---|
+| Nahfeld | das Wasser um die Beine | Wassertiefe am Angler und Strömung des Reviers |
+| Rausche | gebrochenes Wasser an den Steinen | jeder Stein ist eine Quelle, gewichtet nach Größe und Strömung |
+| Wasserfall | die Stufen ober- und unterhalb | `world.fallSpots`, Reichweite 20 m |
+| Wind | Grundzug mit langsamen Böen | zwei ineinandergeschobene Schwingungen |
+
+Richtung entsteht über `StereoPanner`. Die Kamera blickt in Richtung `(-sin yaw, -cos yaw)`, rechts von ihr liegt `(cos yaw, -sin yaw)`; das Skalarprodukt aus dieser Rechtsachse und der Richtung zur Quelle ergibt die Seite. Die Lautstärke fällt mit dem Quadrat des Abstands. Dreht man sich an der Rausche um 90°, wandert ein Wasserfall von der Mitte auf 0,96 nach rechts.
+
+Mehrere Quellen derselben Art werden zu einer Stimme zusammengefasst – ihr Schwerpunkt bestimmt die Seite. Steht man genau zwischen zwei Wasserfällen, heben sie sich dabei teilweise auf; das ist der Preis dafür, dass auch ein Steinfeld mit 46 Steinen nur eine Stimme kostet. Weil sich in so einem Feld schnell ein Dutzend Quellen summieren, sättigt die Kennlinie (`g / (g + k)`), sonst klebt die Rausche am Anschlag und reagiert auf nichts mehr.
+
+Ereignisse klingen dort, wo sie geschehen: der Ring eines steigenden Fischs (bis gut 30 m hörbar – man hört, wo er steht, bevor man ihn sieht), das Aufsetzen der Fliege, Platscher im Drill, der Sprung. Schritte kommen alle 0,75 m **wirklich zurückgelegter** Strecke; im Wasser schwappt es, am Ufer knirscht der Kies, und weil man im tiefen Wasser langsamer vorankommt, kommen die Schritte dort von selbst seltener.
+
+Die Rollenbremse ist eine Klickschleife: 20 Klicks je Sekunde liegen im Puffer, die Abspielrate macht daraus 3 bis 60 und hebt dabei die Tonhöhe mit – wie eine echte Bremse. Die Rate folgt der Geschwindigkeit, mit der `F.dist` wächst: läuft Schnur ab, kreischt sie; kurbelst du ein, klickt es langsam.
+
+Vogelstimmen richten sich nach dem Licht: Morgennebel alle 3,5 s, Abendlicht 4,5 s, Mittagssonne 11 s, bedeckt 16 s.
+
+Alle vier Dauerstimmen hängen an einem gemeinsamen Regler (`AMB` in `js/audio.js`, steht auf 0,2). Die Zahlen in `setField` beschreiben nur das Verhältnis untereinander – wie laut der Fluss insgesamt steht, hängt allein an dieser einen Zahl. Sie steht bewusst tief: ein Fluss rauscht sonst lauter als alles, was man hören will. Zum Abstimmen geht in der Konsole `__nm.sfx.setAmb(0.3)` ohne Neuladen.
+
+Gemessen kostet der ganze Klang nichts: 60,3 Bilder je Sekunde mit Ton, 60,1 ohne.
 
 ### Leistung
 

@@ -117,11 +117,12 @@ const world = new World(canvas);
 const sfx = new Sfx(); sfx.on = save.set.sound; sfx.vol = save.set.vol;
 world.setGfxMode(save.set.gq);
 world.setClearView(save.set.clear);
-let river, cond, fish = [], respawn = [];
+let river, cond, fish = [], respawn = [], sndRocks = [];
 const S = {
   mode: 'title', yaw: 0, yb: 0, pitch: 0, px: LANE_X, pz: 0, t: 0, joy: { x: 0, z: 0 }, face: 0, walk: 0, moveDir: 0, tip: { x: LANE_X - 0.6, z: -1.6 }, nymph: { x: 0, d: 0, z: 0 }, L: 4, s: 1, pullS: 0, g: 0, q: 1,
   kick: 0, driftT: 0, onBottom: false, tickT: 0, bite: null, snag: false, snagT: 0, fight: null, hold: false, wade: null,
   cast: null, maxFrac: 0, swingT: 0, sinkRate: 0.2, snagHint: false, aim: null, press: 0, rodX: -0.5,
+  sndT: 0, stepD: 0.55, sx: LANE_X, sz: 0,
 };
 function gaugeLabels() {
   const q = (s, v) => { const e = document.querySelector(s); if (e) e.textContent = v; };
@@ -177,7 +178,10 @@ function enterRevier(i, keep) {
   checkOld(false);
   if (S.mode !== 'title') S.mode = 'idle';
   restTip();
-  sfx.setRiver(rv.speed);
+  sfx.setRiver(rv.speed, cond.light.id);
+  // Rauschquellen des Reviers: jeder Stein im stroemenden Wasser, gewichtet nach Groesse und Stroemung,
+  // dazu die Wasserfaelle. Einmal je Revier gerechnet, der Klang fuehrt sie dann nur noch nach.
+  sndRocks = river.rocks.map(k => ({ x: k.x, z: k.z, k: Math.min(1, k.r * 1.6) * Math.min(1.4, river.speedAt(k.x, k.z) + 0.2) }));
   applyRig();
   updateHUD(); updateTip();
   persist();
@@ -270,7 +274,7 @@ function castPose(h, TP0) {
   let acc = 0, k = 0;
   while (k < c.st.length - 1 && tt > acc + c.st[k].dur) { acc += c.st[k].dur; k++; }
   const st = c.st[k], p = clamp((tt - acc) / st.dur, 0, 1), sm = x => { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); };
-  if (c.k !== k) { c.k = k; sfx.whip(); }
+  if (c.k !== k) { c.k = k; sfx.whip(clamp(Math.hypot(c.tx - S.px, c.tz - S.pz) / 9, 0.2, 1)); }   // weiter geworfen heisst schaerfer gepfiffen
   const RL = 3.05, thF = 0.92, thB = 1.92;                      // Stopp vorn (10 Uhr) und hinten (1 Uhr), Winkel ueber der Waagrechten
   const a0 = k === 0 ? 0.7 : st.dir > 0 ? thB : thF, a1 = st.dir > 0 ? thF : thB, th = a0 + (a1 - a0) * sm(p / 0.6);
   const tip = { x: h.x + c.ux * Math.cos(th) * RL, y: h.y + Math.sin(th) * RL, z: h.z + c.uz * Math.cos(th) * RL };
@@ -310,7 +314,7 @@ function updateCast(dt) {
     }
     if (isDry()) n.d = 0;
     S.mode = 'drift'; S.driftT = 0; S.bite = null; S.snag = false; S.snagHint = false; S.onBottom = false; S.maxFrac = 0; S.swingT = 0; S.pullS = 0; S.g = 0; S.kick = 0; S.tickT = 0.3;
-    world.splash(n.x, n.z, 0.5); sfx.plop();
+    world.splash(n.x, n.z, 0.5); sfx.plop(n.x, n.z);
     if (save.tut < 2) { save.tut = Math.max(save.tut, 1); }
     updateTip();
   }
@@ -455,7 +459,7 @@ function startBite(f) {
   const sp = SPECIES[f.species];
   S.bite = { fish: f, t: 0, win: (0.95 - sp.shy * 0.3) * (save.set.help ? 1.2 : 1) + (save.revier === 0 ? 0.3 : 0) };
   if (rigMode() === 'indi') S.bite.win *= curInd().sens * (S.indSunk ? 0.35 : S.indLow ? 0.8 : 1);   // je nach Indikator sieht man den Biss besser oder schlechter
-  if (isDry()) { S.bite.win *= 1.1; world.splash(S.nymph.x, S.nymph.z, 0.7); sfx.plop(); }                // der Fisch nimmt sichtbar an der Oberflaeche
+  if (isDry()) { S.bite.win *= 1.1; world.splash(S.nymph.x, S.nymph.z, 0.7); sfx.rise(S.nymph.x, S.nymph.z); }                // der Fisch nimmt sichtbar an der Oberflaeche
   sfx.bite();
   if (save.set.help) { vibrate(60); $('lupeWrap').classList.add('bite'); }
   if (save.tut < 3) save.tut = 2;
@@ -514,7 +518,7 @@ function startFight(f) {
   const str = sp.fight * Math.pow(f.len / 40, 1.1);
   S.fight = { f, str, stam: 1, ten: 0.55, surge: 0.9, runT: 1.2, side: Math.random() < 0.5 ? 1 : -1, breakT: 0, slackT: 0,
     ang: Math.atan2(-(n.x - S.px), -(n.z - S.pz)), dist: Math.max(2, Math.hypot(n.x - S.px, n.z - S.pz)), jump: 0, jumpT: 2.5 + Math.random() * 3, landing: 0, reelT: 0 };
-  world.splash(n.x, n.z, 1.2); sfx.splash(); vibrate([50, 40, 80]);
+  world.splash(n.x, n.z, 1.2); sfx.splash(n.x, n.z, 1.2); vibrate([50, 40, 80]);
   if (save.tut < 4) save.tut = 3;
   $('hud').classList.add('fighting'); $('strike').textContent = T('DRILL');
   toast(f.old ? T('Die Rute biegt sich bis ins Handteil. DAS IST ER!') : T('Fisch hängt!'), 1800);
@@ -534,6 +538,7 @@ function updateFight(dt) {
   const F = S.fight, f = F.f, sp = SPECIES[f.species], lim = curTippet().limit;
   let p = fightPos();
   if (F.landing > 0) {
+    sfx.drag(0, 0);
     F.landing += dt; F.dist = Math.max(1.3, F.dist - dt * 3.5); F.ten += (0.45 - F.ten) * dt * 4;
     if (F.landing > 1.2) return landed(f);
   } else {
@@ -541,7 +546,7 @@ function updateFight(dt) {
     if (F.runT <= 0) {
       F.surge = (0.55 + Math.random() * 0.6) * Math.min(1.35, 0.45 + F.str * 0.4) * (0.45 + F.stam * 0.55);
       F.runT = 1.1 + Math.random() * 2.2; if (Math.random() < 0.6) F.side *= -1;
-      world.splash(p.x, p.z, 0.7 + f.len / 60); sfx.splash(); vibrate(25);
+      world.splash(p.x, p.z, 0.7 + f.len / 60); sfx.splash(p.x, p.z, 0.7 + f.len / 60); vibrate(25);
     }
     F.surge *= Math.exp(-dt * 1.1);
     const pr = Math.max(S.hold ? 0.8 : 0, S.press); F.p = pr;
@@ -555,17 +560,24 @@ function updateFight(dt) {
     if (F.ten > 0.28 && F.ten <= lim) F.stam -= dt * F.ten * 0.17 / F.str * (F.good ? 1.5 : 1);
     if (sp.jumps) {
       F.jumpT -= dt;
-      if (F.jumpT <= 0 && F.jump <= 0 && F.stam > 0.25) { F.jump = 0.7; F.jumpT = 4 + Math.random() * 5; world.splash(p.x, p.z, 1.4); sfx.splash(); toast(T('Sie springt – Druck raus!'), 1200); }
+      if (F.jumpT <= 0 && F.jump <= 0 && F.stam > 0.25) { F.jump = 0.7; F.jumpT = 4 + Math.random() * 5; world.splash(p.x, p.z, 1.4); sfx.splash(p.x, p.z, 1.4); toast(T('Sie springt – Druck raus!'), 1200); }
       if (F.jump > 0) {
         F.jump -= dt;
         if (F.p > 0.45 && F.ten > 0.5 && Math.random() < dt * 0.9) return lostFish('jump');
-        if (F.jump <= 0) { world.splash(p.x, p.z, 1.6); sfx.splash(); }
+        if (F.jump <= 0) { world.splash(p.x, p.z, 1.6); sfx.splash(p.x, p.z, 1.6); }
       }
     }
     F.ang += F.side * dt * 0.35 * (0.3 + F.surge);
     if (F.ang > 1.3) { F.ang = 1.3; F.side = -1; } if (F.ang < -1.3) { F.ang = -1.3; F.side = 1; }
     F.dist = clamp(F.dist + (F.surge * 2.2 * (1 - 0.55 * F.p) - (0.1 + F.p) * (1.15 - F.stam * 0.6)) * dt, 1.6, 10.5);
-    if (F.p > 0.3) { F.reelT -= dt; if (F.reelT <= 0) { F.reelT = 0.09; sfx.reel(); } }
+    // Rollenbremse: laeuft Schnur ab, kreischt sie - umso schneller, je heftiger die Flucht.
+    // Kommt der Fisch naeher, klickt es langsamer, weil du einkurbelst.
+    {
+      const v = (F.dist - (F.d0 === undefined ? F.dist : F.d0)) / Math.max(1e-3, dt); F.d0 = F.dist;
+      const out = Math.max(0, v), inn = Math.max(0, -v);
+      const rate = out > 0.06 ? 10 + out * 15 : inn > 0.06 && F.p > 0.3 ? 5 + inn * 8 : 0;
+      sfx.drag(rate, rate ? Math.min(0.17, 0.03 + out * 0.05 + F.ten * 0.07) : 0);
+    }
     if (F.stam <= 0) { F.landing = 0.001; toast(T('Kescher!'), 1200); }
   }
   p = fightPos();
@@ -576,7 +588,7 @@ function updateFight(dt) {
   f.mesh.rotation.x = jy > 0 ? -0.6 : 0; f.mesh.rotation.z = jy > 0 ? 0.5 : Math.sin(S.t * 3) * 0.5 * (1 - F.stam);
   world.animFish(f.mesh, S.t * (10 + F.surge * 14) + f.phase, 1.2 + F.surge * 2);
 }
-function endFightUI() { $('hud').classList.remove('fighting'); $('strike').textContent = T('ANHIEB'); S.hold = false; S.press = 0; S.fight = null; }
+function endFightUI() { sfx.drag(0, 0); $('hud').classList.remove('fighting'); $('strike').textContent = T('ANHIEB'); S.hold = false; S.press = 0; S.fight = null; }
 function lostFish(kind) {
   const f = S.fight.f;
   stats(REVIERE[save.revier].id).streak = 0;   // Serie gerissen
@@ -671,7 +683,7 @@ function landed(f) {
   S.afterRelease = () => {
     world.releaseCatch();
     S.mode = 'idle'; restTip(); updateHUD(); updateTip();
-    world.splash(S.px - 0.6, S.pz - 0.6, 1); sfx.plop();
+    world.splash(S.px - 0.6, S.pz - 0.6, 1); sfx.splash(S.px - 0.6, S.pz - 0.6, 0.9);
     checkOld(true);
     if (newPage) showPage(newPage, true);
     else toast(pick([T('Sie schwimmt davon.'), T('Zurück im Fluss.'), T('Petri Heil!'), T('Ein Schwanzschlag – weg ist sie.')]));
@@ -1184,8 +1196,8 @@ function updateGauges() {
   if ($('hud').dataset.mode !== S.mode) {
     const was = $('hud').dataset.mode;
     $('hud').dataset.mode = S.mode;
-    // zurueck im Leerlauf nach Wurf, Drift, Drill oder Fang: Stein, Rutenwechsel und Rig-Anzeige kommen erst nach 2 s wieder
-    if (S.mode === 'idle' && was && was !== 'title') { $('hud').classList.add('late'); clearTimeout(lateT); lateT = setTimeout(() => $('hud').classList.remove('late'), 2000); }
+    // zurueck im Leerlauf nach Wurf, Drift, Drill oder Fang: Stein, Rutenwechsel und Rig-Anzeige kommen erst nach 0,9 s wieder
+    if (S.mode === 'idle' && was && was !== 'title') { $('hud').classList.add('late'); clearTimeout(lateT); lateT = setTimeout(() => $('hud').classList.remove('late'), 900); }
   }   // das Layout richtet sich nach der Spielphase
   $('btnRestart').classList.toggle('show', S.mode === 'idle' && S.pz < Z_MIN + 4 && !modalOpen());
   const euroG = isEuro();
@@ -1263,7 +1275,7 @@ function frame(now) {
         }
         if (f.rise) {
           f.ringT -= dt;
-          if (f.ringT <= 0) { f.ringT = 2.5 + Math.random() * 4.5; const dd = Math.hypot(f.x - S.px, f.z - S.pz); if (dd < 24) world.splash(f.x, f.z, 0.42); if (dd < 8) sfx.tick(); }
+          if (f.ringT <= 0) { f.ringT = 2.5 + Math.random() * 4.5; const dd = Math.hypot(f.x - S.px, f.z - S.pz); if (dd < 24) world.splash(f.x, f.z, 0.42); sfx.rise(f.x, f.z); }
         }
       }
       // Biss: der Fisch schwimmt sichtbar zur Fliege und nimmt sie; verpasst du ihn, kehrt er an seinen Platz zurueck
@@ -1357,7 +1369,22 @@ function frame(now) {
   }
   S.yb += (Math.atan(river.dcx(S.pz)) * 0.85 - S.yb) * Math.min(1, dt * 2);   // Grundblick folgt dem Flusslauf
   world.yaw = S.yaw + S.yb; world.pitch = S.pitch;
-  { let nk = 0; for (const q of world.fallSpots || []) nk = Math.max(nk, q.k * clamp(1 - Math.hypot(q.x - S.px, q.z - S.pz) / 26, 0, 1)); sfx.setNear(Math.min(1, nk)); }   // Wasserfaelle hoert man, wenn man naeher kommt
+  // Klang: achtmal je Sekunde meldet das Spiel, wo der Angler steht und wohin er blickt.
+  // Daraus ergeben sich Lautstaerke und Seite von Rausche und Wasserfall - oefter muss es nicht sein.
+  S.sndT -= dt;
+  if (S.sndT <= 0) {
+    S.sndT = 0.125;
+    const near = sndRocks.length ? sndRocks.filter(q => Math.abs(q.z - S.pz) < 22) : sndRocks;
+    sfx.setField({ x: S.px, z: S.pz, yaw: world.yaw, depth: river ? river.depthAt(S.px, S.pz) : 0, riffles: near, falls: world.fallSpots || [] });
+  }
+  // Schritte: im Wasser schwappt es, am Ufer knirscht der Kies.
+  // Gezaehlt wird die wirklich zurueckgelegte Strecke - im tiefen Wasser kommt der Angler
+  // langsamer voran, und genau dann sollen die Schritte auch seltener kommen.
+  if (S.walk > 0.1 && S.mode === 'idle') {
+    S.stepD += Math.hypot(S.px - S.sx, S.pz - S.sz);
+    if (S.stepD > 0.75) { S.stepD = 0; sfx.wade(river ? river.depthAt(S.px, S.pz) : 0); }
+  } else S.stepD = 0.55;
+  S.sx = S.px; S.sz = S.pz;
   world.lift = S.mode === 'drift' || S.mode === 'cast' ? 1 : S.mode === 'fight' ? 0.7 : 0;
   world.update(dt, S.t, S.px, S.pz, groundY(), focus);
   if (S.mode !== 'title') { drawLupe(); updateGauges(); }
@@ -1432,4 +1459,4 @@ showLoader(T('Ein Euro-Nymphing-Abenteuer'), '', T('Das Erbe der Smaragda'), T('
 
 enterRevier(Math.min(save.revier, save.unlocked - 1), true);
 requestAnimationFrame(frame);
-window.__nm = { S, world, get save() { return save; }, get fish() { return fish; }, get river() { return river; }, get cond() { return cond; }, doCast, strike, startFight, landed, enterRevier, hand, fleeFish, startBite, kickSample, closeModal, makeFish, flyMatch, get respawn() { return respawn; } };
+window.__nm = { S, world, sfx, get save() { return save; }, get fish() { return fish; }, get river() { return river; }, get cond() { return cond; }, doCast, strike, startFight, landed, enterRevier, hand, fleeFish, startBite, kickSample, closeModal, makeFish, flyMatch, get respawn() { return respawn; } };
