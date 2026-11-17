@@ -44,6 +44,78 @@ Drei Methoden: Euro-Nymphe mit Sighter, ab Staffel 2 Nymphe unter einem schwimme
 
 Darunter folgen die beiden Nachschlageteile: „Punkte & Stufen" und „Steuerung".
 
+**Zu zweit fischen** (Stufe A). Ohne Server, ohne Konto, ohne Lobby — verschickt wird ein **Link**:
+
+Der Einstieg steht auf dem **Startbildschirm** unter „Weiterfischen"; in den Einstellungen gibt es ihn außerdem.
+
+**Es gibt keine Rollenwahl.** Wer den Dialog öffnet, bekommt sofort eine **fünfstellige Kennung** wie `FYETP`, und darunter steht das Feld für die Kennung des anderen. Einer sagt seine durch, der andere tippt sie ein — wer von beiden, ist egal. „Kennung teilen" schickt sie samt Adresse des Spiels über das Systemblatt (am Handy mit WhatsApp obenauf) oder WhatsApp Web.
+
+Die Kennung kommt vom **öffentlichen Vermittler von PeerJS** (`0.peerjs.com`) — kein Konto, kein Schlüssel. Er leitet nur die Verbindungsaufnahme weiter und sieht den Spielverkehr nie: Sobald die Verbindung steht, läuft alles direkt zwischen den Rechnern. Die Bibliothek von PeerJS wird nicht gebraucht, das Protokoll steckt in `js/net.js`.
+
+Der Buchstabenvorrat lässt `I`, `O`, `0` und `1` weg, damit man die Kennung vorlesen kann, ohne sich zu verhaspeln. Ist eine Kennung schon vergeben, wird eine neue gezogen (bis zu sechsmal).
+
+**Fällt der Vermittler aus**, steht unter dem Feld „Klappt es nicht? Über einen Link verbinden": derselbe Weg wie zuvor, ganz ohne fremden Dienst — ein Link, den man verschickt, und eine Antwort zurück. Beide Felder nehmen auch die ganze Chatnachricht mitsamt Text drumherum.
+
+Die Verbindung läuft danach direkt zwischen den beiden Rechnern (WebRTC). Der Code steckt im Fragment der Adresse (`#j=…` für die Einladung, `#a=…` für die Antwort) und wird nach dem Lesen aus der Adresszeile entfernt, damit ein Neuladen ihn nicht noch einmal einwirft. Ein Antwortlink hilft nur, solange das Fenster des Gastgebers offen ist — steht dort kein wartendes Spiel, sagt der Dialog das.
+
+**Ihr seht einander waten, werfen, drillen und landen — aber jeder fischt seinen eigenen Besatz.** Niemand nimmt dem anderen einen Fisch weg, niemand scheucht dem anderen einen. Der Spielstand zählt nur lokal; Mehrspieler ist ein Nebenschauplatz, keine zweite Fortschrittslinie.
+
+| | |
+|---|---|
+| Bewegung | 20 Byte, 15-mal je Sekunde = **2,9 kbit/s je Spieler**; gezeichnet wird 120 ms verzögert (siehe unten) |
+| Ereignisse | Begrüßung, Revierwechsel, Wurf, Fang, Abschied — über einen zuverlässigen Kanal |
+| Nicht übertragen | der Fluss (beide bauen ihn aus `rv.seed` identisch), die Fische, der Spielstand |
+
+**Der zweite Spieler ist dieselbe Figur**, nur im grünen Hemd. Eine Figur mit Skelett lässt sich nicht einfach klonen – `clone()` hängt beide Kopien an dieselben Knochen, und dann bewegen sie sich im Gleichschritt. `cloneSkinned` klont den Knochenbaum mit und bindet die Kopie an ihre eigenen Knochen (wie `SkeletonUtils` aus den Three.js-Beispielen, hier in zwanzig Zeilen, damit keine weitere Datei nötig ist).
+
+Eine Falle dabei: `Object3D.copy` schickt `userData` durch JSON. Aus der Ruhelage-Quaternion, die die Posenrechnung braucht, wird dabei ein gewöhnliches Objekt – jede Rechnung damit ergibt `NaN`, und die Figur kollabiert lautlos zu nichts Sichtbarem. Die Ruhelage wird deshalb nach dem Klonen neu festgehalten.
+
+Das grüne Hemd entsteht aus der Textur: In `angler_body.jpg` ist das Hemd der einzige blaue Bereich (Hose khaki, Haut orange, Schuhe dunkel), also trifft ein gezielter Farbdreh auf einer Leinwand genau das Hemd. Die Helligkeit bleibt, damit die Falten erhalten bleiben. Das Bild wird dafür eigens geladen – beim Klonen ist die laufende Texturladung meist noch unterwegs.
+
+Gestellt wird die Kopie knapper als die eigene Figur (`poseRemoteFigure`): Watschritt, Rumpfneigung, Kopf und die Haltung an der Rute.
+
+**Beide Arme werden gezielt, nicht auf feste Winkel gestellt.** Feste Winkel sahen aus wie hängende Arme neben einer schwebenden Rute – was natürlich wirkt, hängt davon ab, wo die Rute gerade steht. `_aimArm` löst deshalb eine zweigliedrige Kette: Ellenbogen über den Kosinussatz, seitlich ausgestellt, damit der Arm nicht in die Figur knickt. Der Griffpunkt ist derselbe, den der Absender für seine eigene Rute benutzt (`hand()` in `js/main.js`, 0,2 m seitlich und 0,4 m vor dem Körper, 1,36 m über dem Grund) – nachgemessen liegt der Handknochen danach auf 0,000 m am Rutenende.
+
+Auch die freie Hand läuft über dieselbe Rechnung, auf einen Punkt neben der Hüfte. Mit festen Winkeln klappte sie in den Körper, weil die Drehachse für die linke Seite spiegelverkehrt liegt; gezielt steht sie nachgemessen 0,28 m von der Körperachse entfernt, also außerhalb des Rumpfes. Im Drill fasst sie am Griff mit an.
+
+**Gezeichnet wird verzögert, 120 bis 260 ms in der Vergangenheit.** Zwischen den beiden Paketen, die diesen Zeitpunkt einschließen, wird linear geteilt. Dadurch hängt die Darstellung nicht daran, wann genau ein Paket ankommt, und ein verlorenes Paket fällt nicht auf – der Kanal ist ja unzuverlässig.
+
+Vorher wurde zwischen den letzten beiden Paketen geteilt, mit dem gemessenen Abstand als Dauer. Das hängt an der Paketfolge: Kommt eines später als das vorige, ist die Strecke schon abgelaufen und die Bewegung steht; kommt das nächste früher, springt sie. Am Körper fällt das kaum auf – an der Rutenspitze schon, denn die legt denselben Zeitfehler über einen viel größeren Weg zurück. In der Drift sah das aus wie heftiges Wackeln.
+
+Gemessen an einer schwingenden Rutenspitze, mittlere Richtungsänderung je Bild in mm (die Bewegung selbst hat 2,66 – das ist die Untergrenze):
+
+| Verfahren | gleichmäßig | 50 ms Schwanken | 30 ms + 10 % Verlust |
+|---|---|---|---|
+| zwischen den letzten zwei Paketen | 2,67 | 21,65 | 17,71 |
+| weiches Nachlaufen | 11,61 | 11,18 | 11,37 |
+| **120 ms Puffer** | **2,67** | **2,67** | **5,84** |
+
+Weiches Nachlaufen war mein erster Versuch und die falsche Antwort: robust gegen Schwanken, aber nie gut, weil die Zentimeterstufen der Übertragung es bei jedem Paket neu anstoßen.
+
+**Wie tief gepuffert wird, stellt sich selbst ein.** Gesendet wird alle 66 ms, gemessen kommen die Pakete aber mit 31 bis 133 ms Abstand an. Ein fester Puffer von 120 ms läuft bei jedem größeren Loch leer, friert ein und springt beim nächsten Paket – das sah man als Ruckeln. Die Tiefe folgt deshalb dem größten Loch der letzten Sekunden (`maxGap × 1,6`, begrenzt auf 120 bis 260 ms). Läuft er doch einmal leer, wird die letzte Bewegung kurz weitergeführt statt eingefroren: Einfrieren und Nachsetzen sieht aus wie ein Ruck, ein paar Zentimeter zu weit laufen sieht man nicht.
+
+Die Verzögerung merkt man beim Zuschauen nicht.
+
+**Die Schnur der Gegenseite** ist nicht nur eine Linie, sondern zusätzlich ein dünner Zylinder – eine 1-Pixel-Linie verschwindet auf Entfernung. Im Leerlauf hängt sie von der Spitze bis zur Wasseroberfläche; vorher war sie dort ein 50-cm-Stummel, den man nicht als Schnur erkannt hat.
+
+**Die Montage wird mitübertragen** – ohne sie sähen alle drei Ruten gleich aus. Sie teilt sich ein Byte mit dem Zustand (unten der Zustand, oben die Rute), kostet also nichts:
+
+| Rute | was die Gegenseite sieht | Abschnitte |
+|---|---|---|
+| Euro-Nymphe | dünnes Vorfach mit **Sighter** (pink–gelb–pink) über dem Wasser, darunter die Nymphe mit Perle | 5 |
+| Indikator | dicke Flugschnur zur **orangen Kugel** an der Oberfläche, von dort dünnes Vorfach hinunter zur Nymphe | 2 |
+| Trockenfliege | dicke Flugschnur mit **Durchhang**, die Fliege sitzt obenauf | 2 |
+
+Farben und Größen sind dieselben wie an der eigenen Montage, damit man sie wiedererkennt: Indikator 0,05 m wie die New-Zealand-Wolle, Fliege 0,03 m gegenüber 0,024 m an der eigenen Nymphenperle. Nachgemessen bei 1,1 m Indikatortiefe: zwei Schenkel von 3,79 m und 1,15 m, Indikator auf y = 0,05; bei der Trockenfliege sackt die Schnur in der Mitte auf y = 0,67 ab, statt gerade durch die Luft zu ziehen.
+
+**Auch im Leerlauf hängt die Montage** unter der Rutenspitze (1,9 m darunter), so wie bei der eigenen Figur. Vorher hing dort ein nackter 3,2-m-Strang bis zum Wasser, ohne Sighter und ohne Nymphe – man sah, dass der andere eine Rute hält, aber nicht, womit er fischt. Die Indikatorkugel bleibt im Leerlauf aus, genau wie bei der eigenen Montage.
+
+Geprüft über alle sechs Fälle: Euro im Leerlauf und in der Drift je 5 Abschnitte mit Sighter, Nymphe und Perle; Indikator in der Drift 2 Abschnitte mit Kugel; Trockenfliege in der Drift 2 Abschnitte, Fliege auf y = 0,03, keine Perle; im Leerlauf 1 Abschnitt. In der Drift sitzt der Schnuranfang auf 0,000 m an der Rutenspitze und das Ende auf 0,000 m an der Fliege.
+
+Was fehlt: **TURN.** Scheitert die direkte Verbindung — meist hinter symmetrischem NAT, erfahrungsgemäß 10 bis 20 % der Paarungen — kommt sie gar nicht zustande. Das ließe sich nur mit einem bezahlten Relais lösen und widerspräche dem Zweck. Der Dialog sagt es deshalb offen. Der ganze Entwurf samt verworfener Stufen steht in [MULTIPLAYER.md](MULTIPLAYER.md).
+
+**Zurück zum Hauptmenü** steht in den Einstellungen über „Spielstand löschen". Die Seite wird dabei nicht neu geladen; eine laufende Mehrspieler-Verbindung bleibt bestehen und lässt sich im selben Dialog trennen.
+
 **Godmode.** Fünfzehnmal auf die Überschrift „Punkte & Stufen" tippen schaltet ihn ein: alle 19 Reviere offen, höchste Stufe, volle Fliegendose. Ab dem zehnten Tipper zählt eine Meldung herunter; eine Pause von mehr als 1,8 s setzt den Zähler zurück, damit er nicht aus Versehen anspringt.
 
 Der Spielstand von vorher wird dabei in `save.god` weggelegt. „Godmode beenden" – der Knopf erscheint direkt unter der Überschrift – bringt ihn unverändert zurück: Stufe, XP, freigeschaltete Reviere, Bindematerial und Fliegendose. **Was im Godmode gefangen wurde, zählt also nicht.** Der Modus übersteht ein Neuladen.

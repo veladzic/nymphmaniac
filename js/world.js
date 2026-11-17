@@ -5,9 +5,19 @@ import { LOOK as FISH_LOOK } from './fishart.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 const _d = new THREE.Vector3(), _a = new THREE.Vector3(), _b = new THREE.Vector3();
+const _q4 = new THREE.Quaternion(), _q5 = new THREE.Quaternion();
+const _rl0 = new THREE.Vector3(), _rl1 = new THREE.Vector3(), _rl2 = new THREE.Vector3();
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion(), _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _XA = new THREE.Vector3(1, 0, 0);
 // Knochen aus der Ruhehaltung heraus um eine Welt-Achse drehen (relativ zum aktuell gestellten Elternknochen)
+// Wie boneSwing, aber mit einer fertigen Drehung - fuer Gelenke, die sich um mehr als
+// eine Achse bewegen muessen (ein Arm, der aus der T-Haltung herunter und nach vorn geht).
+function boneTurn(b, q) {
+  b.parent.getWorldQuaternion(_q1);
+  _q2.copy(q).multiply(_q1).multiply(b.userData.rq);
+  b.quaternion.copy(_q1.invert()).multiply(_q2);
+  b.updateMatrixWorld(true);
+}
 function boneSwing(b, axisW, ang) {
   b.parent.getWorldQuaternion(_q1);
   _q2.setFromAxisAngle(axisW, ang).multiply(_q1).multiply(b.userData.rq);
@@ -333,6 +343,57 @@ function twigTex(S = 256) {
     // vom Mittelpunkt in alle Richtungen, damit die Karte in jeder Lage als Geaest liest
     for (let i = 0; i < 9; i++) branch(s * 0.5, s * 0.56, (i / 9) * 6.283 + r() * 0.5, s * 0.17, 5.5, 0);
   }, true);
+}
+// Eine Figur mit Skelett laesst sich nicht einfach klonen: object.clone() haengt beide
+// Kopien an dieselben Knochen, und dann bewegen sie sich im Gleichschritt. Dieses Verfahren
+// klont den Knochenbaum mit und bindet die Kopie an ihre eigenen Knochen (wie SkeletonUtils
+// aus den Three.js-Beispielen, hier in kurz, damit keine weitere Datei noetig ist).
+function parallelTraverse(a, b, fn) {
+  fn(a, b);
+  for (let i = 0; i < a.children.length; i++) parallelTraverse(a.children[i], b.children[i], fn);
+}
+function cloneSkinned(source) {
+  const srcOf = new Map(), cloneOf = new Map();
+  const clone = source.clone(true);
+  parallelTraverse(source, clone, (s, c) => { srcOf.set(c, s); cloneOf.set(s, c); });
+  clone.traverse(n => {
+    if (!n.isSkinnedMesh) return;
+    const src = srcOf.get(n);
+    n.skeleton = src.skeleton.clone();
+    n.bindMatrix.copy(src.bindMatrix);
+    n.skeleton.bones = src.skeleton.bones.map(b => cloneOf.get(b));
+    n.bind(n.skeleton, n.bindMatrix);
+  });
+  // Object3D.copy schickt userData durch JSON. Aus der Ruhelage-Quaternion wird dabei ein
+  // gewoehnliches Objekt, und jede Rechnung damit ergibt NaN - die Figur kollabiert dann
+  // lautlos. Also die Ruhelage aus der geklonten Lage neu festhalten.
+  clone.traverse(n => { if (n.isBone) n.userData.rq = n.quaternion.clone(); });
+  return clone;
+}
+// Das Hemd des zweiten Spielers gruen: In der Textur ist das Hemd der einzige blaue
+// Bereich (Hose khaki, Haut orange, Schuhe dunkel), also faerbt ein gezielter Dreh
+// genau das Hemd und sonst nichts. Helligkeit bleibt, damit die Falten erhalten bleiben.
+function greenShirt(img) {
+  const cv = document.createElement('canvas');
+  cv.width = img.width; cv.height = img.height;
+  const g = cv.getContext('2d');
+  g.drawImage(img, 0, 0);
+  const d = g.getImageData(0, 0, cv.width, cv.height), a = d.data;
+  for (let i = 0; i < a.length; i += 4) {
+    const r = a[i], gr = a[i + 1], b = a[i + 2];
+    if (b <= gr || b - r < 14) continue;                 // nur wo Blau wirklich fuehrt
+    const mx = Math.max(r, gr, b), mn = Math.min(r, gr, b);
+    if (mx - mn < 12) continue;                          // Grau bleibt Grau
+    a[i] = Math.round(r * 0.72);                         // Blau nach Gruen: Blau runter, Gruen rauf
+    a[i + 1] = Math.min(255, Math.round(b * 0.96));
+    a[i + 2] = Math.round(gr * 0.62);
+  }
+  g.putImageData(d, 0, 0);
+  const t = new THREE.CanvasTexture(cv);
+  // flipY bleibt auf dem Vorgabewert: Die Ladetextur der Figur benutzt ihn auch, und
+  // gespiegelt landet das Hemd auf der Hose.
+  t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  return t;
 }
 function canvasTex(S, draw, srgb) {
   const cv = document.createElement('canvas'); cv.width = cv.height = S;
@@ -1115,6 +1176,7 @@ export class World {
       // gebaute Figur ausblenden, Ausruestung bleibt
       this.body.traverse(m => { if (!m.isMesh) return; if (!m.userData.gear) m.visible = false; else if (m.parent === this.torso && m.position.z < 0) m.position.z += 0.045; });   // Brusttasche an die schmalere Brust ruecken
       for (const a of this.arms) { for (const m of [a.up, a.fo, a.el, a.sd, a.hand]) m.visible = false; a.bones = a.sx > 0 ? this.rig.R : this.rig.L; }
+      this.buildRemoteFigure(o, mats);   // dieselbe Figur fuer den zweiten Spieler, nur im gruenen Hemd
     }, undefined, () => { this.anglerPending = false; })).catch(() => { this.anglerPending = false; });
   }
 
@@ -1911,6 +1973,264 @@ export class World {
   // gebunden: sie ist der einzige Posten, der echte Millisekunden kostet, und ob einem das
   // Bild das wert ist, entscheidet man selbst.
   setAo(on) { on = !!on; if (on === this.aoOn) return; this.aoOn = on; this.makeTargets(); }   // Ziele neu bauen: MSAA und Tiefentextur haengen daran
+
+  // Ein zweiter Angler. Bewusst nicht dieselbe Figur wie die eigene: die ist ein einzelner
+  // Skinned-Mesh mit Knochen, und poseAngler setzt sie ueber Einzelstuecke (this.rig,
+  // this.arms, this.legs). Ein zweites Exemplar braeuchte SkeletonUtils und einen Umbau
+  // der ganzen Posenrechnung. Der Fremde steht meist 5 bis 30 m weit weg - dort zaehlt,
+  // dass man ihn als Angler erkennt und sieht, was er tut, nicht sein Reissverschluss.
+  buildRemote() {
+    if (this.remote) return this.remote;
+    const g = new THREE.Group(); g.visible = false;
+    const M = (c, r = 0.85, me = 0) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: me });
+    const wader = this.caustic(M(0x5a6450, 0.75), 1.0, 0.88);   // steht im Wasser, also Kaustiken und Schnee
+    const jacket = M(0x2f4858, 0.9), skin = M(0xc49a74, 0.85), cap = M(0x7a8a3a, 0.9);
+    const add = (p, geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; p.add(m); return m; };
+    add(g, new THREE.CapsuleGeometry(0.1, 0.42, 4, 10), wader, -0.085, 0.36, 0);        // Beine
+    add(g, new THREE.CapsuleGeometry(0.1, 0.42, 4, 10), wader, 0.085, 0.36, 0);
+    add(g, new THREE.CapsuleGeometry(0.2, 0.34, 4, 12), wader, 0, 0.84, 0).scale.set(1, 1, 0.72);   // Huefte und Wathose
+    add(g, new THREE.CapsuleGeometry(0.21, 0.36, 4, 12), jacket, 0, 1.2, 0).scale.set(1, 1, 0.66);  // Oberkoerper
+    const head = new THREE.Group(); head.position.set(0, 1.58, 0); g.add(head);
+    add(head, new THREE.SphereGeometry(0.105, 14, 10), skin, 0, 0, 0);
+    add(head, new THREE.SphereGeometry(0.108, 14, 8, 0, 6.3, 0, Math.PI * 0.55), cap, 0, 0.02, 0);
+    add(head, new THREE.CylinderGeometry(0.095, 0.095, 0.008, 14, 1, false, Math.PI / 2, Math.PI), cap, 0, 0.026, -0.08).scale.set(1, 1, 1.35);
+    this.remoteHead = head;
+    // Arme: einer haelt die Rute, einer haengt. Beide werden auf die Rutenspitze ausgerichtet.
+    this.remoteArm = add(g, new THREE.CapsuleGeometry(0.052, 0.4, 4, 8), jacket, 0, 0, 0);
+    add(g, new THREE.CapsuleGeometry(0.052, 0.38, 4, 8), jacket, -0.2, 1.17, 0.02);
+    // Rute: ein Segment vom Griff zur Spitze, in Weltkoordinaten gestellt
+    this.remoteRod = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.011, 1, 6), M(0x1d1d20, 0.5));
+    this.remoteRod.castShadow = true; this.scene.add(this.remoteRod);
+    // Schnur: eine feine Linie allein verschwindet auf Entfernung, deshalb zusaetzlich
+    // ein duenner Zylinder - dasselbe, was die eigene Schnur macht.
+    const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(12), 3));
+    this.remoteLine = new THREE.Line(lg, new THREE.LineBasicMaterial({ color: 0xf6f4e0, transparent: true, opacity: 0.7 }));
+    this.remoteLine.frustumCulled = false; this.scene.add(this.remoteLine);
+    // Sechs Abschnitte: Die Euro-Montage braucht allein drei fuer den Sighter, dazu
+    // Flugschnur, Vorfach und beim Indikator den Schenkel hinunter zur Nymphe.
+    this.remoteSegs = [];
+    for (let i = 0; i < 6; i++) {
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 5), this.flyLineMat || M(0xdff06a, 0.6));
+      m.frustumCulled = false; m.visible = false; this.scene.add(m); this.remoteSegs.push(m);
+    }
+    this.remoteLineSeg = this.remoteSegs[0];
+    // Dieselben Farben wie an der eigenen Montage, damit man sie wiedererkennt
+    this.remoteMats = {
+      fly: this.flyLineMat || M(0xdff06a, 0.6),                                  // dicke Flugschnur
+      lead: this.leaderMat || M(0xe9e9da, 0.4),                                  // duennes Vorfach
+      pink: new THREE.MeshBasicMaterial({ color: 0xff2f7a }),
+      gelb: new THREE.MeshBasicMaterial({ color: 0xf8e71c }),
+    };
+    this.remoteInd = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), M(0xff7a1a, 0.7));
+    this.remoteInd.frustumCulled = false; this.remoteInd.visible = false; this.scene.add(this.remoteInd);
+    // Was am Ende der Schnur haengt: Nymphe mit Perle, oder die Trockenfliege obenauf
+    this.remoteFly = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), M(0x4a3520, 0.8));
+    this.remoteBead = new THREE.Mesh(new THREE.SphereGeometry(0.022, 8, 6), M(0xe0b040, 0.25, 0.9));
+    for (const m of [this.remoteFly, this.remoteBead]) { m.frustumCulled = false; m.visible = false; this.scene.add(m); }
+    g.traverse(o => { o.frustumCulled = false; o.layers.enable(1); });
+    this.scene.add(g);
+    this.remote = g; this.remoteWalk = 0;
+    return g;
+  }
+
+  // Dieselbe Figur wie die eigene fuer den zweiten Spieler. Sie bekommt ein eigenes
+  // Skelett (sonst bewegen sich beide im Gleichschritt) und ein eigenes Koerpermaterial
+  // mit gruenem Hemd. Bis das Modell geladen ist, steht die einfache Kapselfigur da.
+  buildRemoteFigure(src, mats) {
+    const o = cloneSkinned(src);
+    const head = mats[1];
+    const green = this.caustic(new THREE.MeshStandardMaterial({ map: null, roughness: 0.9 }), 1.0, 0.88);
+    // Eigenes Bild laden, statt auf die schon laufende Texturladung zu hoffen: zum Zeitpunkt
+    // des Klonens ist sie meist noch unterwegs, und dann bliebe das Hemd blau.
+    const img = new Image();
+    img.onload = () => { green.map = greenShirt(img); green.needsUpdate = true; };
+    img.src = 'assets/angler_body.jpg';
+    o.traverse(n => { if (n.isSkinnedMesh) { n.material = [green, head]; n.castShadow = true; n.frustumCulled = false; } n.layers.enable(1); });
+    const g = new THREE.Group(); g.add(o); g.visible = false;
+    this.scene.add(g);
+    this.remoteFig = g;
+    const B = n => o.getObjectByName('Bip01_' + n);
+    const side = k => ({ up: B(k + '_UpperArm'), fo: B(k + '_Forearm'), hand: B(k + '_Hand'), thigh: B(k + '_Thigh'), calf: B(k + '_Calf'), foot: B(k + '_Foot') });
+    this.remoteRig = { o, spine: B('Spine'), spine1: B('Spine1'), neck: B('Neck'), head: B('Head'), R: side('R'), L: side('L') };
+    if (this.remote) this.remote.visible = false;          // Kapselfigur abloesen
+    this._remoteWalkPh = 0;
+    return g;
+  }
+
+  // r: was net.lerped() liefert, oder null, wenn gerade niemand da ist.
+  // gy ist die Gelaendehoehe am fremden Ort - nicht groundY(), das traegt schon
+  // den Versatz der eigenen Figur in sich.
+  poseRemote(r, dt, gy) {
+    // Rute und Schnur entstehen in buildRemote - die braucht es auch dann, wenn die
+    // geklonte Figur den Kapselkoerper schon abgeloest hat.
+    if (!this.remoteRod) this.buildRemote();
+    const fig = this.remoteFig;                       // die echte Figur, sobald das Modell da ist
+    const g = fig || this.remote;
+    const on = !!r;
+    g.visible = this.remoteRod.visible = this.remoteLine.visible = on;
+    if (!on) { for (const m of this.remoteSegs) m.visible = false; this.remoteInd.visible = this.remoteFly.visible = this.remoteBead.visible = false; }
+    if (this.remote && fig) this.remote.visible = false;
+    if (!on) return;
+    if (fig) return this.poseRemoteFigure(r, dt, gy);
+    g.position.set(r.px, gy - 0.05, r.pz); g.rotation.y = r.face;   // 0,05: der Fuss der untersten Kapsel
+    // Watschritt: dieselbe Schaukel wie bei der eigenen Figur, nur aus der Ferne betrachtet
+    this.remoteWalk += dt * (5 + 5 * r.walk);
+    g.position.y = gy - 0.05 + Math.sin(this.remoteWalk * 2) * 0.02 * r.walk;
+    this.remoteHead.rotation.x = r.mode === 'drift' || r.mode === 'fight' ? -0.25 : 0;
+    // Rute vom Griff (vor der Brust) zur uebertragenen Spitze
+    const hx = r.px + Math.sin(r.face) * -0.25, hz = r.pz + Math.cos(r.face) * -0.25, hy = gy + 1.1;
+    _a.set(r.tip.x - hx, r.tip.y - hy, r.tip.z - hz);
+    const len = Math.max(0.3, _a.length());
+    this.remoteRod.scale.set(1, len, 1);
+    this.remoteRod.position.set(hx + _a.x / 2, hy + _a.y / 2, hz + _a.z / 2);
+    this.remoteRod.quaternion.setFromUnitVectors(UP, _a.normalize());
+    this.remoteArm.position.set(Math.sin(r.face) * -0.12 + 0.17 * Math.cos(r.face), 1.17, Math.cos(r.face) * -0.12 - 0.17 * Math.sin(r.face));
+    this.remoteArm.quaternion.copy(this.remoteRod.quaternion);
+    // Schnur: nur wenn sie im Wasser ist, sonst haengt sie an der Spitze
+    this._remoteLine(r);
+  }
+
+  // Die geklonte Figur stellen. Bewusst knapper als poseAngler: Es gibt keinen Sighter
+  // der Gegenseite, dem der Blick folgen koennte, und aus 5 bis 30 m zaehlt der Watschritt
+  // und die Haltung an der Rute, nicht jeder Wirbel.
+  poseRemoteFigure(r, dt, gy) {
+    const g = this.remoteFig, rig = this.remoteRig;
+    g.position.set(r.px, gy + 0.56, r.pz); g.rotation.y = r.face;   // wie die eigene Figur: Wurzel auf groundY
+    const A = this._remoteWalkA = (this._remoteWalkA || 0) + ((r.walk || 0) - (this._remoteWalkA || 0)) * Math.min(1, dt * 8);
+    this._remoteWalkPh += dt * (5 + 5 * A);
+    const ph = this._remoteWalkPh;
+    rig.o.position.y = -0.56 + Math.abs(Math.sin(ph)) * 0.03 * A;
+    g.updateMatrixWorld(true);
+    const Xw = _a.set(1, 0, 0).applyQuaternion(g.quaternion);
+    const drill = r.mode === 'fight', drift = r.mode === 'drift' || r.mode === 'cast';
+    const lean = drill ? 0.2 : drift ? 0.08 : 0;
+    boneSwing(rig.spine, Xw, lean * 0.4 - 0.05 * A);
+    boneSwing(rig.spine1, Xw, lean * 0.6);
+    boneSwing(rig.neck, Xw, (drift || drill ? -0.18 : 0) * 0.4);
+    for (const sx of [1, -1]) {
+      const k = sx > 0 ? rig.R : rig.L, q = ph + (sx > 0 ? Math.PI : 0);
+      const hip = Math.sin(q) * 0.5 * A, knee = -(0.08 + Math.max(0, Math.sin(q + 0.9)) * 0.85) * A - 0.04;
+      boneSwing(k.thigh, Xw, hip);
+      boneSwing(k.calf, Xw, knee);
+      boneSwing(k.foot, Xw, -(hip + knee) * 0.6);
+    }
+    // Der Griffpunkt muss derselbe sein, den der Absender fuer seine eigene Rute benutzt
+    // (hand() in main.js), sonst schwebt die Rute neben der Figur statt in ihrer Hand.
+    const c = Math.cos(r.face), sn = Math.sin(r.face), lx = 0.2, lz = -0.4;
+    const hx = r.px + lx * c + lz * sn, hy = gy + 1.36, hz = r.pz - lx * sn + lz * c;
+    // Die Arme werden auf den Griff gezielt, nicht auf feste Winkel gestellt: Die Ruhelage
+    // des Modells ist eine T-Haltung, und was danach natuerlich aussieht, haengt davon ab,
+    // wo die Rute gerade steht. Zweigliedrige Kette, Ellenbogen ueber den Kosinussatz.
+    this._aimArm(rig.R, hx, hy, hz, g, 1);
+    // Zweite Hand: beim Drill an den Griff, sonst neben die Hoefte. Auch das ueber die
+    // Zielrechnung - mit festen Winkeln klappte der Arm in den Koerper, weil die Drehachse
+    // fuer die linke Seite spiegelverkehrt liegt.
+    if (drill) this._aimArm(rig.L, hx + sn * 0.12, hy - 0.2, hz + c * 0.12, g, -1);
+    else this._aimArm(rig.L, r.px - 0.26 * c + 0.1 * sn, gy + 0.92, r.pz + 0.26 * sn + 0.1 * c, g, -1);
+    _a.set(r.tip.x - hx, r.tip.y - hy, r.tip.z - hz);
+    const len = Math.max(0.3, _a.length());
+    this.remoteRod.scale.set(1, len, 1);
+    this.remoteRod.position.set(hx + _a.x / 2, hy + _a.y / 2, hz + _a.z / 2);
+    this.remoteRod.quaternion.setFromUnitVectors(UP, _a.normalize());
+    this._remoteLine(r);
+  }
+
+  // Zweigliedrige Kette auf einen Punkt zielen: Oberarm und Unterarm so drehen, dass die
+  // Hand dort landet. Der Ellenbogen weicht seitlich aus (Kosinussatz), sonst knickt der
+  // Arm in die Figur hinein.
+  _aimArm(k, tx, ty, tz, g, sx) {
+    const up = k.up, fo = k.fo, hd = k.hand;
+    if (!up || !fo || !hd) return;
+    // erst in die Ruhelage, damit die gemessenen Laengen stimmen
+    boneTurn(up, _q4.identity()); boneTurn(fo, _q4.identity());
+    const S = new THREE.Vector3(), E = new THREE.Vector3(), H = new THREE.Vector3();
+    up.getWorldPosition(S); fo.getWorldPosition(E); hd.getWorldPosition(H);
+    const U = E.distanceTo(S), F = H.distanceTo(E);
+    const T = _d.set(tx, ty, tz), toT = _a.copy(T).sub(S);
+    const raw = toT.length() || 1e-4, L = clamp(raw, 0.08, U + F - 0.004);
+    toT.multiplyScalar(1 / raw);
+    const x = (U * U - F * F + L * L) / (2 * L), h = Math.sqrt(Math.max(0, U * U - x * x));
+    // Ellenbogen nach aussen und unten, wie bei der eigenen Figur
+    const pole = _b.set(sx * 0.5, -1, 0.35).applyQuaternion(g.quaternion);
+    pole.addScaledVector(toT, -pole.dot(toT)).normalize();
+    const EW = new THREE.Vector3().copy(S).addScaledVector(toT, x).addScaledVector(pole, h);
+    // Oberarm von der Ruherichtung auf die Ellenbogenrichtung drehen
+    boneTurn(up, _q4.setFromUnitVectors(E.clone().sub(S).normalize(), EW.clone().sub(S).normalize()));
+    fo.getWorldPosition(E); hd.getWorldPosition(H);
+    boneTurn(fo, _q4.setFromUnitVectors(H.clone().sub(E).normalize(), T.clone().sub(E).normalize()));
+  }
+
+  // Schnur der Gegenseite, je nach Montage verschieden. Ohne das sieht jede Rute gleich
+  // aus - ein glatter Strang, an dem man nicht erkennt, was der andere ueberhaupt fischt.
+  // Gezeichnet wird mit denselben Farben wie an der eigenen Montage:
+  //   Euro-Nymphe:   duennes Vorfach mit Sighter (pink-gelb-pink) ueber dem Wasser,
+  //                  darunter die Nymphe mit Perle am Grund
+  //   Indikator:     dicke Flugschnur zum schwimmenden Anzeiger, dann duenn zur Nymphe
+  //   Trockenfliege: dicke Flugschnur mit Durchhang, die Fliege sitzt obenauf
+  _remoteLine(r) {
+    const Mt = this.remoteMats, segs = this.remoteSegs;
+    const wet = r.mode === 'drift' || r.mode === 'fight';
+    const T = _rl0.set(r.tip.x, r.tip.y, r.tip.z);
+    const plan = [];                                     // {a, b, mat, r}
+    this.remoteInd.visible = this.remoteFly.visible = this.remoteBead.visible = false;
+
+    // Im Leerlauf haengt dieselbe Montage unter der Rutenspitze, wie bei der eigenen Figur
+    // auch - vorher war dort nur ein nackter Strang bis zum Wasser, an dem man nicht
+    // erkennen konnte, womit der andere ueberhaupt fischt.
+    if (!wet) {
+      // eigener Vektor, nicht _rl1: _remoteEuro rechnet darin weiter und wuerde den
+      // Endpunkt ueberschreiben - die Nymphe haengt dann auf Hoehe der Rutenspitze
+      const E = new THREE.Vector3(r.tip.x + (r.tip.x - r.px) * 0.06, Math.max(0.1, r.tip.y - 1.9), r.tip.z + (r.tip.z - r.pz) * 0.06);
+      if (r.rig === 'euro') { this._remoteEuro(T, E, plan, Mt); this._remoteNymph(E); }
+      else {
+        plan.push([T.clone(), E.clone(), Mt.fly, 0.004]);
+        this.remoteFly.position.copy(E); this.remoteFly.visible = true;
+        if (r.rig === 'indi') { this.remoteBead.position.set(E.x, E.y + 0.035, E.z); this.remoteBead.visible = true; }
+      }
+    } else if (r.rig === 'indi') {
+      const I = _rl1.set(r.fly.x, 0.05, r.fly.z);
+      this.remoteInd.position.copy(I); this.remoteInd.visible = true;
+      const N = _rl2.set(r.fly.x, -r.fly.d, r.fly.z);
+      plan.push([T.clone(), I.clone(), Mt.fly, 0.004], [I.clone(), N.clone(), Mt.lead, 0.0022]);
+      this._remoteNymph(N);
+    } else if (r.rig === 'dry') {
+      const F = _rl2.set(r.fly.x, 0.02, r.fly.z);
+      const d = T.distanceTo(F);
+      const S1 = _rl1.copy(T).lerp(F, 0.55).setY(Math.max(0.05, T.y * 0.28 - d * 0.02));
+      plan.push([T.clone(), S1.clone(), Mt.fly, 0.004], [S1.clone(), F.clone(), Mt.fly, 0.004]);
+      this.remoteFly.position.set(F.x, 0.03, F.z); this.remoteFly.visible = true;
+    } else {
+      const N = _rl2.set(r.fly.x, -r.fly.d, r.fly.z);
+      this._remoteEuro(T, N, plan, Mt);
+      this._remoteNymph(N);
+    }
+
+    for (let i = 0; i < segs.length; i++) {
+      const m = segs[i], e = plan[i];
+      if (!e) { m.visible = false; continue; }
+      m.visible = true; m.material = e[2];
+      placeSeg(m, e[0], e[1], e[3]);
+    }
+    // feine Linie obendrauf, damit die Schnur auch aus der Ferne sichtbar bleibt
+    const pos = this.remoteLine.geometry.attributes.position;
+    for (let i = 0; i < 4; i++) {
+      const e = plan[Math.min(i, plan.length - 1)], q = i < plan.length ? e[0] : e[1];
+      pos.setXYZ(i, q.x, q.y, q.z);
+    }
+    pos.needsUpdate = true;
+  }
+  // Euro-Montage zwischen zwei Punkten: duennes Vorfach, der Sighter im oberen Drittel
+  _remoteEuro(T, N, plan, Mt) {
+    const q = u => _rl1.copy(T).lerp(N, u).clone();
+    const p0 = T.clone(), p1 = q(0.3), p2 = q(0.42), p3 = q(0.54), p4 = q(0.66);
+    plan.push([p0, p1, Mt.lead, 0.0025],
+      [p1, p2, Mt.pink, 0.0045], [p2, p3, Mt.gelb, 0.0045], [p3, p4, Mt.pink, 0.0045],
+      [p4, N.clone(), Mt.lead, 0.0025]);
+  }
+  _remoteNymph(N) {
+    this.remoteFly.position.copy(N); this.remoteFly.visible = true;
+    this.remoteBead.position.set(N.x, N.y + 0.035, N.z); this.remoteBead.visible = true;
+  }
 
   setClearView(on) { this.waterU.uNoRefl.value = on ? 1 : 0; }   // Spiegelung ausblenden (Sichthilfe)
   setPolar(on) { this.waterU.uClear.value = on ? 1 : 0; }

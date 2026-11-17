@@ -2,6 +2,7 @@
 import { T, LANGS, getLang, setLang, loc } from './i18n.js';
 import { World } from './world.js';
 import { SPECIES, FLIES, INSECTS, REVIERE, SEASONS, RIGS, INDICATORS, PAGES, BEADS, TIPPETS, LEVEL_UNLOCKS, MAX_LEVEL, xpNeed, CLARITY, LIGHTS } from './data.js';
+import { Net } from './net.js';
 import { LANE_X, Z_MIN, Z_MAX } from './river.js';
 import { Vector3 as THREE_V3, DefaultLoadingManager } from './three.module.min.js';
 import { drawFish, drawFly } from './fishart.js';
@@ -115,6 +116,29 @@ function travel(i, fn) {
 const canvas = $('gl');
 const world = new World(canvas);
 const sfx = new Sfx(); sfx.on = save.set.sound; sfx.vol = save.set.vol;
+// Mehrspieler: Stufe A - man sieht einander, fischt aber jeder seinen eigenen Besatz.
+// netRevier ist das Revier der Gegenseite; nur wenn es mit dem eigenen uebereinstimmt,
+// wird die fremde Figur ueberhaupt gezeichnet.
+const net = new Net();
+let netRevier = -1, netName = '';
+net.onEvent = m => {
+  if (m.type === 'hallo') { netName = (m.name || '').slice(0, 24); netRevier = m.revier; toast(T('{0} ist am Wasser.', netName || T('Jemand')), 3200); netHello(); }
+  else if (m.type === 'revier') { netRevier = m.i; toast(T('{0} fischt jetzt: {1}', netName || T('Jemand'), T(REVIERE[m.i] ? REVIERE[m.i].name : '?')), 3000); }
+  else if (m.type === 'wurf') { if (netRevier === save.revier) { world.splash(m.x, m.z, 0.5 + (m.hart || 0) * 1.6); sfx.plop(m.x, m.z); } }
+  else if (m.type === 'fang') { toast(T('{0} hat {1} mit {2} cm gelandet.', netName || T('Jemand'), T(SPECIES[m.art] ? SPECIES[m.art].name : '?'), m.len), 4200); if (netRevier === save.revier) { world.splash(m.x, m.z, 1.2); sfx.splash(m.x, m.z, 1.2); } }
+  else if (m.type === 'tschuess') { netRevier = -1; toast(T('{0} hat aufgehört.', netName || T('Jemand')), 3000); }
+};
+let netSaidHello = false;
+const netHello = () => { if (netSaidHello) return; netSaidHello = true; net.send('hallo', { name: save.netName || '', revier: save.revier }); };
+net.onState = st => {
+  if (st === 'verbunden') { netSaidHello = false; netHello(); }
+  if (st === 'weg') { netRevier = -1; toast(T('Verbindung verloren.'), 3200); }
+  // Steht der Dialog offen, soll er den neuen Zustand zeigen - aber nur bei einem
+  // Ergebnis. Bei 'warten' wuerde er sich neu aufbauen und dabei einen neuen Antrag
+  // stellen, der wieder 'warten' meldet: eine Schleife.
+  if ((st === 'verbunden' || st === 'weg' || st === 'aus')
+    && ($('netStep') || document.querySelector('#modalBody [data-act="netoff"]'))) showMulti(true);
+};
 world.setGfxMode(save.set.gq); world.setAo(save.set.ao);
 world.setClearView(save.set.clear);
 let river, cond, fish = [], respawn = [], sndRocks = [];
@@ -122,7 +146,7 @@ const S = {
   mode: 'title', yaw: 0, yb: 0, pitch: 0, px: LANE_X, pz: 0, t: 0, joy: { x: 0, z: 0 }, face: 0, walk: 0, moveDir: 0, tip: { x: LANE_X - 0.6, z: -1.6 }, nymph: { x: 0, d: 0, z: 0 }, L: 4, s: 1, pullS: 0, g: 0, q: 1,
   kick: 0, driftT: 0, onBottom: false, tickT: 0, bite: null, snag: false, snagT: 0, fight: null, hold: false, wade: null,
   cast: null, maxFrac: 0, swingT: 0, sinkRate: 0.2, snagHint: false, aim: null, press: 0, rodX: -0.5,
-  sndT: 0, stepD: 0.55, sx: LANE_X, sz: 0, aimU: null, aimP0: null, aimBase: 0,
+  sndT: 0, stepD: 0.55, sx: LANE_X, sz: 0, aimU: null, aimP0: null, aimBase: 0, netT: 0,
 };
 function gaugeLabels() {
   const q = (s, v) => { const e = document.querySelector(s); if (e) e.textContent = v; };
@@ -178,6 +202,7 @@ function enterRevier(i, keep) {
   checkOld(false);
   if (S.mode !== 'title') S.mode = 'idle';
   restTip();
+  net.send('revier', { i });
   sfx.setRiver(rv.speed, cond.light.id);
   // Rauschquellen des Reviers: jeder Stein im stroemenden Wasser, gewichtet nach Groesse und Stroemung,
   // dazu die Wasserfaelle. Einmal je Revier gerechnet, der Klang fuehrt sie dann nur noch nach.
@@ -354,6 +379,7 @@ function updateCast(dt) {
     S.mode = 'drift'; S.driftT = 0; S.bite = null; S.snag = false; S.snagHint = false; S.onBottom = false; S.maxFrac = 0; S.swingT = 0; S.pullS = 0; S.g = 0; S.kick = 0; S.tickT = 0.3;
     // Geklatscht: der Vorfachbogen faellt zusammen, statt sich zu strecken. Die Fische in der Naehe ducken sich.
     const hd = c.hard || 0;
+    net.send('wurf', { x: +n.x.toFixed(2), z: +n.z.toFixed(2), hart: +hd.toFixed(2) });
     world.splash(n.x, n.z, 0.5 + hd * 1.8); sfx.plop(n.x, n.z);
     if (hd > 0.45) {
       sfx.splash(n.x, n.z, 0.6 + hd);
@@ -665,6 +691,7 @@ function addXP(x) {
 }
 function landed(f) {
   const sp = SPECIES[f.species], rv = REVIERE[save.revier], st = stats(rv.id), fly = curFly();
+  net.send('fang', { art: f.species, len: f.len, x: +f.x.toFixed(2), z: +f.z.toFixed(2) });
   endFightUI();
   S.mode = 'landed';
   const w = Math.round(0.0105 * f.len ** 3 / 10) * 10;
@@ -1033,6 +1060,97 @@ function godDisable() {
   toast(T('Godmode aus – dein Spielstand ist wieder wie vorher.'), 3600);
 }
 
+// ---------- Mehrspieler ----------
+// Kein Server, kein Konto, keine Lobby: ein Spieler eroeffnet, schickt den Einladungscode
+// auf beliebigem Weg, der andere schickt den Antwortcode zurueck. Danach laeuft alles
+// direkt zwischen den beiden Rechnern.
+function showMulti(skipOffer) {
+  const st = net.state;
+  let h = `<h2>${T('Zu zweit fischen')}</h2>`;
+  if (st === 'verbunden') {
+    h += `<p class="small"><b>${T('Verbunden.')}</b> ${netName ? T('Mit {0}.', netName) : ''} ${S.mode === 'title' ? T('Drück „Ans Wasser“ – ihr seht einander, sobald ihr im selben Revier steht.') : netRevier === save.revier ? T('Ihr steht im selben Revier.') : T('Ihr seid in verschiedenen Revieren – ihr seht einander erst im selben.')}</p>
+      <button class="ghost danger" data-act="netoff">${T('Verbindung trennen')}</button>`;
+  } else {
+    h += `<p class="small">${T('Ihr seht einander waten, werfen und drillen. Die Fische bleiben eure eigenen – niemand nimmt dem anderen einen weg.')}</p>
+      <div id="netStep"><p class="small">${T('Kennung wird geholt …')}</p></div>`;
+  }
+  h += `<button class="primary" data-act="close">${T('Schließen')}</button>`;
+  openModal(h);
+  if (st !== 'verbunden' && !skipOffer) netOffer();
+}
+
+// Kennung beim Vermittler holen und zeigen. Daneben steht immer das Feld fuer die
+// Kennung des anderen - wer zuerst eine bekommt, sagt sie durch; es ist egal, wer.
+function netOffer() {
+  net.hostCode().then(code => netStep(
+    `<p class="small">${T('Deine Kennung – sag sie dem anderen durch:')}</p>
+     <div class="netbig" id="netOut">${code}</div>
+     <button class="primary" data-act="netshare" data-id="netOut">${T('Kennung teilen')}</button>
+     <p class="small">${T('Oder tipp hier die Kennung ein, die du bekommen hast:')}</p>
+     <input id="netIn" class="netin" maxlength="5" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="ABC12">
+     <button class="primary" data-act="netgo">${T('Verbinden')}</button>
+     <p class="small"><a href="#" data-act="netmanual">${T('Klappt es nicht? Über einen Link verbinden')}</a></p>`))
+    .catch(() => netStep(`<p class="small">${T('Der Vermittlungsdienst ist gerade nicht erreichbar.')}</p>
+      <p class="small"><a href="#" data-act="netmanual">${T('Über einen Link verbinden')}</a></p>`));
+}
+
+// Rueckfall ohne fremden Dienst: der alte Weg mit Einladungslink
+function netManual() {
+  net.host().then(code => netStep(
+    `<p class="small">${T('1. Diesen Link verschicken – der andere muss ihn nur antippen.')}</p>` +
+    netFeld('netOut', '', netLink('j', code), true) + netShareBtn('netOut', T('Einladung teilen')) +
+    `<p class="small">${T('2. Was zurückkommt, hier einfügen – oder eine Einladung, die du selbst bekommen hast:')}</p>` +
+    netFeld('netIn', '', '', false) +
+    `<button class="primary" data-act="netlink">${T('Verbinden')}</button>`))
+    .catch(() => netStep(`<p class="small">${T('Die Verbindung lässt sich hier nicht aufbauen.')}</p>`));
+}
+
+// Einer Einladung folgen - egal ob aus dem Feld oder aus einem angetippten Link
+function netJoinWith(code) {
+  netStep(`<p class="small">${T('Einladung erhalten. Erzeuge Antwort …')}</p>`);
+  return net.join(code).then(ans => netStep(
+    `<p class="small">${T('Das zurückschicken. Sobald der andere es eingesetzt hat, steht die Verbindung.')}</p>` +
+    netFeld('netOut', '', netLink('a', ans), true) + netShareBtn('netOut', T('Antwort teilen'))))
+    .catch(() => netStep(`<p class="small">${T('Mit dem Link stimmt etwas nicht.')}</p>`));
+}
+
+function netStep(html) { const e = $('netStep'); if (e) e.innerHTML = html; }
+
+// Ein 670-Zeichen-Block laesst sich in einem Chat schlecht verschicken: er wird umgebrochen,
+// abgeschnitten oder als Zitat verunstaltet. Als Link ueberlebt er das und der andere muss
+// ihn nur antippen - das Spiel oeffnet sich dann gleich an der richtigen Stelle.
+const netLink = (kind, code) => location.origin + location.pathname + '#' + kind + '=' + encodeURIComponent(code.replace(/\s+/g, ''));
+// Aus dem Feld darf alles kommen: der nackte Code, ein Link, oder ein Link mit Text drumherum
+function netCode(raw) {
+  const t = (raw || '').trim();
+  const m = t.match(/#[ja]=([^\s]+)/);
+  if (m) { try { return decodeURIComponent(m[1]); } catch (e) { return m[1]; } }
+  return t;
+}
+// Teilen: am Handy das Systemblatt (dort steht WhatsApp ganz oben), sonst WhatsApp direkt
+function netShare(text, title) {
+  if (navigator.share) { navigator.share({ title, text }).catch(() => { /* abgebrochen ist kein Fehler */ }); return; }
+  window.open('https://wa.me/?text=' + encodeURIComponent(title + '\n' + text), '_blank', 'noopener');
+}
+const netShareBtn = (id, label) => `<button class="primary" data-act="netshare" data-id="${id}">${label}</button>
+  <button class="ghost" data-act="netcopy" data-id="${id}">${T('Link kopieren')}</button>`;
+
+// Wer auf einen geteilten Link tippt, soll nicht erst ein Menue suchen muessen: das Spiel
+// macht den Dialog auf und hat den Code schon drin. Die Adresse wird danach bereinigt,
+// damit ein Neuladen nicht denselben Code noch einmal einwirft.
+function netFromLink() {
+  const m = location.hash.match(/^#([ja])=(.+)$/);
+  if (!m) return;
+  let code; try { code = decodeURIComponent(m[2]); } catch (e) { code = m[2]; }
+  history.replaceState(null, '', location.pathname + location.search);
+  if (m[1] === 'j') { showMulti(true); netJoinWith(code); }
+  else if (net.state === 'warten') { showMulti(); net.accept(code).then(() => netStep(`<p class="small">${T('Verbinde …')}</p>`)); }
+  else { showMulti(); netStep(`<p class="small">${T('Diese Antwort gehört zu einem Spiel, das hier nicht mehr offen ist. Der Gastgeber muss sie in sein laufendes Fenster einfügen.')}</p>`); }
+}
+
+const netFeld = (id, label, val, ro) => `<label class="slider"><b>${label}</b></label>
+  <textarea id="${id}" class="netcode" rows="3" spellcheck="false" ${ro ? 'readonly' : ''} placeholder="${ro ? '' : T('Code hier einfügen')}">${val || ''}</textarea>`;
+
 function showSettings() {
   const tg = (k, label, sub) => `<label class="toggle"><input type="checkbox" data-set="${k}" ${save.set[k] ? 'checked' : ''}><span><b>${label}</b><br><span class="small">${sub}</span></span></label>`;
   openModal(`<h2>${T('Einstellungen')}</h2>
@@ -1060,9 +1178,13 @@ function showSettings() {
     <p class="small">${T('Jede erfüllte Aufgabe bringt 60 XP mal Staffelnummer, der Alte vom Smaragdgumpen 300 XP. Bis zur nächsten Stufe brauchst du anfangs 220 XP, mit jeder Stufe 60 mehr, ab Stufe 8 gleichbleibend 640.')}</p>
     <p class="small">${T('Neue Ruten kommen mit der Staffel: Indikator und Trockenfliege ab Staffel 2. Fliegen, Perlen, Vorfächer und Indikatoren kommen mit der Stufe.')}</p>
     <details class="lvls"><summary>${T('Alle Stufen anzeigen')}</summary>${Array.from({ length: MAX_LEVEL - 1 }, (_, i) => i + 2).filter(l => unlocksAt(l).length).map(l => `<div class="${save.level >= l ? 'ok' : ''}"><b>${save.level >= l ? '✓' : '🔒'} ${T('Stufe {0}', l)}</b><span>${unlocksAt(l).join(', ')}</span></div>`).join('')}</details>
+    <h3>${T('Zu zweit fischen')}</h3>
+    <p class="small">${T('Ohne Server, ohne Konto: ihr tauscht einmal einen Code aus und seht euch dann am selben Fluss.')}</p>
+    <button class="ghost" data-act="multi">${net.on ? T('Verbunden – Einstellungen') : T('Zu zweit fischen')}</button>
     <h3>${T('Steuerung')}</h3>
     <p class="small">${T('<b>Handy:</b> Finger aufs Wasser, Zielring schieben, loslassen = Wurf · nach unten ziehen = Rute führen · nach oben wischen (oder ANHIEB) = anschlagen · im Drill nach unten ziehen = Druck, seitlich = Seitendruck · Stick unten links = waten · am Himmel oder Ufer ziehen = umschauen.')}</p>
     <p class="small">${T('<b>PC:</b> wie am Handy mit gedrückter Maustaste · Leertaste / Rechtsklick = Anhieb, im Drill halten = Druck · W/A/S/D = waten, im Drill A/D = Seitendruck · Rechtsklick ziehen oder Q/E = umschauen · F = Fliegendose · T = Tagebuch.')}</p>
+    <button class="ghost" data-act="toTitle">${T('Zurück zum Hauptmenü')}</button>
     <button class="ghost danger" data-act="reset">${T('Spielstand löschen')}</button>
     <button class="primary" data-act="close">${T('Schließen')}</button>`);
 }
@@ -1095,6 +1217,36 @@ $('modalBody').addEventListener('click', e => {
     else if (godTaps >= 10) { sfx.tick(); toast(T('Noch {0} …', 15 - godTaps), 900); }
   }
   else if (a === 'godoff') { godDisable(); showSettings(); }
+  else if (a === 'multi') showMulti();
+  else if (a === 'netoff') { net.send('tschuess', {}); net.close(); netRevier = -1; netName = ''; showMulti(); }
+  // Ein Knopf fuer beide Faelle: Das Feld entscheidet, ob eingeladen oder geantwortet wurde.
+  else if (a === 'netgo') {
+    const c = (($('netIn') || {}).value || '').trim().toUpperCase();
+    if (c.length < 4) return toast(T('Da fehlt die Kennung.'));
+    netStep(`<p class="small">${T('Verbinde …')}</p>`);
+    net.joinCode(c).catch(() => netStep(`<p class="small">${T('Unter dieser Kennung wartet niemand.')}</p>`));
+  }
+  else if (a === 'netmanual') netManual();
+  // Rueckfall: dasselbe Feld nimmt Antwort oder Einladung
+  else if (a === 'netlink') {
+    const raw = ($('netIn') || {}).value || '', c = netCode(raw);
+    if (!c.trim()) return toast(T('Da fehlt der Link.'));
+    if (/#j=/.test(raw) || net.state !== 'warten') netJoinWith(c);
+    else net.accept(c).then(() => netStep(`<p class="small">${T('Verbinde …')}</p>`)).catch(() => netJoinWith(c));
+  }
+  else if (a === 'netshare') {
+    const e = $(b.dataset.id); if (!e) return;
+    // Feld (Link) oder Kennung: beim Code kommt die Adresse des Spiels dazu, damit der
+    // andere weiss, wo er sie eintippen soll
+    const v = e.value !== undefined ? e.value
+      : T('Meine Kennung: {0}', e.textContent.trim()) + '\n' + location.origin + location.pathname;
+    netShare(v, T('Komm fischen – Nymphmaniac'));
+  }
+  else if (a === 'netcopy') {
+    const e = $(b.dataset.id); if (!e) return;
+    e.select(); navigator.clipboard ? navigator.clipboard.writeText(e.value).then(() => toast(T('Kopiert.'), 1400)) : document.execCommand('copy');
+  }
+  else if (a === 'toTitle') toTitle();
   else if (a === 'reset') askSure(T('Wirklich den gesamten Spielstand löschen?'), T('Spielstand löschen'), 'reset2', 'settings');
   else if (a === 'reset2') { try { localStorage.removeItem(KEY); } catch (err) { /* */ } location.reload(); }
   else if (a === 'newgame2') { closeModal(); startGame(true); }
@@ -1498,6 +1650,16 @@ function frame(now) {
     const near = sndRocks.length ? sndRocks.filter(q => Math.abs(q.z - S.pz) < 22) : sndRocks;
     sfx.setField({ x: S.px, z: S.pz, yaw: world.yaw, depth: river ? river.depthAt(S.px, S.pz) : 0, riffles: near, falls: world.fallSpots || [] });
   }
+  // Mehrspieler: fuenfzehnmal je Sekunde den eigenen Zustand schicken, und den fremden
+  // zeichnen - aber nur, wenn die Gegenseite im selben Revier steht.
+  if (net.on) {
+    S.netT -= dt;
+    if (S.netT <= 0) { S.netT = 1 / 15; S.rig = rigMode(); net.sendMove(S, tip3()); }
+  }
+  {
+    const r = net.on && netRevier === save.revier ? net.lerped() : null;
+    if (r || world.remote) world.poseRemote(r, dt, r && river ? clamp(river.heightAt(r.px, r.pz), -1.05, 1.2) : 0);
+  }
   // Schritte: im Wasser schwappt es, am Ufer knirscht der Kies.
   // Gezaehlt wird die wirklich zurueckgelegte Strecke - im tiefen Wasser kommt der Angler
   // langsamer voran, und genau dann sollen die Schritte auch seltener kommen.
@@ -1513,6 +1675,20 @@ function frame(now) {
 }
 
 // ---------- Start ----------
+// Zurueck ins Hauptmenue, ohne die Seite neu zu laden: Der Spielstand ist laengst
+// geschrieben, und eine laufende Mehrspieler-Verbindung bleibt bestehen - von dort aus
+// kann man sie im selben Dialog trennen.
+function toTitle() {
+  closeModal();
+  S.mode = 'title'; S.fight = null; S.bite = null; S.cast = null; S.aim = null; S.aimU = null; S.snag = false;
+  endFightUI();
+  persist();
+  $('hud').classList.add('hidden');
+  $('title').classList.remove('hidden');
+  $('btnNew').classList.remove('hidden');
+  updateHUD();
+}
+
 function startGame(fresh) {
   sfx.start();
   if (fresh) { save = newSave(); sfx.on = true; }
@@ -1525,6 +1701,7 @@ function startGame(fresh) {
   else { updateHUD(); updateTip(); if (isNew) showPage('intro', true); }
 }
 $('btnStart').addEventListener('click', () => startGame(false));
+$('btnMulti').addEventListener('click', () => { sfx.start(); showMulti(); });
 $('btnNew').addEventListener('click', () => { if (!save.started) startGame(true); else askSure(T('Neues Spiel beginnen? Der alte Spielstand geht verloren.'), T('Neues Spiel'), 'newgame2', 'close'); });
 // ---------- Sprache ----------
 function applyLang() {
@@ -1579,5 +1756,6 @@ setLang(getLang()); applyLang();
 showLoader(T('Ein Euro-Nymphing-Abenteuer'), '', T('Das Erbe der Smaragda'), T('Fluss, Ufer und Licht werden geladen …'), true);
 
 enterRevier(Math.min(save.revier, save.unlocked - 1), true);
+netFromLink();   // mit einem geteilten Link aufgerufen? Dann gleich dorthin
 requestAnimationFrame(frame);
-window.__nm = { S, world, sfx, castAim, aimStart, castBand, get save() { return save; }, get fish() { return fish; }, get river() { return river; }, get cond() { return cond; }, doCast, strike, startFight, landed, enterRevier, hand, fleeFish, startBite, kickSample, closeModal, makeFish, flyMatch, get respawn() { return respawn; } };
+window.__nm = { S, world, sfx, net, castAim, aimStart, castBand, get netRevier() { return netRevier; }, get save() { return save; }, get fish() { return fish; }, get river() { return river; }, get cond() { return cond; }, doCast, strike, startFight, landed, enterRevier, hand, fleeFish, startBite, kickSample, closeModal, makeFish, flyMatch, get respawn() { return respawn; } };

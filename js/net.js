@@ -1,0 +1,346 @@
+// Mehrspieler ohne Server. Zwei Browser verbinden sich direkt miteinander; ausgetauscht
+// wird dafuer genau einmal ein Textblock, den die Spieler sich selbst zuschicken - ueber
+// welchen Weg auch immer. Danach laeuft alles zwischen den beiden Rechnern.
+//
+// Es gibt zwei Kanaele: 'm' traegt die Bewegung, unzuverlaessig und ungeordnet (ein
+// verlorenes Paket ist egal, 66 ms spaeter kommt das naechste), 'e' die seltenen
+// Ereignisse, die ankommen muessen - Wurf, Biss, Fang, Revierwechsel.
+//
+// Kein STUN-Zwang: ohne die Server unten kaeme nur eine Verbindung im selben Netz
+// zustande. Sie werden nur gefragt, welche oeffentliche Adresse man hat; es laeuft
+// kein Spiel darueber.
+const ICE = { iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }] };
+
+export const MODES = ['title', 'idle', 'cast', 'drift', 'fight', 'landed'];
+export const RIGS_N = ['euro', 'indi', 'dry'];   // die Montage gehoert mit uebertragen, siehe sendMove
+const PACK = 20;   // Bytes je Bewegungspaket
+
+// Der rohe SDP-Text ist lang und sehr wiederholungsreich. Deflate drueckt ihn auf etwa
+// ein Drittel, damit aus dem Einladungscode ein Block wird, den man noch kopieren mag.
+async function squeeze(s) {
+  if (!self.CompressionStream) return 'p' + btoa(s);
+  const cs = new CompressionStream('deflate-raw');
+  const buf = await new Response(new Blob([s]).stream().pipeThrough(cs)).arrayBuffer();
+  let bin = ''; for (const b of new Uint8Array(buf)) bin += String.fromCharCode(b);
+  return 'z' + btoa(bin);
+}
+async function unsqueeze(c) {
+  const body = c.slice(1).replace(/\s+/g, '');
+  if (c[0] === 'p') return atob(body);
+  const bin = atob(body), u = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+  const ds = new DecompressionStream('deflate-raw');
+  return await new Response(new Blob([u]).stream().pipeThrough(ds)).text();
+}
+const encode = async d => (await squeeze(JSON.stringify({ t: d.type, s: d.sdp }))).replace(/(.{72})/g, '$1\n');
+const decode = async c => { const o = JSON.parse(await unsqueeze(c.trim())); return { type: o.t, sdp: o.s }; };
+
+// Oeffentlicher Vermittler von PeerJS. Kein Konto, kein Schluessel - der Dienst leitet
+// nur Nachrichten zwischen zwei Kennungen weiter und sieht den Spielverkehr nie: sobald
+// die Verbindung steht, laeuft alles direkt zwischen den Rechnern. Faellt er aus, bleibt
+// der Weg ueber den geteilten Link.
+//
+// Die Bibliothek von PeerJS brauchen wir nicht: Der Server ist ein stummer Weiterleiter,
+// der { type, dst, payload } an die Zielkennung durchreicht. Was in payload steht,
+// bestimmen wir selbst, weil auf beiden Seiten unser eigener Code sitzt.
+const BROKER = 'wss://0.peerjs.com/peerjs?key=peerjs&version=1.5.4';
+// Kennung zum Vorlesen: keine Buchstaben, die man mit Ziffern verwechselt (kein I, O, 0, 1)
+const ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const newCode = () => Array.from({ length: 5 }, () => ALPHA[(Math.random() * ALPHA.length) | 0]).join('');
+const peerId = code => 'nymphmaniac-' + code;
+
+export class Net {
+  constructor() {
+    this.pc = null; this.move = null; this.evt = null;
+    this.state = 'aus';            // aus | warten | verbunden | weg
+    this.ws = null; this.dst = null; this.code = null; this._beat = 0;
+    this.buf = [];                 // letzte Pakete mit Ankunftszeit, fuer die verzoegerte Darstellung
+    this.cid = 'nm_' + Math.random().toString(36).slice(2, 10);
+    this.peer = null;              // letzter empfangener Zustand der Gegenseite
+    this.onEvent = () => {};       // Ereignisse ans Spiel
+    this.onState = () => {};       // Zustandswechsel ans Menue
+  }
+
+  get on() { return this.state === 'verbunden'; }
+
+  // Gastgeber: Kanaele anlegen, Einladungscode zurueckgeben
+  async host() {
+    this._pc();
+    this.move = this.pc.createDataChannel('m', { ordered: false, maxRetransmits: 0 });
+    this.evt = this.pc.createDataChannel('e');
+    this._wire(this.move); this._wire(this.evt);
+    await this.pc.setLocalDescription(await this.pc.createOffer());
+    this._set('warten');
+    return this._code();
+  }
+
+  // Gast: Einladungscode einsetzen, Antwortcode zurueckgeben
+  async join(code) {
+    this._pc();
+    this.pc.ondatachannel = e => { if (e.channel.label === 'm') this.move = e.channel; else this.evt = e.channel; this._wire(e.channel); };
+    await this.pc.setRemoteDescription(await decode(code));
+    await this.pc.setLocalDescription(await this.pc.createAnswer());
+    this._set('warten');
+    return this._code();
+  }
+
+  // Gastgeber schliesst ab, sobald der Antwortcode da ist
+  async accept(code) { await this.pc.setRemoteDescription(await decode(code)); }
+
+  // ---------- Weg ueber den Vermittler: kurze Kennung statt langem Link ----------
+
+  _sock(id) {
+    return new Promise((res, rej) => {
+      let ws;
+      try { ws = new WebSocket(BROKER + '&id=' + encodeURIComponent(id) + '&token=' + Math.random().toString(36).slice(2)); }
+      catch (e) { return rej(new Error('netz')); }
+      const to = setTimeout(() => { try { ws.close(); } catch (e) { /* egal */ } rej(new Error('zeit')); }, 9000);
+      ws.onmessage = e => {
+        let m; try { m = JSON.parse(e.data); } catch (err) { return; }
+        if (m.type === 'OPEN') {
+          clearTimeout(to);
+          this.ws = ws;
+          // Der Server wirft stille Verbindungen hinaus
+          this._beat = setInterval(() => { if (ws.readyState === 1) ws.send('{"type":"HEARTBEAT"}'); }, 5000);
+          ws.onmessage = ev => this._fromBroker(ev);
+          res(ws);
+        } else if (m.type === 'ID-TAKEN') { clearTimeout(to); try { ws.close(); } catch (err) { /* egal */ } rej(new Error('belegt')); }
+      };
+      ws.onerror = () => { clearTimeout(to); rej(new Error('netz')); };
+      ws.onclose = () => { clearTimeout(to); rej(new Error('zu')); };
+    });
+  }
+
+  // Der Vermittler prueft die Nutzlast und wirft den Absender hinaus, wenn sie nicht
+  // aussieht wie die der PeerJS-Bibliothek. Gemessen: mit schlanker Nutzlast schliesst
+  // er die Verbindung (Code 1000), mit dieser Huelle leitet er weiter. Was drin steht,
+  // ist ihm egal - nur die Felder muessen da sein.
+  _sig(type, data, dst) {
+    const d = dst || this.dst;
+    if (!this.ws || this.ws.readyState !== 1 || !d) return;
+    const payload = Object.assign({ type: 'data', connectionId: this.cid, browser: 'chrome', label: this.cid, reliable: false, serialization: 'binary' }, data);
+    this.ws.send(JSON.stringify({ type, dst: d, payload }));
+  }
+
+  async _fromBroker(e) {
+    let m; try { m = JSON.parse(e.data); } catch (err) { return; }
+    const pc = this.pc;
+    const p = m.payload || {};
+    try {
+      if (m.type === 'OFFER' && pc && p.sdp) {
+        this.dst = m.src;
+        await pc.setRemoteDescription(p.sdp);
+        await pc.setLocalDescription(await pc.createAnswer());
+        this._sig('ANSWER', { sdp: { type: pc.localDescription.type, sdp: pc.localDescription.sdp } });
+        for (const c of this._queued || []) this._sig('CANDIDATE', { candidate: c });
+        this._queued = [];
+      } else if (m.type === 'ANSWER' && pc && p.sdp) {
+        if (pc.signalingState === 'have-local-offer') await pc.setRemoteDescription(p.sdp);
+      } else if (m.type === 'CANDIDATE' && pc && p.candidate) {
+        await pc.addIceCandidate(p.candidate);
+      }
+    } catch (err) { /* zu frueh, doppelt oder veraltet - der naechste Versuch kommt */ }
+  }
+
+  // Trickle: jeder gefundene Weg geht sofort raus, statt am Ende gesammelt zu werden.
+  // Solange das Gegenueber noch unbekannt ist, warten sie in der Schlange.
+  _trickle() {
+    this._queued = [];
+    this.pc.onicecandidate = e => {
+      if (!e.candidate) return;
+      const c = e.candidate.toJSON ? e.candidate.toJSON() : e.candidate;
+      if (this.dst) this._sig('CANDIDATE', { candidate: c }); else this._queued.push(c);
+    };
+  }
+
+  // Eine Runde aufmachen: gibt die Kennung zurueck, die der andere eintippt
+  async hostCode() {
+    this._pc();
+    this.pc.ondatachannel = e => { if (e.channel.label === 'm') this.move = e.channel; else this.evt = e.channel; this._wire(e.channel); };
+    this._trickle();
+    let code = null;
+    for (let i = 0; i < 6 && !code; i++) {
+      const c = newCode();
+      try { await this._sock(peerId(c)); code = c; }
+      catch (err) { if (err.message !== 'belegt') throw err; }
+    }
+    if (!code) throw new Error('belegt');
+    this.code = code; this._set('warten');
+    return code;
+  }
+
+  // Einer Runde beitreten. Der Beitretende baut die Kanaele und stellt den Antrag.
+  async joinCode(code) {
+    this._pc();
+    this.move = this.pc.createDataChannel('m', { ordered: false, maxRetransmits: 0 });
+    this.evt = this.pc.createDataChannel('e');
+    this._wire(this.move); this._wire(this.evt);
+    this._trickle();
+    await this._sock(peerId(newCode() + newCode()));      // eigene Kennung, die niemand kennen muss
+    this.dst = peerId(code.trim().toUpperCase());
+    await this.pc.setLocalDescription(await this.pc.createOffer());
+    this._sig('OFFER', { sdp: { type: this.pc.localDescription.type, sdp: this.pc.localDescription.sdp } });
+    for (const c of this._queued || []) this._sig('CANDIDATE', { candidate: c });
+    this._queued = [];
+    this._set('warten');
+  }
+
+  close() {
+    clearInterval(this._beat); this._beat = 0;
+    if (this.ws) { try { this.ws.onclose = null; this.ws.close(); } catch (e) { /* egal */ } }
+    if (this.pc) { try { this.pc.close(); } catch (e) { /* egal */ } }
+    this.ws = null; this.dst = null; this.code = null;
+    this.pc = this.move = this.evt = null; this.peer = null; this.buf.length = 0; this._set('aus');
+  }
+
+  _pc() {
+    this.close();
+    this.pc = new RTCPeerConnection(ICE);
+    this.pc.onconnectionstatechange = () => {
+      const s = this.pc && this.pc.connectionState;
+      // 'connected' heisst nur, dass die Leitung steht - die Datenkanaele gehen erst danach
+      // auf. Wer hier schon sendet, dessen Begruessung faellt ins Leere.
+      if (s === 'failed' || s === 'disconnected' || s === 'closed') { this.peer = null; this.buf.length = 0; this._set('weg'); }
+    };
+  }
+  _set(s) { if (s === this.state) return; this.state = s; this.onState(s); }
+
+  // Erst senden, wenn alle Kandidaten gesammelt sind - sonst fehlt dem Code die halbe
+  // Wegbeschreibung und die Verbindung kommt nur im selben Netz zustande.
+  _code() {
+    return new Promise(res => {
+      const pc = this.pc;
+      const done = () => { if (!pc.localDescription) return; encode(pc.localDescription).then(res); };   // zwischendurch geschlossen: nichts mehr zu melden
+      if (this.pc.iceGatheringState === 'complete') return done();
+      const t = setTimeout(done, 4000);                       // manche Netze sammeln ewig weiter
+      pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === 'complete') { clearTimeout(t); done(); } };
+    });
+  }
+
+  _wire(ch) {
+    ch.binaryType = 'arraybuffer';
+    // Verbunden ist man erst, wenn beide Kanaele offen sind
+    const check = () => { if (this.move && this.move.readyState === 'open' && this.evt && this.evt.readyState === 'open') this._set('verbunden'); };
+    if (ch.readyState === 'open') check(); else ch.onopen = check;
+    ch.onclose = () => { this.peer = null; this.buf.length = 0; if (this.state === 'verbunden') this._set('weg'); };
+    ch.onmessage = e => {
+      if (typeof e.data === 'string') { try { this.onEvent(JSON.parse(e.data)); } catch (err) { /* kaputtes Paket verwerfen */ } return; }
+      this._readMove(new DataView(e.data));
+    };
+  }
+
+  // 20 Byte: Orte als Zentimeter in 16 Bit, Winkel und Anteile in je einem Byte
+  sendMove(S, tip) {
+    const ch = this.move;
+    if (!ch || ch.readyState !== 'open') return;
+    const b = new DataView(new ArrayBuffer(PACK)); let o = 0;
+    const p16 = v => { b.setInt16(o, Math.max(-32768, Math.min(32767, Math.round(v * 100))), true); o += 2; };
+    const a8 = v => { b.setUint8(o++, Math.round((v / 6.2832 % 1 + 1) % 1 * 255)); };
+    const k8 = v => { b.setUint8(o++, Math.max(0, Math.min(255, Math.round(v * 255)))); };
+    p16(S.px); p16(S.pz); a8(S.face); a8(S.yaw);
+    // Zustand und Montage teilen sich ein Byte: unten der Zustand, oben die Rute. Ohne die
+    // Montage kann die Gegenseite nicht wissen, ob am Ende der Schnur eine Nymphe in der
+    // Tiefe haengt, ein Indikator schwimmt oder eine Trockenfliege obenauf sitzt - und
+    // zeichnet dann fuer alle drei dasselbe.
+    b.setUint8(o++, Math.max(0, MODES.indexOf(S.mode)) | (Math.max(0, RIGS_N.indexOf(S.rig || 'euro')) << 4));
+    p16(tip.x); p16(tip.y); p16(tip.z);
+    p16(S.nymph.x); p16(S.nymph.z); k8(Math.min(2.55, S.nymph.d || 0) / 2.55);
+    k8(Math.min(1, S.walk || 0));
+    ch.send(b.buffer);
+  }
+
+  _readMove(b) {
+    let o = 0;
+    const p16 = () => { const v = b.getInt16(o, true) / 100; o += 2; return v; };
+    const a8 = () => b.getUint8(o++) / 255 * 6.2832;
+    const k8 = () => b.getUint8(o++) / 255;
+    const px = p16(), pz = p16(), face = a8(), yaw = a8();
+    const mr = b.getUint8(o++);
+    const mode = MODES[mr & 15] || 'idle', rig = RIGS_N[mr >> 4] || 'euro';
+    const tip = { x: p16(), y: p16(), z: p16() };
+    const fly = { x: p16(), z: p16(), d: k8() * 2.55 };
+    const walk = k8();
+    const now = performance.now();
+    this.peer = { px, pz, face, yaw, mode, rig, tip, fly, walk, t: now };
+    this.buf.push(this.peer);
+    while (this.buf.length > 40) this.buf.shift();
+  }
+
+  // Zwischenstand fuer das Zeichnen.
+  //
+  // Gezeichnet wird bewusst 120 ms in der Vergangenheit: zwischen den beiden Paketen,
+  // die diesen Zeitpunkt einschliessen, wird linear geteilt. Dadurch ist die Darstellung
+  // unabhaengig davon, wann genau ein Paket ankommt, und ein verlorenes Paket - der Kanal
+  // ist unzuverlaessig - faellt nicht auf, weil das naechste den Zwischenraum ueberbrueckt.
+  //
+  // Vorher wurde zwischen den letzten beiden Paketen mit dem gemessenen Abstand als Dauer
+  // geteilt. Das haengt an der Paketfolge: kommt eines spaeter als das vorige, ist die
+  // Strecke schon abgelaufen und die Bewegung steht; kommt das naechste frueher, springt
+  // sie. Am Koerper faellt das kaum auf - an der Rutenspitze schon, denn die legt denselben
+  // Zeitfehler ueber einen viel groesseren Weg zurueck.
+  //
+  // Gemessen (mittlere Richtungsaenderung je Bild an einer schwingenden Rutenspitze, in mm;
+  // die Bewegung selbst hat 2,66):
+  //                       gleichmaessig   50 ms Schwanken   30 ms + 10 % Verlust
+  //   alte Rechnung            2,67            21,65               17,71
+  //   weiches Nachlaufen      11,61            11,18               11,37
+  //   dieser Puffer            2,67             2,67                5,84
+  lerped() {
+    const b = this.buf;
+    if (!b.length) return null;
+    // Die Verzoegerung richtet sich nach den tatsaechlichen Paketabstaenden. Gemessen
+    // schwanken die zwischen 31 und 115 ms, obwohl alle 66 ms gesendet wird - mit einem
+    // festen Puffer von 120 ms laeuft er bei jedem groesseren Loch leer, friert ein und
+    // springt beim naechsten Paket. Genau das sah man als Ruckeln.
+    const rt = performance.now() - this._delay();
+    let i = b.length - 1;
+    while (i > 0 && b[i].t > rt) i--;
+    const a = b[i], c = b[i + 1];
+    if (!c) return this._ahead(b, a, rt);               // nichts Neueres da: kurz weiterlaufen lassen
+    const k = Math.max(0, Math.min(1, (rt - a.t) / Math.max(1, c.t - a.t)));
+    const l = (x, y) => x + (y - x) * k;
+    let da = ((c.face - a.face + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    return {
+      px: l(a.px, c.px), pz: l(a.pz, c.pz), face: a.face + da * k,
+      tip: { x: l(a.tip.x, c.tip.x), y: l(a.tip.y, c.tip.y), z: l(a.tip.z, c.tip.z) },
+      fly: { x: l(a.fly.x, c.fly.x), z: l(a.fly.z, c.fly.z), d: l(a.fly.d, c.fly.d) },
+      mode: a.mode, rig: a.rig, walk: l(a.walk, c.walk),
+    };
+  }
+
+  // Tiefe des Puffers: etwa das Anderthalbfache des groessten Lochs der letzten Sekunden,
+  // begrenzt auf 120 bis 260 ms. Tief genug fuer die Schwankung, ohne unnoetig nachzuhinken.
+  _delay() {
+    const b = this.buf;
+    if (b.length < 4) return 140;
+    let mx = 0;
+    for (let i = Math.max(1, b.length - 20); i < b.length; i++) mx = Math.max(mx, b[i].t - b[i - 1].t);
+    return Math.max(120, Math.min(260, mx * 1.6));
+  }
+
+  // Laeuft der Puffer doch einmal leer, wird die letzte Bewegung kurz weitergefuehrt statt
+  // eingefroren. Einfrieren und dann Nachsetzen sieht aus wie ein Ruck; ein paar Zentimeter
+  // zu weit laufen sieht man nicht.
+  _ahead(b, a, rt) {
+    const prev = b[b.length - 2];
+    if (!prev || b[b.length - 1] !== a) return a;
+    const span = a.t - prev.t;
+    if (span < 8) return a;
+    const k = Math.min(1.8, (rt - a.t) / span);
+    if (k <= 0) return a;
+    const l = (x, y) => y + (y - x) * k;
+    let da = ((a.face - prev.face + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    return {
+      px: l(prev.px, a.px), pz: l(prev.pz, a.pz), face: a.face + da * k,
+      tip: { x: l(prev.tip.x, a.tip.x), y: l(prev.tip.y, a.tip.y), z: l(prev.tip.z, a.tip.z) },
+      fly: { x: l(prev.fly.x, a.fly.x), z: l(prev.fly.z, a.fly.z), d: a.fly.d },
+      mode: a.mode, rig: a.rig, walk: a.walk,
+    };
+  }
+
+  send(type, data) {
+    const ch = this.evt;
+    if (ch && ch.readyState === 'open') ch.send(JSON.stringify({ type, ...data }));
+  }
+
+}
