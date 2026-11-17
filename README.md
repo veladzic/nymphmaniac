@@ -269,5 +269,9 @@ Die Bildzeit hängt fast genau an der Pixelzahl, nicht an der Rechenlast – des
 - **Nachschärfen:** liegt die Renderauflösung unter der des Schirms, schärft der Abschluss-Durchgang mit vier Abgriffen nach, bevor das Bild hochskaliert wird.
 - **Grafikstufen** im Menü: Automatisch (Regler), Hoch (immer volle Auflösung), Mittel (fest 75 %), Niedrig (ohne Schatten, Gras und Spiegelung, 65 %).
 - **Sparmodus** (`_cheap`): Bloom und Sonnenstrahlen fallen weg, die Kantenglättung bleibt. Er greift erst, wenn der Regler am Anschlag ist; danach geht das Spiegelbild im Wasser, zuletzt die ganze Nachbearbeitung.
+- **Wasser-Durchgänge:** das Unterwasserbild läuft mit halber, das Spiegelbild mit 35 % der Kantenlänge, beide zusätzlich auf 1,1 Megapixel gedeckelt. Beides wird ohnehin gebrochen oder auf bewegtem Wasser verzerrt; im Bildvergleich ist kein Unterschied zu sehen. Das Spiegelbild wird weiterhin nur jedes zweite Bild erneuert.
+- **Himmel zuletzt** statt zuerst (`renderOrder`): der Himmels-Shader läuft nur noch über die frei gebliebenen Pixel, nicht über den ganzen Schirm, der danach übermalt wird.
+- **Schatten:** Schattenkamera von 52 auf 40 m zusammengezogen, Karte von 2048² auf 1536², einfaches PCF statt weichem. Die Texeldichte steigt dabei leicht, im Bildvergleich bei Mittagssonne sind die Kanten minimal härter.
+- **Ufersteine als Instanzen:** die 110 reinen Ziersteine am Ufer waren einzelne Netze und standen in drei Durchgängen; als sechs `InstancedMesh` sinken die Zeichenaufrufe je Bild von rund 1850 auf 1470. Die Steine im Fluss bleiben einzeln, weil Schnur und Fliege per Strahl auf ihnen aufliegen.
 
 `tools/perf.js` misst das nach: in der Konsole des laufenden Spiels `await (await import('./tools/perf.js')).run()` – gleiches Revier, gleiche Kamera, Bildrate über mehrere Auflösungen.

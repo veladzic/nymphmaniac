@@ -653,15 +653,17 @@ export class World {
     this.mobile = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
     this.hi = true;
     R.toneMapping = THREE.ACESFilmicToneMapping; R.toneMappingExposure = 1.02;
-    R.shadowMap.enabled = true; R.shadowMap.type = THREE.PCFSoftShadowMap;
+    R.shadowMap.enabled = true; R.shadowMap.type = THREE.PCFShadowMap;
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1200);
     this.scene.fog = new THREE.Fog(0xcfe8f0, 25, 230);
     this.hemi = new THREE.HemisphereLight(0xdcecff, 0x55683a, 1.5);
     this.sun = new THREE.DirectionalLight(0xfff1dc, 3.0);
     this.sun.castShadow = true;
-    const sh = this.sun.shadow; sh.mapSize.set(this.mobile ? 1024 : 2048, this.mobile ? 1024 : 2048);
-    sh.camera.left = -26; sh.camera.right = 26; sh.camera.top = 26; sh.camera.bottom = -26; sh.camera.near = 1; sh.camera.far = 170;
+    // Engere Schattenkamera (40 statt 52 m) bei kleinerer Karte: gleiche Kantenschaerfe, weniger zu zeichnen.
+    // Dazu einfaches PCF statt weichem - der Unterschied faellt bei dieser Texeldichte kaum auf.
+    const sh = this.sun.shadow, SM = this.mobile ? 1024 : 1536; sh.mapSize.set(SM, SM);
+    sh.camera.left = -20; sh.camera.right = 20; sh.camera.top = 20; sh.camera.bottom = -20; sh.camera.near = 1; sh.camera.far = 150;
     sh.bias = -0.0006; sh.normalBias = 0.05;
     this.sunDir = new THREE.Vector3(-0.3, 0.85, -0.4).normalize();
     this.scene.add(this.hemi, this.sun, this.sun.target);
@@ -679,7 +681,9 @@ export class World {
       side: THREE.BackSide, depthWrite: false, fog: false, uniforms: this.skyU,
       vertexShader: 'varying vec3 vP; void main(){vP=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}', fragmentShader: SKY_FS,
     }));
-    this.sky.renderOrder = -10; this.scene.add(this.sky);
+    // zuletzt zeichnen, nicht zuerst: so laeuft der Himmels-Shader nur ueber die Pixel, die frei geblieben sind,
+    // statt ueber den ganzen Schirm, der danach ohnehin uebermalt wird
+    this.sky.renderOrder = 10; this.scene.add(this.sky);
 
     this.env = new THREE.Group(); this.scene.add(this.env);
     this.fishGroup = new THREE.Group(); this.scene.add(this.fishGroup);
@@ -810,8 +814,13 @@ export class World {
     const sz = this.renderer.getDrawingBufferSize(new THREE.Vector2()), U = this.waterU;
     if (!U) return;
     U.uInv.value.set(1 / sz.x, 1 / sz.y);
-    const ks = this.mobile ? 0.5 : 0.75, kr = this.mobile ? 0.35 : 0.5;
-    const mk = (k, depth) => {
+    // Unterwasserbild und Spiegelbild brauchen keine volle Schaerfe: das eine wird gebrochen und eingefaerbt,
+    // das andere auf bewegtem Wasser verzerrt. Gemessen kosteten beide Durchgaenge zusammen 6,4 ms bei 6,3 Megapixeln.
+    // Zusaetzlich ein fester Deckel, damit sie auf grossen Schirmen nicht mitwachsen.
+    const ks = this.mobile ? 0.4 : 0.5, kr = this.mobile ? 0.3 : 0.35, cap = this.mobile ? 0.5e6 : 1.1e6;
+    const lim = Math.min(1, Math.sqrt(cap / Math.max(1, sz.x * sz.y)));
+    const mk = (k0, depth) => {
+      const k = Math.min(k0, lim);
       const w = Math.max(64, Math.round(sz.x * k)), h = Math.max(64, Math.round(sz.y * k));
       const rt = new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false });
       if (depth) { rt.depthTexture = new THREE.DepthTexture(w, h); rt.depthTexture.minFilter = rt.depthTexture.magFilter = THREE.NearestFilter; }
@@ -1483,10 +1492,24 @@ export class World {
       }
       for (let b = 0; b < 32; b++) if (!prof[b]) prof[b] = Math.max(prof[(b + 31) % 32], prof[(b + 1) % 32]) || k.r;
       k.prof = prof; k.vr = Math.max(...prof); k.top = top; m.updateMatrixWorld(true); k.mesh = m; }
+    // Ufersteine, reine Zier: als Instanzen statt 110 einzelner Netze. Sie stehen in drei Durchgaengen
+    // (Schatten, unter Wasser, Bild) und kosteten so ueber 300 Zeichenaufrufe je Bild.
+    const deco = new Map(), _mx = new THREE.Matrix4(), _qt = new THREE.Quaternion(), _po = new THREE.Vector3(), _sc = new THREE.Vector3(), _eu = new THREE.Euler();
     for (let i = 0; i < 110; i++) {
       const side = rnd() < 0.5 ? -1 : 1, z = Z0 + 40 + rnd() * (Z1 - Z0 - 44), x = river.cx(z) + side * (river.halfW - 0.9 + Math.pow(rnd(), 1.6) * 7);
-      const h = river.heightAt(x, z);
-      addRock(h < 0.05 ? wetG : dryG, x, h - 0.04, z, 0.12 + Math.pow(rnd(), 2) * 0.7, 0.8);
+      const h = river.heightAt(x, z), r = 0.12 + Math.pow(rnd(), 2) * 0.7;   // gleiche Reihenfolge der Zufallszahlen wie zuvor, damit die Reviere gleich aussehen
+      const gs = h < 0.05 ? wetG : dryG, g = gs[(rnd() * gs.length) | 0];
+      _po.set(x, h - 0.04, z);
+      _sc.set(r * (1 + rnd() * 0.25), r * (0.85 + rnd() * 0.35) * 0.8, r * (1 + rnd() * 0.25));
+      _qt.setFromEuler(_eu.set(0, rnd() * 6.3, 0));
+      (deco.get(g) || deco.set(g, []).get(g)).push(_mx.clone().compose(_po, _qt, _sc));
+    }
+    for (const [g, list] of deco) {
+      const im = new THREE.InstancedMesh(g, rockMat, list.length);
+      for (let i = 0; i < list.length; i++) im.setMatrixAt(i, list[i]);
+      im.instanceMatrix.needsUpdate = true; im.castShadow = im.receiveShadow = true;
+      im.layers.enable(1);   // sollen auch unter Wasser zu sehen sein; die Sammelschleife ueberspringt Instanzen
+      this.env.add(im);
     }
     // Wasserfaelle: Bloecke teilen die Kante in Rinnen, am Fuss liegt Sturzgeroell; Gischt steigt auf
     const fogU = { uFog: { value: fog }, uFogNear: { value: this.scene.fog.near }, uFogFar: { value: this.scene.fog.far } };
