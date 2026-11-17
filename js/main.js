@@ -11,7 +11,14 @@ import { Sfx } from './audio.js';
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const pick = a => a[(Math.random() * a.length) | 0];
-const fmt = (n, d = 1) => n.toFixed(d).replace('.', ',');
+// Das Komma ist nicht ueberall das Dezimalzeichen: im Englischen steht dort ein Punkt.
+// Die handgeschriebenen Zeilen der Tabelle halten sich daran ("3.5 mm bead"), die
+// gerechneten Zahlen taten es nicht - "Bead 4,0 mm" mitten im englischen Text.
+const fmt = (n, d = 1) => n.toFixed(d).replace('.', getLang() === 'en' ? '.' : ',');
+// Vor dem Prozentzeichen steht im Deutschen und Italienischen ein Leerzeichen, im
+// Englischen nicht
+const pct = n => getLang() === 'en' ? n + '%' : n + ' %';
+const capF = s => s.charAt(0).toUpperCase() + s.slice(1);
 
 // ---------- Spielstand ----------
 const KEY = 'nymphmaniac_v1';
@@ -91,7 +98,7 @@ function showLoader(pre, title, sub, status, boot) {
   $('ldTip').innerHTML = `<b>${T('Opas Rat')}</b>${T(pick(LD_TIPS))}`;
   if (boot) return;   // beim Start steht er schon seit dem ersten Bild da
   Object.assign(Load, { on: true, n0: Load.n, tot0: Load.tot, t0: performance.now(), frames: 0, p: 0, min: 900 });
-  $('ldFill').style.transition = 'none'; $('ldFill').style.width = '0'; $('ldPct').textContent = '0 %';
+  $('ldFill').style.transition = 'none'; $('ldFill').style.width = '0'; $('ldPct').textContent = pct(0);
   el.classList.remove('hidden', 'out'); el.classList.add('in'); void el.offsetWidth; el.classList.remove('in'); $('ldFill').style.transition = '';
 }
 function loadTick() {   // jedes Bild: Fortschritt nachfuehren und ausblenden, sobald alles da ist
@@ -101,7 +108,7 @@ function loadTick() {   // jedes Bild: Fortschritt nachfuehren und ausblenden, s
   const ready = (!Load.hold && !Load.busy && !world.anglerPending && Load.frames > 3 && el > Load.min) || el > 20000;
   // ohne neue Dateien (Revier schon im Speicher) laeuft der Balken ueber die Zeit; fertig ist erst, wenn auch ein paar Bilder gezeichnet sind
   const p = ready ? 1 : Math.min(0.96, 0.9 * Math.min(files, tot > 0 ? 1 : el / Load.min) + 0.06 * Math.min(1, Load.frames / 4));
-  if (p > Load.p) { Load.p = p; $('ldFill').style.width = (p * 100).toFixed(1) + '%'; $('ldPct').textContent = Math.round(p * 100) + ' %'; }
+  if (p > Load.p) { Load.p = p; $('ldFill').style.width = (p * 100).toFixed(1) + '%'; $('ldPct').textContent = pct(Math.round(p * 100)); }
   if (ready) { Load.on = false; const e = $('loader'); e.classList.add('out'); setTimeout(() => { if (!Load.on) e.classList.add('hidden'); }, 600); }
 }
 // Revierwechsel hinter dem Ladebildschirm: erst einblenden, dann die Strecke bauen (das Bauen haelt das Bild kurz an)
@@ -962,7 +969,10 @@ function showRig(slot) {
   fixSel();
   const rm = rigMode(), rg = RIGS.find(r => r.id === rm), fly = curFly(), tp = curTippet(), bd = curBead(), ind = curInd(), wide = loWide();
   const load = bd.sink * fly.sink, indSt = k => load > k.cap ? 2 : load > k.cap * 0.85 ? 1 : 0;
-  const slots = [{ id: 'mode', k: T('Rute'), v: T(rg.name) }];
+  // 'Rute' gehoert auch an den Knopf unter der Rute, und dort stehen die Woerter klein
+  // ("waten", "rod"). In dieser Liste stehen daneben Fliege, Perle und Vorfach gross -
+  // darum hier der grosse Anfangsbuchstabe, im Deutschen ohnehin derselbe.
+  const slots = [{ id: 'mode', k: capF(T('Rute')), v: T(rg.name) }];
   if (rm === 'indi') { slots.push({ id: 'ind', k: T('Indikator'), v: T(ind.name), dot: ind.col, bad: indSt(ind) === 2, warn: indSt(ind) === 1 }); slots.push({ id: 'depth', k: T('Tiefe'), v: fmt(save.rig.depth) + ' m' }); }
   slots.push({ id: 'fly', k: T('Fliege'), v: fly.name, s: '×' + (save.flies[fly.id] || 0), bad: !(save.flies[fly.id] > 0) });
   if (rm !== 'dry') slots.push({ id: 'bead', k: T('Perle'), v: fmt(bd.mm) + ' mm' });
@@ -1068,7 +1078,7 @@ function showMulti(skipOffer) {
   const st = net.state;
   let h = `<h2>${T('Zu zweit fischen')}</h2>`;
   if (st === 'verbunden') {
-    h += `<p class="small"><b>${T('Verbunden.')}</b> ${netName ? T('Mit {0}.', netName) : ''} ${S.mode === 'title' ? T('Drück „Ans Wasser“ – ihr seht einander, sobald ihr im selben Revier steht.') : netRevier === save.revier ? T('Ihr steht im selben Revier.') : T('Ihr seid in verschiedenen Revieren – ihr seht einander erst im selben.')}</p>`;
+    h += `<p class="small"><b>${T('Verbunden.')}</b> ${netName ? T('Mit {0}.', netName) : ''} ${S.mode === 'title' ? T('Ihr seht einander, sobald ihr beide im selben Revier am Wasser steht.') : netRevier === save.revier ? T('Ihr steht im selben Revier.') : T('Ihr seid in verschiedenen Revieren – ihr seht einander erst im selben.')}</p>`;
     if (net.via === 'vermittler') h += `<p class="small">${T('Eure Netze lassen keine direkte Leitung zu – es läuft über den Vermittler. Das geht, ist aber einen Wimpernschlag träger.')}</p>`;
     h += `<button class="ghost danger" data-act="netoff">${T('Verbindung trennen')}</button>`;
   } else {
@@ -1090,69 +1100,18 @@ function netOffer() {
      <button class="primary" data-act="netshare" data-id="netOut">${T('Kennung teilen')}</button>
      <p class="small">${T('Oder tipp hier die Kennung ein, die du bekommen hast:')}</p>
      <input id="netIn" class="netin" maxlength="5" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="ABC12">
-     <button class="primary" data-act="netgo">${T('Verbinden')}</button>
-     <p class="small"><a href="#" data-act="netmanual">${T('Klappt es nicht? Über einen Link verbinden')}</a></p>`))
+     <button class="primary" data-act="netgo">${T('Verbinden')}</button>`))
     .catch(() => netStep(`<p class="small">${T('Der Vermittlungsdienst ist gerade nicht erreichbar.')}</p>
-      <button class="primary" data-act="netagain">${T('Noch einmal versuchen')}</button>
-      <p class="small"><a href="#" data-act="netmanual">${T('Über einen Link verbinden')}</a></p>`));
-}
-
-// Rueckfall ohne fremden Dienst: der alte Weg mit Einladungslink
-function netManual() {
-  net.host().then(code => netStep(
-    `<p class="small">${T('1. Diesen Link verschicken – der andere muss ihn nur antippen.')}</p>` +
-    netFeld('netOut', '', netLink('j', code), true) + netShareBtn('netOut', T('Einladung teilen')) +
-    `<p class="small">${T('2. Was zurückkommt, hier einfügen – oder eine Einladung, die du selbst bekommen hast:')}</p>` +
-    netFeld('netIn', '', '', false) +
-    `<button class="primary" data-act="netlink">${T('Verbinden')}</button>`))
-    .catch(() => netStep(`<p class="small">${T('Die Verbindung lässt sich hier nicht aufbauen.')}</p>`));
-}
-
-// Einer Einladung folgen - egal ob aus dem Feld oder aus einem angetippten Link
-function netJoinWith(code) {
-  netStep(`<p class="small">${T('Einladung erhalten. Erzeuge Antwort …')}</p>`);
-  return net.join(code).then(ans => netStep(
-    `<p class="small">${T('Das zurückschicken. Sobald der andere es eingesetzt hat, steht die Verbindung.')}</p>` +
-    netFeld('netOut', '', netLink('a', ans), true) + netShareBtn('netOut', T('Antwort teilen'))))
-    .catch(() => netStep(`<p class="small">${T('Mit dem Link stimmt etwas nicht.')}</p>`));
+      <button class="primary" data-act="netagain">${T('Noch einmal versuchen')}</button>`));
 }
 
 function netStep(html) { const e = $('netStep'); if (e) e.innerHTML = html; }
 
-// Ein 670-Zeichen-Block laesst sich in einem Chat schlecht verschicken: er wird umgebrochen,
-// abgeschnitten oder als Zitat verunstaltet. Als Link ueberlebt er das und der andere muss
-// ihn nur antippen - das Spiel oeffnet sich dann gleich an der richtigen Stelle.
-const netLink = (kind, code) => location.origin + location.pathname + '#' + kind + '=' + encodeURIComponent(code.replace(/\s+/g, ''));
-// Aus dem Feld darf alles kommen: der nackte Code, ein Link, oder ein Link mit Text drumherum
-function netCode(raw) {
-  const t = (raw || '').trim();
-  const m = t.match(/#[ja]=([^\s]+)/);
-  if (m) { try { return decodeURIComponent(m[1]); } catch (e) { return m[1]; } }
-  return t;
-}
 // Teilen: am Handy das Systemblatt (dort steht WhatsApp ganz oben), sonst WhatsApp direkt
 function netShare(text, title) {
   if (navigator.share) { navigator.share({ title, text }).catch(() => { /* abgebrochen ist kein Fehler */ }); return; }
   window.open('https://wa.me/?text=' + encodeURIComponent(title + '\n' + text), '_blank', 'noopener');
 }
-const netShareBtn = (id, label) => `<button class="primary" data-act="netshare" data-id="${id}">${label}</button>
-  <button class="ghost" data-act="netcopy" data-id="${id}">${T('Link kopieren')}</button>`;
-
-// Wer auf einen geteilten Link tippt, soll nicht erst ein Menue suchen muessen: das Spiel
-// macht den Dialog auf und hat den Code schon drin. Die Adresse wird danach bereinigt,
-// damit ein Neuladen nicht denselben Code noch einmal einwirft.
-function netFromLink() {
-  const m = location.hash.match(/^#([ja])=(.+)$/);
-  if (!m) return;
-  let code; try { code = decodeURIComponent(m[2]); } catch (e) { code = m[2]; }
-  history.replaceState(null, '', location.pathname + location.search);
-  if (m[1] === 'j') { showMulti(true); netJoinWith(code); }
-  else if (net.state === 'warten') { showMulti(); net.accept(code).then(() => netStep(`<p class="small">${T('Verbinde …')}</p>`)); }
-  else { showMulti(); netStep(`<p class="small">${T('Diese Antwort gehört zu einem Spiel, das hier nicht mehr offen ist. Der Gastgeber muss sie in sein laufendes Fenster einfügen.')}</p>`); }
-}
-
-const netFeld = (id, label, val, ro) => `<label class="slider"><b>${label}</b></label>
-  <textarea id="${id}" class="netcode" rows="3" spellcheck="false" ${ro ? 'readonly' : ''} placeholder="${ro ? '' : T('Code hier einfügen')}">${val || ''}</textarea>`;
 
 function showSettings() {
   const tg = (k, label, sub) => `<label class="toggle"><input type="checkbox" data-set="${k}" ${save.set[k] ? 'checked' : ''}><span><b>${label}</b><br><span class="small">${sub}</span></span></label>`;
@@ -1170,7 +1129,7 @@ function showSettings() {
     ${tg('ao', T('Umgebungsverdeckung'), T('Dunkelt ab, wo Dinge aneinanderstoßen – am Fuß der Steine, wo das Ufer ins Wasser läuft. Sieht deutlich echter aus und ist der einzige Posten, der spürbar Leistung kostet.'))}
     <h3>${T('Ton & Vibration')}</h3>
     ${tg('sound', T('Ton'), T('Flussrauschen, Rollenbremse, Schritte und Vogelstimmen.'))}
-    <label class="slider"><b>${T("Lautstärke")}</b> <span id="volV">${Math.round(save.set.vol * 100)} %</span><input type="range" id="volR" min="0" max="100" step="5" value="${Math.round(save.set.vol * 100)}"></label>
+    <label class="slider"><b>${T("Lautstärke")}</b> <span id="volV">${pct(Math.round(save.set.vol * 100))}</span><input type="range" id="volR" min="0" max="100" step="5" value="${Math.round(save.set.vol * 100)}"></label>
     ${tg('vib', T('Vibration'), T('Haptik bei Biss und Drill (nur am Handy).'))}
     <h3 data-act="godtap">${T('Punkte & Stufen')}</h3>
     ${godOn() ? `<p class="small"><b>${T('Godmode aktiv.')}</b> ${T('Alle Reviere und die höchste Stufe sind offen. Was du so fängst, zählt nicht für deinen Spielstand.')}</p>
@@ -1231,25 +1190,11 @@ $('modalBody').addEventListener('click', e => {
     net.joinCode(c).catch(() => netStep(`<p class="small">${T('Unter dieser Kennung wartet niemand.')}</p>
       <button class="primary" data-act="netagain">${T('Noch einmal versuchen')}</button>`));
   }
-  else if (a === 'netmanual') netManual();
-  // Rueckfall: dasselbe Feld nimmt Antwort oder Einladung
-  else if (a === 'netlink') {
-    const raw = ($('netIn') || {}).value || '', c = netCode(raw);
-    if (!c.trim()) return toast(T('Da fehlt der Link.'));
-    if (/#j=/.test(raw) || net.state !== 'warten') netJoinWith(c);
-    else net.accept(c).then(() => netStep(`<p class="small">${T('Verbinde …')}</p>`)).catch(() => netJoinWith(c));
-  }
   else if (a === 'netshare') {
     const e = $(b.dataset.id); if (!e) return;
-    // Feld (Link) oder Kennung: beim Code kommt die Adresse des Spiels dazu, damit der
-    // andere weiss, wo er sie eintippen soll
-    const v = e.value !== undefined ? e.value
-      : T('Meine Kennung: {0}', e.textContent.trim()) + '\n' + location.origin + location.pathname;
-    netShare(v, T('Komm fischen – Nymphmaniac'));
-  }
-  else if (a === 'netcopy') {
-    const e = $(b.dataset.id); if (!e) return;
-    e.select(); navigator.clipboard ? navigator.clipboard.writeText(e.value).then(() => toast(T('Kopiert.'), 1400)) : document.execCommand('copy');
+    // Zur Kennung gehoert die Adresse des Spiels, damit der andere weiss, wo er sie eintippen soll
+    netShare(T('Meine Kennung: {0}', e.textContent.trim()) + '\n' + location.origin + location.pathname,
+      T('Komm fischen – Nymphmaniac'));
   }
   else if (a === 'toTitle') toTitle();
   else if (a === 'reset') askSure(T('Wirklich den gesamten Spielstand löschen?'), T('Spielstand löschen'), 'reset2', 'settings');
@@ -1263,7 +1208,7 @@ $('modalBody').addEventListener('change', e => {
 });
 $('modalBody').addEventListener('input', e => {   // Schieberegler: Lautstaerke und Indikatortiefe
   const el = e.target;
-  if (el.id === 'volR') { save.set.vol = +el.value / 100; sfx.setVol(save.set.vol); $('volV').textContent = el.value + ' %'; if (save.set.sound) sfx.tick(); persist(); }
+  if (el.id === 'volR') { save.set.vol = +el.value / 100; sfx.setVol(save.set.vol); $('volV').textContent = pct(el.value); if (save.set.sound) sfx.tick(); persist(); }
   else if (el.id === 'depR') { save.rig.depth = +el.value; $('depV').textContent = fmt(save.rig.depth) + ' m'; persist(); updateHUD(); const pv = $('loPrev'); if (pv) drawRigPreview(pv); const dv = document.querySelector('.slot[data-s=depth] b'); if (dv) dv.textContent = fmt(save.rig.depth) + ' m'; }
 });
 $('modalClose').addEventListener('click', closeModal);
@@ -1718,7 +1663,14 @@ function applyLang() {
   set('#gauge .l', 'lose'); set('#gauge .c', 'Kontakt'); set('#gauge .r', 'Zug'); gaugeLabels();
   set('#fightUI .lab', 'Schnurspannung', 0); set('#fightUI .lab', 'Kraft des Fisches', 1);
   set('#btnRestart', '↺ Strecke von vorn beginnen'); set('#joy small', 'waten'); set('#btnStone small', 'Stein');
+  set('#btnSwap small', 'Rute'); set('#btnMulti', 'Zu zweit fischen');
   set('#strike', S.mode === 'fight' ? 'DRILL' : 'ANHIEB');
+  // Die Beschriftungen fuer Vorlesewerkzeuge stehen fest im HTML und blieben deutsch,
+  // egal welche Sprache eingestellt war
+  const aria = (sel, de) => { const el = document.querySelector(sel); if (el) el.setAttribute('aria-label', T(de)); };
+  aria('#btnJournal', 'Tagebuch'); aria('#btnPov', 'Sicht des Anglers'); aria('#btnSet', 'Einstellungen');
+  aria('#joy', 'Waten'); aria('#btnStone', 'Stein umdrehen'); aria('#btnSwap', 'Rute wechseln');
+  aria('#modalClose', 'Schließen');
   document.title = 'Nymphmaniac – ' + T('Das Erbe der Smaragda');
   for (const v of Object.values(SPECIES)) loc(v, 'name', 'note');
   for (const v of Object.values(INSECTS)) loc(v, 'name', 'hint');
@@ -1761,6 +1713,5 @@ setLang(getLang()); applyLang();
 showLoader(T('Ein Euro-Nymphing-Abenteuer'), '', T('Das Erbe der Smaragda'), T('Fluss, Ufer und Licht werden geladen …'), true);
 
 enterRevier(Math.min(save.revier, save.unlocked - 1), true);
-netFromLink();   // mit einem geteilten Link aufgerufen? Dann gleich dorthin
 requestAnimationFrame(frame);
 window.__nm = { S, world, sfx, net, castAim, aimStart, castBand, get netRevier() { return netRevier; }, get save() { return save; }, get fish() { return fish; }, get river() { return river; }, get cond() { return cond; }, doCast, strike, startFight, landed, enterRevier, hand, fleeFish, startBite, kickSample, closeModal, makeFish, flyMatch, get respawn() { return respawn; } };

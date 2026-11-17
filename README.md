@@ -44,7 +44,7 @@ Drei Methoden: Euro-Nymphe mit Sighter, ab Staffel 2 Nymphe unter einem schwimme
 
 Darunter folgen die beiden Nachschlageteile: „Punkte & Stufen" und „Steuerung".
 
-**Zu zweit fischen** (Stufe A). Ohne Server, ohne Konto, ohne Lobby — verschickt wird ein **Link**:
+**Zu zweit fischen** (Stufe A). Ohne eigenen Server, ohne Konto, ohne Lobby — durchgesagt wird eine **fünfstellige Kennung**:
 
 Der Einstieg steht auf dem **Startbildschirm** unter „Weiterfischen"; in den Einstellungen gibt es ihn außerdem.
 
@@ -54,7 +54,7 @@ Die Kennung kommt vom **öffentlichen Vermittler von PeerJS** (`0.peerjs.com`) �
 
 Der Buchstabenvorrat lässt `I`, `O`, `0` und `1` weg, damit man die Kennung vorlesen kann, ohne sich zu verhaspeln. Ist eine Kennung schon vergeben, wird eine neue gezogen (bis zu sechsmal).
 
-**Fällt der Vermittler aus**, steht unter dem Feld „Klappt es nicht? Über einen Link verbinden": derselbe Weg wie zuvor, ganz ohne fremden Dienst — ein Link, den man verschickt, und eine Antwort zurück. Beide Felder nehmen auch die ganze Chatnachricht mitsamt Text drumherum.
+**Fällt der Vermittler aus**, sagt der Dialog das und bietet einen neuen Versuch an. Darunter stand lange ein zweiter Weg ohne fremden Dienst: ein Einladungslink hin, ein Antwortlink zurück, beides 700 Zeichen im Fragment der Adresse. Der ist **entfernt** — im Gebrauch kam damit keine Verbindung zustande, und ein Rückfall, der nicht trägt, ist schlimmer als keiner: Er sieht aus wie ein Ausweg und kostet den Spieler nur Zeit. Mit ihm fielen `host()`, `join()`, `accept()` und die ganze Kompression des SDP-Textes weg.
 
 **Kommt keine direkte Leitung zustande**, läuft das Spiel über denselben Vermittler weiter. Zwischen manchen Netzen geht es nicht direkt — vor allem hinter Mobilfunk, wo sich viele Anschlüsse eine Adresse teilen. Dafür gibt es sonst einen Relaisserver (TURN), und früher gab es frei nutzbare. Gemessen im November 2026 antwortet keiner mehr: `openrelay.metered.ca`, `relay.metered.ca`, `freeturn.net` und `freestun.net` lösen nicht einmal auf.
 
@@ -64,7 +64,7 @@ Umgeschaltet wird, sobald der Browser `failed` meldet — oder nach 12 Sekunden 
 
 **Reißt die Verbindung ab**, holt der Dialog von selbst eine neue Kennung und sagt darüber, was passiert ist. Vorher blieb er auf „Kennung wird geholt …" stehen und es ging nie mehr weiter.
 
-Die Verbindung läuft danach direkt zwischen den beiden Rechnern (WebRTC). Der Code steckt im Fragment der Adresse (`#j=…` für die Einladung, `#a=…` für die Antwort) und wird nach dem Lesen aus der Adresszeile entfernt, damit ein Neuladen ihn nicht noch einmal einwirft. Ein Antwortlink hilft nur, solange das Fenster des Gastgebers offen ist — steht dort kein wartendes Spiel, sagt der Dialog das.
+Die Verbindung läuft danach direkt zwischen den beiden Rechnern (WebRTC).
 
 **Ihr seht einander waten, werfen, drillen und landen — aber jeder fischt seinen eigenen Besatz.** Niemand nimmt dem anderen einen Fisch weg, niemand scheucht dem anderen einen. Der Spielstand zählt nur lokal; Mehrspieler ist ein Nebenschauplatz, keine zweite Fortschrittslinie.
 
@@ -383,7 +383,13 @@ Jede neu freigeschaltete Fliege liegt dreimal in der Dose. Aufgaben, die bestimm
 
 ## Sprachen
 
-Deutsch, Englisch und Italienisch – Auswahl auf dem Startbildschirm. Die Texte liegen in `js/i18n.js`.
+Deutsch, Englisch und Italienisch – Auswahl auf dem Startbildschirm. Die Texte liegen in `js/i18n.js`, eine Zeile je Satz: `["deutsch", "english", "italiano"]`. `T('deutscher Text')` holt daraus die passende Spalte; Deutsch ist die Quellsprache und steht deshalb als Schlüssel in der Tabelle.
+
+**Was im HTML fest steht, übersetzt `applyLang()`** – Satz für Satz, von Hand gepflegt. Wer dort einen Knopf hinzufügt und ihn vergisst, bekommt kein Fehlersignal: Der Knopf bleibt einfach in jeder Sprache deutsch. Genau so war es beim Knopf „Zu zweit fischen" auf dem Startbildschirm, bei der kleinen Beschriftung „Rute" unter der Rute und bei allen sieben `aria-label` für Vorlesewerkzeuge, die seit jeher deutsch blieben.
+
+**Zahlen gehören auch zur Sprache.** Das Dezimalkomma gilt im Deutschen und Italienischen, im Englischen steht dort ein Punkt; vor dem Prozentzeichen steht im Deutschen und Italienischen ein Leerzeichen, im Englischen nicht. Die handgeschriebenen Zeilen der Tabelle hielten sich daran („3.5 mm bead"), die gerechneten Zahlen nicht – mitten im englischen Text stand „Bead 4,0 mm". `fmt()` und `pct()` entscheiden das jetzt nach der eingestellten Sprache.
+
+Geprüft wird das gegen die laufende Seite: Jeder sichtbare Textknoten und jedes `aria-label` wird nachgeschlagen; steht der deutsche Satz da, wo die Tabelle einen anderen kennt, ist er nicht übersetzt. In allen drei Sprachen bleibt davon nichts übrig.
 
 ## Technik
 

@@ -1,6 +1,5 @@
-// Mehrspieler ohne Server. Zwei Browser verbinden sich direkt miteinander; ausgetauscht
-// wird dafuer genau einmal ein Textblock, den die Spieler sich selbst zuschicken - ueber
-// welchen Weg auch immer. Danach laeuft alles zwischen den beiden Rechnern.
+// Mehrspieler ohne eigenen Server. Zwei Browser verbinden sich direkt miteinander;
+// ausgetauscht wird dafuer nur eine fuenfstellige Kennung, die einer dem anderen durchsagt.
 //
 // Es gibt zwei Kanaele: 'm' traegt die Bewegung, unzuverlaessig und ungeordnet (ein
 // verlorenes Paket ist egal, 66 ms spaeter kommt das naechste), 'e' die seltenen
@@ -25,30 +24,10 @@ export const MODES = ['title', 'idle', 'cast', 'drift', 'fight', 'landed'];
 export const RIGS_N = ['euro', 'indi', 'dry'];   // die Montage gehoert mit uebertragen, siehe sendMove
 const PACK = 20;   // Bytes je Bewegungspaket
 
-// Der rohe SDP-Text ist lang und sehr wiederholungsreich. Deflate drueckt ihn auf etwa
-// ein Drittel, damit aus dem Einladungscode ein Block wird, den man noch kopieren mag.
-async function squeeze(s) {
-  if (!self.CompressionStream) return 'p' + btoa(s);
-  const cs = new CompressionStream('deflate-raw');
-  const buf = await new Response(new Blob([s]).stream().pipeThrough(cs)).arrayBuffer();
-  let bin = ''; for (const b of new Uint8Array(buf)) bin += String.fromCharCode(b);
-  return 'z' + btoa(bin);
-}
-async function unsqueeze(c) {
-  const body = c.slice(1).replace(/\s+/g, '');
-  if (c[0] === 'p') return atob(body);
-  const bin = atob(body), u = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
-  const ds = new DecompressionStream('deflate-raw');
-  return await new Response(new Blob([u]).stream().pipeThrough(ds)).text();
-}
-const encode = async d => (await squeeze(JSON.stringify({ t: d.type, s: d.sdp }))).replace(/(.{72})/g, '$1\n');
-const decode = async c => { const o = JSON.parse(await unsqueeze(c.trim())); return { type: o.t, sdp: o.s }; };
-
 // Oeffentlicher Vermittler von PeerJS. Kein Konto, kein Schluessel - der Dienst leitet
 // nur Nachrichten zwischen zwei Kennungen weiter und sieht den Spielverkehr nie: sobald
-// die Verbindung steht, laeuft alles direkt zwischen den Rechnern. Faellt er aus, bleibt
-// der Weg ueber den geteilten Link.
+// die Verbindung steht, laeuft alles direkt zwischen den Rechnern. Faellt er aus, kommt
+// gar keine Runde zustande - dann sagt der Dialog das und bietet einen neuen Versuch an.
 //
 // Die Bibliothek von PeerJS brauchen wir nicht: Der Server ist ein stummer Weiterleiter,
 // der { type, dst, payload } an die Zielkennung durchreicht. Was in payload steht,
@@ -75,31 +54,7 @@ export class Net {
 
   get on() { return this.state === 'verbunden'; }
 
-  // Gastgeber: Kanaele anlegen, Einladungscode zurueckgeben
-  async host() {
-    this._pc();
-    this.move = this.pc.createDataChannel('m', { ordered: false, maxRetransmits: 0 });
-    this.evt = this.pc.createDataChannel('e');
-    this._wire(this.move); this._wire(this.evt);
-    await this.pc.setLocalDescription(await this.pc.createOffer());
-    this._set('warten');
-    return this._code();
-  }
-
-  // Gast: Einladungscode einsetzen, Antwortcode zurueckgeben
-  async join(code) {
-    this._pc();
-    this.pc.ondatachannel = e => { if (e.channel.label === 'm') this.move = e.channel; else this.evt = e.channel; this._wire(e.channel); };
-    await this.pc.setRemoteDescription(await decode(code));
-    await this.pc.setLocalDescription(await this.pc.createAnswer());
-    this._set('warten');
-    return this._code();
-  }
-
-  // Gastgeber schliesst ab, sobald der Antwortcode da ist
-  async accept(code) { await this.pc.setRemoteDescription(await decode(code)); }
-
-  // ---------- Weg ueber den Vermittler: kurze Kennung statt langem Link ----------
+  // ---------- Weg ueber den Vermittler ----------
 
   _sock(id) {
     return new Promise((res, rej) => {
@@ -294,18 +249,6 @@ export class Net {
     });
   }
   _set(s) { if (s === this.state) return; this.state = s; this.onState(s); }
-
-  // Erst senden, wenn alle Kandidaten gesammelt sind - sonst fehlt dem Code die halbe
-  // Wegbeschreibung und die Verbindung kommt nur im selben Netz zustande.
-  _code() {
-    return new Promise(res => {
-      const pc = this.pc;
-      const done = () => { if (!pc.localDescription) return; encode(pc.localDescription).then(res); };   // zwischendurch geschlossen: nichts mehr zu melden
-      if (this.pc.iceGatheringState === 'complete') return done();
-      const t = setTimeout(done, 4000);                       // manche Netze sammeln ewig weiter
-      pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === 'complete') { clearTimeout(t); done(); } };
-    });
-  }
 
   _wire(ch) {
     ch.binaryType = 'arraybuffer';

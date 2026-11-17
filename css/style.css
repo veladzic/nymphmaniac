@@ -398,11 +398,6 @@ label.slider { display: block; padding: 10px 0 6px; border-top: 1px solid var(--
 .seg button.on { background: var(--gold); color: #2a1a00; border-color: var(--gold); font-weight: 700; }
 .slider.pick .small { grid-column: 1 / -1; opacity: .75; }
 
-/* Mehrspieler: die Verbindungscodes sind lang, also ein Feld zum Kopieren statt einer Zeile */
-.netcode { width: 100%; box-sizing: border-box; font: 11px/1.35 ui-monospace, Menlo, Consolas, monospace;
-  background: rgba(0,0,0,.35); color: #cfe0d8; border: 1px solid var(--line); border-radius: 9px; padding: 8px; resize: vertical; margin: 2px 0 8px; }
-.netcode[readonly] { color: #9fb3aa; }
-
 /* Die Kennung soll man vorlesen koennen, ohne sich zu verhaspeln */
 .netbig { font: 700 34px/1.1 ui-monospace, Menlo, Consolas, monospace; letter-spacing: .16em;
   text-align: center; color: var(--gold); background: rgba(0,0,0,.3); border: 1px solid var(--line);

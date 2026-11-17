@@ -266,6 +266,8 @@ Das ist der Unterschied zwischen einem 700-Zeichen-Link und vier Ziffern.
 
 **So gebaut:** Die Kennung ist der normale Weg, der Link bleibt als Rückfall darunter stehen. Fällt der Vermittler aus, ist das Spiel also nicht tot.
 
+> **Nachtrag (November 2026):** Der Rückfall ist wieder weg. Im Gebrauch kam über den Link keine Verbindung zustande, und ein Rückfall, der nicht trägt, ist schlimmer als keiner — er sieht aus wie ein Ausweg und kostet den Spieler nur Zeit. Fällt der Vermittler heute aus, sagt der Dialog das und bietet einen neuen Versuch an. Was dafür *innerhalb* der Verbindung dazukam: Kommt keine direkte Leitung zustande, läuft das Spiel über denselben Vermittler weiter (siehe README) — das ist der Rückfall, der tatsächlich trägt.
+
 **Gemessen am echten Dienst:** `0.peerjs.com` antwortet ohne Konto mit `{"type":"OPEN"}`. Er prüft allerdings die Form der Nutzlast — mit einer schlanken Fassung schließt er die Verbindung des Absenders (Code 1000), mit der Hülle der PeerJS-Bibliothek (`connectionId`, `browser`, `label`, `reliable`, `serialization`) leitet er weiter. Was *in* der Hülle steht, ist ihm egal, weil auf beiden Seiten unser eigener Code sitzt. Deshalb braucht es die Bibliothek nicht.
 
 ## 10. Offene Fragen, die du entscheiden musst
