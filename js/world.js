@@ -582,10 +582,38 @@ void main(){
   }
   gl_FragColor=vec4(uCol*acc/ws,1.);
 }`;
+// Kantenglaettung im Abschluss-Durchgang (FXAA): billiger als 4x-MSAA auf dem HDR-Ziel,
+// das bei hohen Aufloesungen rund ein Viertel der Bildzeit gekostet hat.
 const FINAL_FS = `
-uniform sampler2D tD,tB1,tB2,tR; uniform float uBloom,uRays,uTime; varying vec2 vUv;
+uniform sampler2D tD,tB1,tB2,tR; uniform float uBloom,uRays,uTime,uAA,uSharp; uniform vec2 uPx; varying vec2 vUv;
+// Helligkeit nach Tonwertkurve: im HDR-Bild wuerde ein heller Himmel sonst jede Kante uebertoenen
+float lum(vec3 c){ c=c/(1.+c); return dot(c,vec3(0.299,0.587,0.114)); }
+vec3 fxaa(vec2 uv){
+  vec3 m=texture2D(tD,uv).rgb;
+  if(uAA<0.5) return m;
+  vec3 nw=texture2D(tD,uv+vec2(-1.,-1.)*uPx).rgb, ne=texture2D(tD,uv+vec2(1.,-1.)*uPx).rgb,
+       sw=texture2D(tD,uv+vec2(-1.,1.)*uPx).rgb, se=texture2D(tD,uv+vec2(1.,1.)*uPx).rgb;
+  float lnw=lum(nw),lne=lum(ne),lsw=lum(sw),lse=lum(se),lm=lum(m);
+  float lo=min(lm,min(min(lnw,lne),min(lsw,lse))), hi=max(lm,max(max(lnw,lne),max(lsw,lse)));
+  if(hi-lo<max(0.035,hi*0.145)) return m;                       // ebene Flaeche: nichts zu glaetten
+  vec2 dir=vec2(-((lnw+lne)-(lsw+lse)),(lnw+lsw)-(lne+lse));
+  float red=max((lnw+lne+lsw+lse)*0.03125,0.0078125);
+  float sc=1./(min(abs(dir.x),abs(dir.y))+red);
+  dir=clamp(dir*sc,-8.,8.)*uPx;
+  vec3 a=0.5*(texture2D(tD,uv+dir*(1./3.-0.5)).rgb+texture2D(tD,uv+dir*(2./3.-0.5)).rgb);
+  vec3 b=a*0.5+0.25*(texture2D(tD,uv-dir*0.5).rgb+texture2D(tD,uv+dir*0.5).rgb);
+  float lb=lum(b);
+  return (lb<lo||lb>hi)?a:b;
+}
 void main(){
-  vec3 c=texture2D(tD,vUv).rgb;
+  vec3 c=fxaa(vUv);
+  // Wird unterhalb der Schirmaufloesung gerendert, zieht das Hochskalieren das Bild weich.
+  // Ein leichtes Nachschaerfen davor holt die Kanten zurueck und kostet vier Abgriffe.
+  if(uSharp>0.001){
+    vec3 r=(texture2D(tD,vUv+vec2(uPx.x,0.)).rgb+texture2D(tD,vUv-vec2(uPx.x,0.)).rgb
+           +texture2D(tD,vUv+vec2(0.,uPx.y)).rgb+texture2D(tD,vUv-vec2(0.,uPx.y)).rgb)*0.25;
+    c=max(vec3(0.),c+(c-r)*uSharp);
+  }
   c+=(texture2D(tB1,vUv).rgb*0.55+texture2D(tB2,vUv).rgb*0.45)*uBloom;
   c+=texture2D(tR,vUv).rgb*uRays;
   vec2 q=vUv-0.5; c*=1.-dot(q,q)*0.38;
@@ -620,10 +648,10 @@ const SUNS = {
 
 export class World {
   constructor(canvas) {
-    const R = this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+    // Kein MSAA am Bildschirmpuffer: geglaettet wird im Abschluss-Durchgang (FXAA)
+    const R = this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
     this.mobile = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
     this.hi = true;
-    R.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.mobile ? 1.75 : 2));
     R.toneMapping = THREE.ACESFilmicToneMapping; R.toneMappingExposure = 1.02;
     R.shadowMap.enabled = true; R.shadowMap.type = THREE.PCFSoftShadowMap;
     this.scene = new THREE.Scene();
@@ -668,6 +696,8 @@ export class World {
     // Wasser-Effekte: Spiegelbild (gespiegelte Kamera) und Szene unter Wasser (Farbe + Tiefe) in eigene Ziele rendern
     this.fxWater = true; this.mirror = new THREE.PerspectiveCamera(); this.clipUp = [new THREE.Plane(new THREE.Vector3(0, 1, 0), 0.04)]; this.noClip = [];
     this._slow = 0;
+    // Aufloesungsregler: rs ist der Faktor auf die Renderskala, rsCeil die Decke, bis zu der er sich wieder hocharbeiten darf
+    this.rs = 1; this.rsAuto = true; this._rsCeil = 1; this._rsAcc = []; this._rsCool = 120; this._rsGood = 0; this._rsBad = 0; this._rsWas = 0;
     // Nachbearbeitung
     this.fxPost = true; this.rayK = 0.5;
     this.pScene = new THREE.Scene(); this.pCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -677,7 +707,7 @@ export class World {
       bright: pm(BRIGHT_FS, { tD: { value: null }, uPx: { value: new THREE.Vector2() }, uThr: { value: 1.25 } }),
       blur: pm(BLUR_FS, { tD: { value: null }, uDir: { value: new THREE.Vector2() } }),
       rays: pm(RAYS_FS, { tD: { value: null }, uSunPos: { value: new THREE.Vector2(0.5, 0.8) }, uAsp: { value: 1 }, uCol: { value: new THREE.Color(1, 0.95, 0.85) } }),
-      final: pm(FINAL_FS, { tD: { value: null }, tB1: { value: null }, tB2: { value: null }, tR: { value: null }, uBloom: { value: 0.38 }, uRays: { value: 0 }, uTime: this.timeU }),
+      final: pm(FINAL_FS, { tD: { value: null }, tB1: { value: null }, tB2: { value: null }, tR: { value: null }, uBloom: { value: 0.38 }, uRays: { value: 0 }, uTime: this.timeU, uAA: { value: 1 }, uSharp: { value: 0 }, uPx: { value: new THREE.Vector2() } }),
     };
     this.buildAngler();
     this.buildRig();
@@ -692,8 +722,8 @@ export class World {
   setPov(on) { this.pov = !!on; this.resize(); }
 
   setQuality(hi) {
-    this.hi = hi; this.fxWater = hi; this.fxPost = hi; this._slow = 0;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, hi ? (this.mobile ? 1.75 : 2) : 1.2));
+    // auch sparsam bleibt die Nachbearbeitung an: sie glaettet die Kanten (FXAA), nur Bloom und Strahlen entfallen
+    this.hi = hi; this.fxWater = hi; this.fxPost = true; this._cheap = !hi; this._slow = 0;
     this.renderer.shadowMap.enabled = hi; this.sun.castShadow = hi;
     this.scene.traverse(o => { if (o.material) o.material.needsUpdate = true; });
     if (this.grass) this.grass.visible = hi;
@@ -701,8 +731,70 @@ export class World {
     this.resize();
   }
 
+  // Deckel nach Pixelflaeche statt nach Geraetedichte: ein 4K-Schirm ergaebe sonst acht Millionen Pixel,
+  // und die Bildzeit haengt fast genau an der Pixelzahl.
+  maxPixels() { return this.hi ? (this.mobile ? 1.2e6 : 2.3e6) : (this.mobile ? 0.8e6 : 1.4e6); }
+
+  // Grafikstufe: 'auto' regelt die Aufloesung selbst, die uebrigen stellen sie fest ein
+  setGfxMode(m) {
+    this.gq = m = ['auto', 'hoch', 'mittel', 'niedrig'].includes(m) ? m : 'auto';
+    this.rsAuto = m === 'auto';
+    this.rs = m === 'mittel' ? 0.75 : m === 'niedrig' ? 0.65 : 1;
+    this._rsCeil = 1; this._rsGood = 0;
+    this.setQuality(m !== 'niedrig');   // ruft resize()
+  }
+
+  setScale(s) {
+    s = Math.max(0.75, Math.min(this._rsCeil, Math.round(s * 20) / 20));   // unter 75 % wird das hochskalierte Bild sichtbar weich
+    if (Math.abs(s - this.rs) < 0.001) return false;
+    this.rs = s; this._rsCool = 20; this._rsAcc = []; this._rsGood = 0;
+    this.resize();
+    return true;
+  }
+
+  // Haelt die Bildzeit nahe an 60 Bildern je Sekunde, indem die Renderskala in Stufen nachgefuehrt wird.
+  // Das ist der sanfteste Hebel: die Bildzeit haengt fast genau an der Pixelzahl, und das HUD bleibt scharf, weil es HTML ist.
+  _autoScale() {
+    const now = performance.now(), ms = now - (this._rsLast || now); this._rsLast = now;
+    if (!this.rsAuto) return;
+    if (this._rsCool > 0) { this._rsCool--; return; }
+    if (ms > 200 || ms <= 0) return;   // Ladehaenger, Dialoge und Revierwechsel nicht mitzaehlen
+    const a = this._rsAcc; a.push(ms);
+    if (a.length < 45) return;         // Fenster von rund einer Dreiviertelsekunde
+    // Gezaehlt wird, wie viele Bilder wirklich ankommen. Mittelwerte und Mediane der Bildabstaende taeuschen hier:
+    // ein ausgelassenes Bild haelt den Takt des Schirms, 16,7 ms bleiben der haeufigste Abstand, und trotzdem sind
+    // es nur noch 45 Bilder je Sekunde. Ein einzelner Haenger wird auf 50 ms gedeckelt, damit er das Fenster nicht kippt.
+    let sum = 0; for (const v of a) sum += Math.min(50, v);
+    const fps = a.length * 1000 / sum; a.length = 0;
+    if (fps < 54) {
+      this._rsGood = 0;
+      if (++this._rsBad < 2) return;   // zwei schlechte Fenster, erst dann absenken
+      this._rsBad = 0;
+      // Hat die letzte Absenkung etwas gebracht? Wenn nicht, liegt es nicht an den Pixeln, sondern am Rechner
+      // (anderes Fenster im Vordergrund, Rechenlast, gedrosselte Grafik). Dann zurueck und eine Weile Ruhe geben,
+      // sonst frisst sich der Regler bis zum Anschlag hinunter und das Bild wird weich, ohne dass es schneller wird.
+      if (this._rsWas && fps < this._rsWas + 3) {
+        this._rsCeil = Math.min(1, this._rsCeil + 0.1); this.setScale(this.rs + 0.1);
+        this._rsCool = 900; this._rsWas = 0; return;   // rund 15 s Ruhe, dann darf er es wieder versuchen
+      }
+      this._rsWas = fps;
+      if (this.setScale(this.rs - 0.1)) this._rsCeil = Math.min(1, this.rs + 0.05);   // nur knapp unter den Punkt zurueck, an dem es geruckelt hat
+    } else {
+      this._rsBad = 0; this._rsWas = 0;
+      if (fps > 58) {
+        this._rsCeil = Math.min(1, this._rsCeil + 0.05);   // die Decke waechst wieder, sonst haengt ein alter Haenger dem Spiel ewig nach
+        if (this.rs < this._rsCeil && ++this._rsGood >= 2) this.setScale(this.rs + 0.05);   // zwei ruhige Fenster, erst dann hinauf
+      } else this._rsGood = 0;
+    }
+  }
+
   resize() {
     const w = window.innerWidth, h = window.innerHeight;
+    const dpr = window.devicePixelRatio || 1;
+    // Untergrenze 0.5: auf einem 4K-Schirm bleibt damit noch volles HD, hochskaliert und von FXAA geglaettet
+    const fit = Math.sqrt(this.maxPixels() / Math.max(1, w * h));
+    const base = Math.max(0.5, Math.min(dpr, this.mobile ? 1.75 : 2, fit));
+    this.renderer.setPixelRatio(Math.max(0.35, base * this.rs));
     this.renderer.setSize(w, h, false);
     const asp = w / h;
     this.camera.aspect = asp;
@@ -731,7 +823,17 @@ export class World {
     // Hauptbild (HDR, kantengeglaettet) und kleine Ziele fuer Bloom / Strahlen
     if (this.mainRT) for (const t of [this.mainRT, ...this.pRT]) t.dispose();
     const opt = { type: THREE.HalfFloatType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false };
-    this.mainRT = new THREE.WebGLRenderTarget(sz.x, sz.y, { ...opt, samples: 4 });
+    // MSAA nur, solange es billig ist; darueber uebernimmt FXAA im Abschluss-Durchgang
+    const px = sz.x * sz.y;
+    this.pm.final.uniforms.uPx.value.set(1 / sz.x, 1 / sz.y);
+    // Gemessen: schon bei 1,7 Megapixeln kostet zweifaches MSAA auf dem Halbgleitkomma-Ziel rund 8 ms,
+    // FXAA dagegen unter 0,5 ms. MSAA bleibt nur fuer kleine Fenster, wo es die Kanten sauberer trennt.
+    const ms = px > 0.9e6 ? 0 : 4;
+    this.pm.final.uniforms.uAA.value = ms ? 0 : 1;
+    // Wird kleiner gerendert als der Schirm darstellt - durch den Flaechendeckel oder den Regler -, davor nachschaerfen
+    const up = this.renderer.getPixelRatio() / (window.devicePixelRatio || 1);
+    this.pm.final.uniforms.uSharp.value = up < 0.99 ? Math.min(0.5, (1 - up) * 1.6) : 0;
+    this.mainRT = new THREE.WebGLRenderTarget(sz.x, sz.y, { ...opt, samples: ms });
     const q = k => new THREE.WebGLRenderTarget(Math.max(32, Math.round(sz.x / k)), Math.max(32, Math.round(sz.y / k)), { ...opt, depthBuffer: false });
     this.pRT = [q(4), q(4), q(8), q(8), q(4)];   // hell, Zwischenbild, klein a/b, Strahlen
   }
@@ -1345,6 +1447,7 @@ export class World {
     U.uBankCol.value.copy(C(rv.cliff ? pal.rock : pal.grass)).multiplyScalar(0.32);
     const water = new THREE.Mesh(wg, new THREE.ShaderMaterial({ uniforms: U, vertexShader: WATER_VS, fragmentShader: WATER_FS, transparent: true, depthWrite: false }));
     water.renderOrder = 2; this.env.add(water); this.water = water; this._needLayers = true;
+    this._rsCool = 120; this._rsAcc = []; this._rsGood = 0;   // nach dem Aufbau erst einmal einschwingen lassen
 
     // Dunst ueber dem Wasser: morgens dicht, abends und bei Bewoelkung ein Hauch
     const mistK = lid === 'morgen' ? 1 : lid === 'abend' ? 0.45 : overcast ? 0.3 : 0;
@@ -1648,6 +1751,7 @@ export class World {
   }
 
   update(dt, t, px, pz, gy, focus) {
+    this._autoScale();
     this.timeU.value = t;
     const kk = Math.min(1, dt * 3);
     this.camZ += (pz - this.camZ) * kk; this.camX += (px - this.camX) * kk;
@@ -1736,7 +1840,11 @@ export class World {
     // Ruckelt es dauerhaft, die teuren Wasser-Durchgaenge abschalten
     if (this.fxWater || this.fxPost) {
       this._slow = dt > 0.042 ? this._slow + dt : Math.max(0, this._slow - dt * 2);
-      if (this._slow > 4) { if (this.fxPost) { this.fxPost = false; this._slow = 0; } else this.fxWater = false; }   // erst die Nachbearbeitung, dann das Wasser
+      // Notbremse, erst wenn der Aufloesungsregler am Anschlag ist: erst Bloom und Strahlen, dann das Wasser,
+      // die Kantenglaettung bleibt bis zuletzt
+      if (this._slow > 4 && (!this.rsAuto || this.rs <= 0.77)) {
+        if (!this._cheap) { this._cheap = true; this._slow = 0; } else if (this.fxWater) { this.fxWater = false; this._slow = 0; } else this.fxPost = false;
+      }
     }
     const post = this.fxPost && this.mainRT, out = post ? this.mainRT : null;
     const fx = this.fxWater && this.water && this.sceneRT;
@@ -1775,6 +1883,13 @@ export class World {
       M.blur.uniforms.uDir.value.set(0, 1 / a.height); pass(M.blur, b.texture, a);
     };
     R.shadowMap.autoUpdate = false;
+    if (this._cheap) {   // sparsam: nur Kantenglaettung, Tonwerte und Vignette
+      const F = M.final.uniforms; F.uBloom.value = 0; F.uRays.value = 0;
+      F.tB1.value = F.tB2.value = F.tR.value = T[2].texture;
+      pass(M.final, this.mainRT.texture, null);
+      R.shadowMap.autoUpdate = true; return;
+    }
+    M.final.uniforms.uBloom.value = 0.38;
     M.bright.uniforms.uPx.value.set(1 / this.mainRT.width, 1 / this.mainRT.height);
     pass(M.bright, this.mainRT.texture, T[0]);
     // Sonnenstrahlen: nur wenn die Sonne vor der Kamera steht

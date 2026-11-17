@@ -258,3 +258,16 @@ Deutsch, Englisch und Italienisch – Auswahl auf dem Startbildschirm. Die Texte
 - FBX-Loader aus den Three.js-Beispielen (MIT) unter `js/vendor/`
 - Alles Weitere (Fluss, Bäume, Angler, Fische, Sound) wird im Code erzeugt
 - Der Spielstand liegt im `localStorage` des Browsers
+
+### Leistung
+
+Die Bildzeit hängt fast genau an der Pixelzahl, nicht an der Rechenlast – deshalb wird dort gespart, wo Pixel entstehen:
+
+- **Kantenglättung:** FXAA im Abschluss-Durchgang (`FINAL_FS`) statt vierfachem MSAA auf dem Halbgleitkomma-Ziel. Gemessen kostete MSAA bei 2,9 Megapixeln rund 11 ms pro Bild, FXAA unter 0,5 ms. MSAA bleibt nur unter 0,9 Megapixeln, wo es billig ist und die Kanten sauberer trennt.
+- **Auflösungsdeckel nach Fläche** statt nach Gerätedichte (`World.maxPixels`): höchstens 2,3 Megapixel am Rechner, 1,2 mobil. Ein 4K-Schirm ergäbe sonst acht Megapixel; gerendert wird dann in vollem HD und hochskaliert.
+- **Auflösungsregler** (`World._autoScale`): in der Stufe „Automatisch" führt das Spiel die Renderskala selbst nach, zwischen 75 % und 100 %. Gezählt wird, wie viele Bilder in einem Fenster von 45 Bildern wirklich ankommen – nach zwei Fenstern unter 54 je Sekunde geht es eine Stufe hinunter, über 58 nach zwei ruhigen Fenstern wieder hinauf. Bringt eine Absenkung keine drei Bilder je Sekunde, liegt es nicht an den Pixeln (anderes Fenster im Vordergrund, Rechenlast): dann geht die Skala zurück und der Regler hält 15 Sekunden still. Ohne diese Prüfung frisst er sich bis zum Anschlag hinunter und das Bild wird weich, ohne schneller zu werden. Das HUD bleibt in jedem Fall scharf, weil es HTML ist.
+- **Nachschärfen:** liegt die Renderauflösung unter der des Schirms, schärft der Abschluss-Durchgang mit vier Abgriffen nach, bevor das Bild hochskaliert wird.
+- **Grafikstufen** im Menü: Automatisch (Regler), Hoch (immer volle Auflösung), Mittel (fest 75 %), Niedrig (ohne Schatten, Gras und Spiegelung, 65 %).
+- **Sparmodus** (`_cheap`): Bloom und Sonnenstrahlen fallen weg, die Kantenglättung bleibt. Er greift erst, wenn der Regler am Anschlag ist; danach geht das Spiegelbild im Wasser, zuletzt die ganze Nachbearbeitung.
+
+`tools/perf.js` misst das nach: in der Konsole des laufenden Spiels `await (await import('./tools/perf.js')).run()` – gleiches Revier, gleiche Kamera, Bildrate über mehrere Auflösungen.

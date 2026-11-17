@@ -16,12 +16,14 @@ const fmt = (n, d = 1) => n.toFixed(d).replace('.', ',');
 const KEY = 'nymphmaniac_v1';
 function newSave() {
   return { level: 1, xp: 0, material: 4, flies: { pt: 4, walt: 4 }, sel: { fly: 'pt', dry: 'adams', bead: 3.0, tippet: 0.14 }, rig: { mode: 'euro', ind: 'nz', depth: 1.0 },
-    unlocked: 1, revier: 0, quests: {}, log: {}, stats: {}, pages: ['intro'], v: 3, tut: 0, set: { help: true, vib: true, sound: true, vol: 0.8, assist: true, gfx: true, clear: false }, total: 0, started: false };
+    unlocked: 1, revier: 0, quests: {}, log: {}, stats: {}, pages: ['intro'], v: 3, tut: 0, set: { help: true, vib: true, sound: true, vol: 0.8, assist: true, gq: 'auto', clear: false }, total: 0, started: false };
 }
 let save;
 try { save = JSON.parse(localStorage.getItem(KEY)); } catch (e) { save = null; }
 if (!save || !save.sel) save = newSave();
-save.set = Object.assign({ help: true, vib: true, sound: true, vol: 0.8, assist: true, gfx: true, clear: false }, save.set);
+save.set = Object.assign({ help: true, vib: true, sound: true, vol: 0.8, assist: true, gq: 'auto', clear: false }, save.set);
+// aus dem alten Ja/Nein-Schalter: wer die hohe Qualitaet abgeschaltet hatte, landet auf der niedrigen Stufe
+if (!save.set.gq || typeof save.set.gfx === 'boolean') { save.set.gq = save.set.gfx === false ? 'niedrig' : 'auto'; delete save.set.gfx; }
 save.rig = Object.assign({ mode: 'euro', ind: 'nz', depth: 1.0 }, save.rig);
 if (!save.sel.dry) save.sel.dry = 'adams';
 const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(save)); } catch (e) { /* privat */ } };
@@ -113,7 +115,7 @@ function travel(i, fn) {
 const canvas = $('gl');
 const world = new World(canvas);
 const sfx = new Sfx(); sfx.on = save.set.sound; sfx.vol = save.set.vol;
-if (!save.set.gfx) world.setQuality(false);
+world.setGfxMode(save.set.gq);
 world.setClearView(save.set.clear);
 let river, cond, fish = [], respawn = [];
 const S = {
@@ -936,13 +938,22 @@ function showLog(head) {
   openModal(h);
   $('modalBody').querySelectorAll('canvas[data-sp]').forEach(c => drawFish(c, c.dataset.sp, { silhouette: !!c.dataset.sil }));
 }
+const GQ = [['auto', 'Automatisch'], ['hoch', 'Hoch'], ['mittel', 'Mittel'], ['niedrig', 'Niedrig']];
+const gqHint = () => ({
+  auto: T('Die Auflösung regelt sich selbst nach, damit es flüssig bleibt. Empfohlen.'),
+  hoch: T('Immer volle Auflösung, auch wenn es dabei ruckelt.'),
+  mittel: T('Dauerhaft 75 % Auflösung, alle Effekte bleiben an.'),   // gleiche Untergrenze wie der Regler
+  niedrig: T('Ohne Schatten, Gras und Spiegelung, 65 % Auflösung.'),
+}[save.set.gq] || '');
 function showSettings() {
   const tg = (k, label, sub) => `<label class="toggle"><input type="checkbox" data-set="${k}" ${save.set[k] ? 'checked' : ''}><span><b>${label}</b><br><span class="small">${sub}</span></span></label>`;
   openModal(`<h2>${T('Einstellungen')}</h2>
     ${tg('help', T('Bisshilfe'), T('Lupe leuchtet und Handy vibriert beim Biss. Ohne Hilfe: +25 % XP.'))}
     ${tg('assist', T('Führungshilfe'), T('Die Rute folgt der Drift ein Stück von selbst; in schnellem Wasser musst du nachhelfen. Ohne: +15 % XP.'))}
     ${tg('clear', T('Klare Sicht'), T('Blendet die Spiegelung auf dem Wasser aus, damit du die Fische besser siehst. Ohne: +35 XP pro Fisch.'))}
-    ${tg('gfx', T('Hohe Grafikqualität'), T('Schatten, Gras und volle Auflösung. Ausschalten, wenn es ruckelt.'))}
+    <div class="slider pick"><b>${T('Grafik')}</b>
+      <div class="seg">${GQ.map(([v, n]) => `<button data-act="gq" data-v="${v}" class="${save.set.gq === v ? 'on' : ''}">${T(n)}</button>`).join('')}</div>
+      <span class="small" id="gqH">${gqHint()}</span></div>
     ${tg('vib', T('Vibration'), T('Haptik bei Biss und Drill (nur am Handy).'))}
     ${tg('sound', T('Ton'), T('Flussrauschen und Effekte.'))}
     <label class="slider"><b>${T("Lautstärke")}</b> <span id="volV">${Math.round(save.set.vol * 100)} %</span><input type="range" id="volR" min="0" max="100" step="5" value="${Math.round(save.set.vol * 100)}"></label>
@@ -972,6 +983,7 @@ $('modalBody').addEventListener('click', e => {
   else if (a === 'slot') { showRig(b.dataset.s || undefined); }
   else if (a === 'rigmode') { if (b.dataset.v !== save.rig.mode) save.rig.last = save.rig.mode; save.rig.mode = b.dataset.v; applyRig(); persist(); sfx.tick(); rerig(); updateTip(); }
   else if (a === 'ind') { save.rig.ind = b.dataset.id; applyRig(); persist(); sfx.tick(); rerig(); }
+  else if (a === 'gq') { save.set.gq = b.dataset.v; world.setGfxMode(save.set.gq); persist(); sfx.tick(); $('gqH').textContent = gqHint(); b.parentNode.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); }
   else if (a === 'box') showBox();
   else if (a === 'rig') showRig();
   else if (a === 'tie') { if (save.material >= tieCost()) { save.material -= tieCost(); save.flies[b.dataset.id] = (save.flies[b.dataset.id] || 0) + 1; sfx.tick(); persist(); rerig(); } }
@@ -985,7 +997,7 @@ $('modalBody').addEventListener('click', e => {
 });
 $('modalBody').addEventListener('change', e => {
   const k = e.target.dataset && e.target.dataset.set; if (!k) return;
-  save.set[k] = e.target.checked; if (k === 'sound') sfx.setOn(save.set.sound); if (k === 'gfx') world.setQuality(save.set.gfx); if (k === 'clear') world.setClearView(save.set.clear); persist();
+  save.set[k] = e.target.checked; if (k === 'sound') sfx.setOn(save.set.sound); if (k === 'clear') world.setClearView(save.set.clear); persist();
 });
 $('modalBody').addEventListener('input', e => {   // Schieberegler: Lautstaerke und Indikatortiefe
   const el = e.target;

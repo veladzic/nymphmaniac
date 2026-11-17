@@ -389,3 +389,11 @@ label.slider { display: block; padding: 10px 0 6px; border-top: 1px solid var(--
 #leftBtns { flex-direction: row; align-items: flex-end; gap: 9px; }
 #leftBtns .col { transition: opacity .25s; }
 #hud.late #leftBtns .col { opacity: 0; pointer-events: none; }
+
+/* Grafikstufe: Auswahl statt Ja/Nein-Schalter, weil zwischen voller und niedriger Qualitaet zwei Stufen liegen */
+/* Knoepfe statt Auswahlliste: die Liste zeichnet das System selbst, dort stuende weisse Schrift auf weissem Grund */
+.slider.pick { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px 10px; }
+.seg { grid-column: 2; display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
+.seg button { font-size: 13px; padding: 6px 11px; border-radius: 9px; background: rgba(255, 255, 255, .08); color: #fff; border: 1px solid var(--line); }
+.seg button.on { background: var(--gold); color: #2a1a00; border-color: var(--gold); font-weight: 700; }
+.slider.pick .small { grid-column: 1 / -1; opacity: .75; }
