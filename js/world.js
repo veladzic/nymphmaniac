@@ -591,6 +591,52 @@ void main(){
   c+=(texture2D(tD,vUv+uDir*3.230769)+texture2D(tD,vUv-uDir*3.230769))*0.070270;
   gl_FragColor=c;
 }`;
+// Umgebungsverdeckung aus der Tiefe. Es gibt keinen Normalenpuffer, also wird die Normale
+// aus der Ableitung der wiedergewonnenen Position gebildet. Um jeden Punkt werden zwoelf
+// Proben in einer Halbkugel genommen; liegt eine Probe naeher an der Kamera als die dort
+// gemessene Tiefe, verdeckt sie. uRange begrenzt, wie weit eine Verdeckung reichen darf -
+// sonst dunkelt ein naher Felsen den ganzen Hintergrund ab.
+const AO_FS = `
+precision highp float;
+uniform sampler2D tDep; uniform vec2 uPx; uniform float uNear,uFar,uRadius,uBias,uRange,uTanHalf,uAspect;
+varying vec2 vUv;
+float linZ(float d){ float n=d*2.-1.; return 2.*uNear*uFar/(uFar+uNear-n*(uFar-uNear)); }
+vec3 viewPos(vec2 uv){
+  float z=linZ(texture2D(tDep,uv).r);
+  vec2 n=uv*2.-1.;
+  return vec3(n.x*uTanHalf*uAspect*z, n.y*uTanHalf*z, -z);
+}
+void main(){
+  float d=texture2D(tDep,vUv).r;
+  if(d>=0.9999){ gl_FragColor=vec4(1.); return; }           // Himmel wird nicht verdeckt
+  vec3 p=viewPos(vUv);
+  vec3 n=normalize(cross(dFdx(p),dFdy(p)));
+  if(n.z<0.) n=-n;
+  float ang=fract(sin(dot(gl_FragCoord.xy,vec2(12.9898,78.233)))*43758.5453)*6.2831853;
+  float ca=cos(ang), sa=sin(ang);
+  // Bildschirmradius aus dem Weltradius: was weiter weg ist, braucht weniger Pixel
+  float r=uRadius/max(0.3,-p.z)/(2.*uTanHalf);
+  float occ=0.;
+  for(int i=0;i<12;i++){
+    float fi=float(i);
+    float a=fi*2.3999632+ang;                                 // goldener Winkel, gleichmaessig verteilt
+    float rad=r*sqrt((fi+0.5)/12.);
+    vec2 o=vec2(cos(a),sin(a))*rad;
+    o.x/=uAspect;                                             // der Kreis soll rund bleiben
+    vec2 suv=vUv+o;
+    if(suv.x<0.||suv.x>1.||suv.y<0.||suv.y>1.) continue;
+    vec3 sp=viewPos(suv);
+    vec3 dir=sp-p;
+    float len=length(dir);
+    if(len<1e-4) continue;
+    float ndl=max(0.,dot(n,dir/len)-uBias);
+    occ+=ndl*(uRange/(uRange+len*len));                       // weit entfernte Proben zaehlen kaum
+  }
+  float ao=clamp(1.-occ/12.*2.6,0.,1.);
+  // in der Ferne ausblenden: dort ist die Tiefe zu grob und es flimmert sonst
+  ao=mix(ao,1.,smoothstep(28.,55.,-p.z));
+  gl_FragColor=vec4(vec3(ao),1.);
+}`;
 const RAYS_FS = `
 uniform sampler2D tD; uniform vec2 uSunPos; uniform float uAsp; uniform vec3 uCol; varying vec2 vUv;
 void main(){
@@ -606,7 +652,7 @@ void main(){
 // Kantenglaettung im Abschluss-Durchgang (FXAA): billiger als 4x-MSAA auf dem HDR-Ziel,
 // das bei hohen Aufloesungen rund ein Viertel der Bildzeit gekostet hat.
 const FINAL_FS = `
-uniform sampler2D tD,tB1,tB2,tR; uniform float uBloom,uRays,uTime,uAA,uSharp; uniform vec2 uPx; varying vec2 vUv;
+uniform sampler2D tD,tB1,tB2,tR,tAo; uniform float uBloom,uRays,uTime,uAA,uSharp,uAo; uniform vec2 uPx; varying vec2 vUv;
 // Helligkeit nach Tonwertkurve: im HDR-Bild wuerde ein heller Himmel sonst jede Kante uebertoenen
 float lum(vec3 c){ c=c/(1.+c); return dot(c,vec3(0.299,0.587,0.114)); }
 vec3 fxaa(vec2 uv){
@@ -635,6 +681,9 @@ void main(){
            +texture2D(tD,vUv+vec2(0.,uPx.y)).rgb+texture2D(tD,vUv-vec2(0.,uPx.y)).rgb)*0.25;
     c=max(vec3(0.),c+(c-r)*uSharp);
   }
+  // Verdeckung wirkt auf das Bild, bevor Bloom und Strahlen daraufkommen: Licht darf
+  // eine Ecke ueberstrahlen, aber eine Ecke darf das Licht nicht schlucken.
+  if(uAo>0.5) c*=mix(1.,texture2D(tAo,vUv).r,0.85);
   c+=(texture2D(tB1,vUv).rgb*0.55+texture2D(tB2,vUv).rgb*0.45)*uBloom;
   c+=texture2D(tR,vUv).rgb*uRays;
   vec2 q=vUv-0.5; c*=1.-dot(q,q)*0.38;
@@ -745,8 +794,12 @@ export class World {
       bright: pm(BRIGHT_FS, { tD: { value: null }, uPx: { value: new THREE.Vector2() }, uThr: { value: 1.25 } }),
       blur: pm(BLUR_FS, { tD: { value: null }, uDir: { value: new THREE.Vector2() } }),
       rays: pm(RAYS_FS, { tD: { value: null }, uSunPos: { value: new THREE.Vector2(0.5, 0.8) }, uAsp: { value: 1 }, uCol: { value: new THREE.Color(1, 0.95, 0.85) } }),
-      final: pm(FINAL_FS, { tD: { value: null }, tB1: { value: null }, tB2: { value: null }, tR: { value: null }, uBloom: { value: 0.38 }, uRays: { value: 0 }, uTime: this.timeU, uAA: { value: 1 }, uSharp: { value: 0 }, uPx: { value: new THREE.Vector2() } }),
+      ao: pm(AO_FS, { tDep: { value: null }, uPx: { value: new THREE.Vector2() }, uNear: { value: 0.1 }, uFar: { value: 500 },
+        uRadius: { value: 0.45 }, uBias: { value: 0.035 }, uRange: { value: 0.9 }, uTanHalf: { value: 0.5 }, uAspect: { value: 1 } }),
+      final: pm(FINAL_FS, { tD: { value: null }, tB1: { value: null }, tB2: { value: null }, tR: { value: null }, tAo: { value: null }, uAo: { value: 0 }, uBloom: { value: 0.38 }, uRays: { value: 0 }, uTime: this.timeU, uAA: { value: 1 }, uSharp: { value: 0 }, uPx: { value: new THREE.Vector2() } }),
     };
+    // Umgebungsverdeckung: aus, bis der Spieler sie einschaltet
+    this.aoOn = false;
     this.buildAngler();
     this.buildRig();
     this.buildFx();
@@ -871,14 +924,27 @@ export class World {
     this.pm.final.uniforms.uPx.value.set(1 / sz.x, 1 / sz.y);
     // Gemessen: schon bei 1,7 Megapixeln kostet zweifaches MSAA auf dem Halbgleitkomma-Ziel rund 8 ms,
     // FXAA dagegen unter 0,5 ms. MSAA bleibt nur fuer kleine Fenster, wo es die Kanten sauberer trennt.
-    const ms = px > 0.9e6 ? 0 : 4;
+    // Mit eingeschalteter Verdeckung faellt MSAA weg: die Tiefe liesse sich sonst nicht lesen,
+    // und ein Schalter, der in kleinen Fenstern stumm bleibt, ist schlimmer als kein Schalter.
+    const ms = (this.aoOn || px > 0.9e6) ? 0 : 4;
     this.pm.final.uniforms.uAA.value = ms ? 0 : 1;
     // Wird kleiner gerendert als der Schirm darstellt - durch den Flaechendeckel oder den Regler -, davor nachschaerfen
     const up = this.renderer.getPixelRatio() / (window.devicePixelRatio || 1);
     this.pm.final.uniforms.uSharp.value = up < 0.99 ? Math.min(0.5, (1 - up) * 1.6) : 0;
     this.mainRT = new THREE.WebGLRenderTarget(sz.x, sz.y, { ...opt, samples: ms });
+    // Die Verdeckung liest die Tiefe des Hauptbildes. Bei MSAA laesst sie sich nicht sauber
+    // aufloesen, deshalb gibt es die Tiefentextur nur ohne MSAA - also ab 0,9 Megapixeln,
+    // und damit ueberall dort, wo die Verdeckung ueberhaupt in Frage kommt.
+    this.aoReady = !ms;
+    if (this.aoReady) { const dt = new THREE.DepthTexture(sz.x, sz.y); dt.minFilter = dt.magFilter = THREE.NearestFilter; this.mainRT.depthTexture = dt; }
     const q = k => new THREE.WebGLRenderTarget(Math.max(32, Math.round(sz.x / k)), Math.max(32, Math.round(sz.y / k)), { ...opt, depthBuffer: false });
     this.pRT = [q(4), q(4), q(8), q(8), q(4)];   // hell, Zwischenbild, klein a/b, Strahlen
+    if (this.aoRT) { this.aoRT.dispose(); this.aoRT2.dispose(); }
+    // halbe Kantenlaenge: ein Viertel der Pixel, danach weichgezeichnet - Verdeckung ist grossflaechig
+    const half = k => new THREE.WebGLRenderTarget(Math.max(32, Math.round(sz.x / 2)), Math.max(32, Math.round(sz.y / 2)), { type: THREE.UnsignedByteType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false, depthBuffer: false });
+    this.aoRT = half(); this.aoRT2 = half();
+    const A = this.pm.ao.uniforms;
+    A.uPx.value.set(2 / sz.x, 2 / sz.y); A.uAspect.value = sz.x / sz.y;
   }
 
   buildAngler() {
@@ -1219,10 +1285,14 @@ export class World {
     this.aimRing = ring(0.26, 0.33, 0xffffff); this.aimDot = ring(0, 0.07, 0xffffff);
     this.entryRing = ring(0.13, 0.19, 0x57d68d); this.entryRing.material.depthTest = true;   // wird von Steinen verdeckt, sonst sieht es aus, als laege die Fliege auf dem Stein
     // Insekten über dem Wasser
-    const IN = 70, ig = new THREE.BufferGeometry(), ip = new Float32Array(IN * 3);
-    this.bugSeed = Array.from({ length: IN }, () => [Math.random() * 14 - 9, 0.3 + Math.random() * 2.2, Math.random() * 22 - 16, Math.random() * 6, 0.5 + Math.random()]);
+    // Groesse in Weltmass: 12 mm ist die Koerperlaenge einer Eintagsfliege. Vorher waren es
+    // 35 mm - das sah aus der Naehe nach Hummeln aus. Weil sie jetzt so klein sind, schwaermen
+    // sie enger um den Angler: weiter draussen faellt ein Punkt unter einen Bildpunkt und
+    // funkelt nur noch, statt zu fliegen. Dafuer sind es mehr.
+    const IN = 110, ig = new THREE.BufferGeometry(), ip = new Float32Array(IN * 3);
+    this.bugSeed = Array.from({ length: IN }, () => [Math.random() * 11 - 7, 0.3 + Math.random() * 2.0, Math.random() * 15 - 11, Math.random() * 6, 0.5 + Math.random()]);
     ig.setAttribute('position', new THREE.BufferAttribute(ip, 3));
-    this.bugs = new THREE.Points(ig, new THREE.PointsMaterial({ color: 0xfff6d8, size: 0.035, transparent: true, opacity: 0.8, depthWrite: false }));
+    this.bugs = new THREE.Points(ig, new THREE.PointsMaterial({ color: 0xfff6d8, size: 0.012, transparent: true, opacity: 0.75, depthWrite: false }));
     this.bugs.frustumCulled = false; this.scene.add(this.bugs);
     // Schneefall: eine Wolke um den Angler, die mit ihm mitwandert. Jede Flocke faellt,
     // driftet seitlich und setzt oben wieder an, sobald sie unten ankommt - so reichen 900.
@@ -1837,6 +1907,11 @@ export class World {
     this.scene.traverse(o => { if (!o.material) return; for (const m of [].concat(o.material)) if (m.envMapIntensity !== undefined) m.envMapIntensity = k; });
   }
 
+  // Umgebungsverdeckung ein- oder ausschalten. Eigener Schalter, nicht an die Grafikstufe
+  // gebunden: sie ist der einzige Posten, der echte Millisekunden kostet, und ob einem das
+  // Bild das wert ist, entscheidet man selbst.
+  setAo(on) { on = !!on; if (on === this.aoOn) return; this.aoOn = on; this.makeTargets(); }   // Ziele neu bauen: MSAA und Tiefentextur haengen daran
+
   setClearView(on) { this.waterU.uNoRefl.value = on ? 1 : 0; }   // Spiegelung ausblenden (Sichthilfe)
   setPolar(on) { this.waterU.uClear.value = on ? 1 : 0; }
 
@@ -2103,6 +2178,19 @@ export class World {
       M.blur.uniforms.uDir.value.set(0, 1 / a.height); pass(M.blur, b.texture, a);
     };
     R.shadowMap.autoUpdate = false;
+    // Umgebungsverdeckung: aus der Tiefe des Hauptbildes, auf halber Kantenlaenge,
+    // danach zweimal weichgezeichnet - sonst rauscht sie sichtbar.
+    const aoOn = this.aoOn && this.aoReady && this.mainRT.depthTexture;
+    if (aoOn) {
+      const A = M.ao.uniforms;
+      A.tDep.value = this.mainRT.depthTexture;
+      A.uNear.value = cam.near; A.uFar.value = cam.far;
+      A.uTanHalf.value = Math.tan(cam.fov * Math.PI / 360);
+      q.material = M.ao; R.setRenderTarget(this.aoRT); R.render(this.pScene, this.pCam);
+      blur(this.aoRT, this.aoRT2);
+      M.final.uniforms.tAo.value = this.aoRT.texture;
+    }
+    M.final.uniforms.uAo.value = aoOn ? 1 : 0;
     if (this._cheap) {   // sparsam: nur Kantenglaettung, Tonwerte und Vignette
       const F = M.final.uniforms; F.uBloom.value = 0; F.uRays.value = 0;
       F.tB1.value = F.tB2.value = F.tR.value = T[2].texture;

@@ -16,12 +16,12 @@ const fmt = (n, d = 1) => n.toFixed(d).replace('.', ',');
 const KEY = 'nymphmaniac_v1';
 function newSave() {
   return { level: 1, xp: 0, material: 4, flies: { pt: 4, walt: 4 }, sel: { fly: 'pt', dry: 'adams', bead: 3.0, tippet: 0.14 }, rig: { mode: 'euro', ind: 'nz', depth: 1.0 },
-    unlocked: 1, revier: 0, quests: {}, log: {}, stats: {}, pages: ['intro'], v: 3, tut: 0, set: { help: true, vib: true, sound: true, vol: 0.8, assist: true, castAid: false, gq: 'auto', clear: false }, total: 0, started: false };
+    unlocked: 1, revier: 0, quests: {}, log: {}, stats: {}, pages: ['intro'], v: 3, tut: 0, set: { help: true, vib: true, sound: true, vol: 0.8, assist: true, castAid: false, ao: false, gq: 'auto', clear: false }, total: 0, started: false };
 }
 let save;
 try { save = JSON.parse(localStorage.getItem(KEY)); } catch (e) { save = null; }
 if (!save || !save.sel) save = newSave();
-save.set = Object.assign({ help: true, vib: true, sound: true, vol: 0.8, assist: true, castAid: false, gq: 'auto', clear: false }, save.set);
+save.set = Object.assign({ help: true, vib: true, sound: true, vol: 0.8, assist: true, castAid: false, ao: false, gq: 'auto', clear: false }, save.set);
 // aus dem alten Ja/Nein-Schalter: wer die hohe Qualitaet abgeschaltet hatte, landet auf der niedrigen Stufe
 if (!save.set.gq || typeof save.set.gfx === 'boolean') { save.set.gq = save.set.gfx === false ? 'niedrig' : 'auto'; delete save.set.gfx; }
 save.rig = Object.assign({ mode: 'euro', ind: 'nz', depth: 1.0 }, save.rig);
@@ -115,7 +115,7 @@ function travel(i, fn) {
 const canvas = $('gl');
 const world = new World(canvas);
 const sfx = new Sfx(); sfx.on = save.set.sound; sfx.vol = save.set.vol;
-world.setGfxMode(save.set.gq);
+world.setGfxMode(save.set.gq); world.setAo(save.set.ao);
 world.setClearView(save.set.clear);
 let river, cond, fish = [], respawn = [], sndRocks = [];
 const S = {
@@ -696,7 +696,8 @@ function landed(f) {
   const base = Math.round(f.len * sp.xp), parts = [[sp.name + ' · ' + f.len + ' cm', base]];
   if (!save.set.help) parts.push([T('ohne Bisshilfe'), Math.round(base * 0.25)]);
   if (!save.set.assist) parts.push([T('ohne Führungshilfe'), Math.round(base * 0.15)]);
-  if (!save.set.clear) parts.push([T('ohne Klare Sicht'), 35]);
+  if (!save.set.castAid) parts.push([T('ohne Wurfhilfe'), 5]);
+  if (!save.set.clear) parts.push([T('ohne Klare Sicht'), 30]);
   if (f.old) parts.push([T('Der Alte'), 300]);
   const mat = 1 + (f.len > 35 ? 1 : 0) + (f.len > 50 ? 1 : 0) + (save.level >= 30 ? 1 : 0);
   save.material += mat;
@@ -1010,23 +1011,52 @@ const gqHint = () => ({
   mittel: T('Dauerhaft 75 % Auflösung, alle Effekte bleiben an.'),   // gleiche Untergrenze wie der Regler
   niedrig: T('Ohne Schatten, Gras und Spiegelung, 65 % Auflösung.'),
 }[save.set.gq] || '');
+// ---------- Godmode ----------
+// Fuenfzehnmal auf die Ueberschrift "Punkte & Stufen" tippen schaltet ihn ein: alle Reviere,
+// hoechste Stufe, volle Fliegendose. Der Spielstand davor wird vorher weggelegt, damit
+// "Godmode beenden" ihn unveraendert zurueckbringt - was im Godmode gefangen wurde, zaehlt nicht.
+let godTaps = 0, godTapT = 0;
+const godOn = () => !!save.god;
+function godEnable() {
+  if (save.god) return;
+  save.god = { level: save.level, xp: save.xp, unlocked: save.unlocked, material: save.material, flies: { ...save.flies } };
+  save.level = MAX_LEVEL; save.unlocked = REVIERE.length; save.material = 99;
+  for (const f of FLIES) save.flies[f.id] = Math.max(save.flies[f.id] || 0, 9);
+  fixSel(); applyRig(); persist(); updateHUD(); updateTip();
+  toast(T('Godmode an – alle Reviere und Stufen offen.'), 3600);
+}
+function godDisable() {
+  const g = save.god; if (!g) return;
+  save.level = g.level; save.xp = g.xp; save.unlocked = g.unlocked; save.material = g.material; save.flies = { ...g.flies };
+  delete save.god;
+  fixSel(); applyRig(); persist(); updateHUD(); updateTip();
+  toast(T('Godmode aus – dein Spielstand ist wieder wie vorher.'), 3600);
+}
+
 function showSettings() {
   const tg = (k, label, sub) => `<label class="toggle"><input type="checkbox" data-set="${k}" ${save.set[k] ? 'checked' : ''}><span><b>${label}</b><br><span class="small">${sub}</span></span></label>`;
   openModal(`<h2>${T('Einstellungen')}</h2>
+    <h3>${T('Hilfen')}</h3>
+    <p class="small">${T('Jede abgeschaltete Hilfe macht das Spiel schwerer und bringt dafür mehr Punkte.')}</p>
     ${tg('help', T('Bisshilfe'), T('Lupe leuchtet und Handy vibriert beim Biss. Ohne Hilfe: +25 % XP.'))}
     ${tg('assist', T('Führungshilfe'), T('Die Rute folgt der Drift ein Stück von selbst; in schnellem Wasser musst du nachhelfen. Ohne: +15 % XP.'))}
-    ${tg('castAid', T('Wurfhilfe'), T('Die Fliege landet genau im Ring. Ohne Hilfe gibt der angetippte Punkt nur die Richtung, die Weite kommt aus der Länge deines Zugs – und über der bequemen Weite der Rute streut der Wurf.'))}
-    ${tg('clear', T('Klare Sicht'), T('Blendet die Spiegelung auf dem Wasser aus, damit du die Fische besser siehst. Ohne: +35 XP pro Fisch.'))}
-    <div class="slider pick"><b>${T('Grafik')}</b>
+    ${tg('castAid', T('Wurfhilfe'), T('Die Fliege landet genau im Ring. Ohne Hilfe gibt der angetippte Punkt nur die Richtung, die Weite kommt aus der Länge deines Zugs – und über der bequemen Weite der Rute streut der Wurf. Ohne: +5 XP pro Fisch.'))}
+    ${tg('clear', T('Klare Sicht'), T('Blendet die Spiegelung auf dem Wasser aus, damit du die Fische besser siehst. Ohne: +30 XP pro Fisch.'))}
+    <h3>${T('Grafik')}</h3>
+    <div class="slider pick"><b>${T('Qualität')}</b>
       <div class="seg">${GQ.map(([v, n]) => `<button data-act="gq" data-v="${v}" class="${save.set.gq === v ? 'on' : ''}">${T(n)}</button>`).join('')}</div>
       <span class="small" id="gqH">${gqHint()}</span></div>
-    ${tg('vib', T('Vibration'), T('Haptik bei Biss und Drill (nur am Handy).'))}
-    ${tg('sound', T('Ton'), T('Flussrauschen und Effekte.'))}
+    ${tg('ao', T('Umgebungsverdeckung'), T('Dunkelt ab, wo Dinge aneinanderstoßen – am Fuß der Steine, wo das Ufer ins Wasser läuft. Sieht deutlich echter aus und ist der einzige Posten, der spürbar Leistung kostet.'))}
+    <h3>${T('Ton & Vibration')}</h3>
+    ${tg('sound', T('Ton'), T('Flussrauschen, Rollenbremse, Schritte und Vogelstimmen.'))}
     <label class="slider"><b>${T("Lautstärke")}</b> <span id="volV">${Math.round(save.set.vol * 100)} %</span><input type="range" id="volR" min="0" max="100" step="5" value="${Math.round(save.set.vol * 100)}"></label>
-    <h3>${T('Punkte & Stufen')}</h3>
+    ${tg('vib', T('Vibration'), T('Haptik bei Biss und Drill (nur am Handy).'))}
+    <h3 data-act="godtap">${T('Punkte & Stufen')}</h3>
+    ${godOn() ? `<p class="small"><b>${T('Godmode aktiv.')}</b> ${T('Alle Reviere und die höchste Stufe sind offen. Was du so fängst, zählt nicht für deinen Spielstand.')}</p>
+      <button class="ghost danger" data-act="godoff">${T('Godmode beenden')}</button>` : ''}
     ${xpBarHtml()}
     <p class="small">${T('Jeder gelandete Fisch bringt XP: Länge in cm × Artwert.')} ${Object.values(SPECIES).map(s => `${s.name} ${fmt(s.xp)}`).join(' · ')}</p>
-    <p class="small">${T('Zuschläge je Fisch: ohne Bisshilfe +25 %, ohne Führungshilfe +15 %, ohne Klare Sicht +35 XP.')}</p>
+    <p class="small">${T('Zuschläge je Fisch: ohne Bisshilfe +25 %, ohne Führungshilfe +15 %, ohne Wurfhilfe +5 XP, ohne Klare Sicht +30 XP.')}</p>
     <p class="small">${T('Jede erfüllte Aufgabe bringt 60 XP mal Staffelnummer, der Alte vom Smaragdgumpen 300 XP. Bis zur nächsten Stufe brauchst du anfangs 220 XP, mit jeder Stufe 60 mehr, ab Stufe 8 gleichbleibend 640.')}</p>
     <p class="small">${T('Neue Ruten kommen mit der Staffel: Indikator und Trockenfliege ab Staffel 2. Fliegen, Perlen, Vorfächer und Indikatoren kommen mit der Stufe.')}</p>
     <details class="lvls"><summary>${T('Alle Stufen anzeigen')}</summary>${Array.from({ length: MAX_LEVEL - 1 }, (_, i) => i + 2).filter(l => unlocksAt(l).length).map(l => `<div class="${save.level >= l ? 'ok' : ''}"><b>${save.level >= l ? '✓' : '🔒'} ${T('Stufe {0}', l)}</b><span>${unlocksAt(l).join(', ')}</span></div>`).join('')}</details>
@@ -1056,6 +1086,15 @@ $('modalBody').addEventListener('click', e => {
   else if (a === 'bead') { save.sel.bead = +b.dataset.v; persist(); sfx.tick(); rerig(); }
   else if (a === 'tippet') { save.sel.tippet = +b.dataset.v; persist(); sfx.tick(); rerig(); }
   // Rueckfrage im eigenen Dialog: confirm() wird in eingebetteten Browsern und manchen Handy-Ansichten stumm unterdrueckt
+  else if (a === 'godtap') {
+    const now = performance.now();
+    if (now - godTapT > 1800) godTaps = 0;            // Pause heisst: von vorn
+    godTapT = now;
+    if (godOn()) return;
+    if (++godTaps >= 15) { godTaps = 0; godEnable(); showSettings(); }
+    else if (godTaps >= 10) { sfx.tick(); toast(T('Noch {0} …', 15 - godTaps), 900); }
+  }
+  else if (a === 'godoff') { godDisable(); showSettings(); }
   else if (a === 'reset') askSure(T('Wirklich den gesamten Spielstand löschen?'), T('Spielstand löschen'), 'reset2', 'settings');
   else if (a === 'reset2') { try { localStorage.removeItem(KEY); } catch (err) { /* */ } location.reload(); }
   else if (a === 'newgame2') { closeModal(); startGame(true); }
@@ -1063,7 +1102,7 @@ $('modalBody').addEventListener('click', e => {
 });
 $('modalBody').addEventListener('change', e => {
   const k = e.target.dataset && e.target.dataset.set; if (!k) return;
-  save.set[k] = e.target.checked; if (k === 'sound') sfx.setOn(save.set.sound); if (k === 'clear') world.setClearView(save.set.clear); persist();
+  save.set[k] = e.target.checked; if (k === 'sound') sfx.setOn(save.set.sound); if (k === 'clear') world.setClearView(save.set.clear); if (k === 'ao') world.setAo(save.set.ao); persist();
 });
 $('modalBody').addEventListener('input', e => {   // Schieberegler: Lautstaerke und Indikatortiefe
   const el = e.target;

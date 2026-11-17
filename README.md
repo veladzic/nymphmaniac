@@ -34,6 +34,20 @@ Drei Methoden: Euro-Nymphe mit Sighter, ab Staffel 2 Nymphe unter einem schwimme
 
 **Rig-Baukasten.** Oben zeigt eine Vorschau das montierte Rig, darunter liegen die Steckplätze Rute, Fliege, Perle, Vorfach und beim Indikator zusätzlich Indikator und Tiefe. Ein Steckplatz öffnet seine Auswahl mit Balken für Sinkrate, Unauffälligkeit, Reißfestigkeit, Reizwert und Hängerrisiko; Antippen montiert. Gesperrtes steht ausgegraut mit „ab Stufe X“ oder „ab Staffel 2“ da. Am Handy sind Übersicht und Auswahl zwei Ansichten, ab 760 px Breite stehen sie nebeneinander.
 
+**Einstellungen** (⚙️) sind in drei Abschnitte geteilt, weil sie drei verschiedene Fragen beantworten:
+
+| Abschnitt | was darin steht | wonach man entscheidet |
+|---|---|---|
+| **Hilfen** | Bisshilfe, Führungshilfe, Wurfhilfe, Klare Sicht | wie schwer es sein soll – jede abgeschaltete Hilfe bringt mehr XP |
+| **Grafik** | Qualität (vier Stufen), Umgebungsverdeckung | was der Rechner hergibt |
+| **Ton & Vibration** | Ton, Lautstärke, Vibration | wie laut es sein soll |
+
+Darunter folgen die beiden Nachschlageteile: „Punkte & Stufen" und „Steuerung".
+
+**Godmode.** Fünfzehnmal auf die Überschrift „Punkte & Stufen" tippen schaltet ihn ein: alle 19 Reviere offen, höchste Stufe, volle Fliegendose. Ab dem zehnten Tipper zählt eine Meldung herunter; eine Pause von mehr als 1,8 s setzt den Zähler zurück, damit er nicht aus Versehen anspringt.
+
+Der Spielstand von vorher wird dabei in `save.god` weggelegt. „Godmode beenden" – der Knopf erscheint direkt unter der Überschrift – bringt ihn unverändert zurück: Stufe, XP, freigeschaltete Reviere, Bindematerial und Fliegendose. **Was im Godmode gefangen wurde, zählt also nicht.** Der Modus übersteht ein Neuladen.
+
 **HUD.** Oben rechts liegen im Stehen vier Knöpfe (📖, POV, Rig, ⚙️); in Wurf, Drift und Drill bleibt nur POV. Im Drill leuchtet am Rutenstick die Seite, in die du ziehen sollst, und die untere Hälfte, wenn Druck fehlt; ein kleiner Pfeil darüber zeigt dasselbe. Ein frisch erschienener Dialog reagiert 0,45 s lang nicht, damit Tippen aus dem Drill nichts auslöst.
 
 **Kamera.** Sie folgt im Wurf dem Ziel, in der Drift der Fliege und im Drill dem Fisch, und steigt dabei gut 2 m höher, damit der Angler die Fliege nicht verdeckt und man ins Wasser statt auf die Spiegelung schaut.
@@ -242,7 +256,7 @@ Stärke des Fischs = Kampfwert der Art × (Länge / 40 cm)^1,1.
 
 ### Erfahrung
 
-XP je Fisch = Länge in cm × Artwert (Bachforelle und Regenbogen 1,0 · Saibling 1,2 · Äsche 1,3 · Barbe 1,4 · Seeforelle 1,6 · Marmorata 2,0 · Huchen 2,4). Dazu kommen, jeweils einzeln addiert: ohne Bisshilfe +25 % des Grundwerts, ohne Führungshilfe +15 %, ohne „Klare Sicht“ +35 XP, je erfüllter Aufgabe 60 XP × Staffelnummer, der Alte +300 XP. Das Fangbild schlüsselt die Punkte auf; Stand und Bedarf stehen im HUD („Stufe 4 · 345 / 400 XP“) und in den Einstellungen unter „Punkte & Stufen“.
+XP je Fisch = Länge in cm × Artwert (Bachforelle und Regenbogen 1,0 · Saibling 1,2 · Äsche 1,3 · Barbe 1,4 · Seeforelle 1,6 · Marmorata 2,0 · Huchen 2,4). Dazu kommen, jeweils einzeln addiert: ohne Bisshilfe +25 % des Grundwerts, ohne Führungshilfe +15 %, ohne Wurfhilfe +5 XP, ohne „Klare Sicht“ +30 XP, je erfüllter Aufgabe 60 XP × Staffelnummer, der Alte +300 XP. Das Fangbild schlüsselt die Punkte auf; Stand und Bedarf stehen im HUD („Stufe 4 · 345 / 400 XP“) und in den Einstellungen unter „Punkte & Stufen“.
 
 Es gibt 30 Stufen. Bis zur nächsten Stufe braucht man `160 + 60 × Stufe` XP, höchstens 640 (ab Stufe 8 gleichbleibend). Mit dem Durchspiel-Bot (`tools/playthrough.js`, 50 Läufe) gemessen: Staffel 1 endet etwa mit Stufe 10, Staffel 2 mit 15, Staffel 3 mit 22, Staffel 4 mit 30.
 
@@ -339,7 +353,21 @@ Die **Belichtung** folgt der Lichtstimmung statt einem festen Wert für alles:
 
 Gemessen kostet die ganze Umarbeitung nichts Messbares: bei 4,18 Megapixeln 38,0 statt 37,9 Bilder je Sekunde, bei 7,06 Megapixeln 27,6 statt 27,7.
 
-**Was noch fehlt**, und was mehr brächte als alles oben: echte Umgebungsverdeckung (SSAO). Wo Stein, Ufer und Bewuchs aufeinandertreffen, fehlt die Verdunkelung – das ist der deutlichste verbliebene Unterschied zu einer Fotografie. Das ist ein eigener Durchgang in der Nachbearbeitung und kostet echte Millisekunden.
+#### Umgebungsverdeckung
+
+Wo Dinge aneinanderstoßen, kommt weniger Licht an: am Fuß der Steine, wo das Ufer ins Wasser läuft, unter dem Angler. Ohne das steht alles mit gleicher Helligkeit nebeneinander, als wäre es aufgeklebt.
+
+Gerechnet wird aus der **Tiefe des Hauptbildes** (`AO_FS`), die es dafür erst geben musste – lesbar war bisher nur die Tiefe des Unterwasserbildes. Einen Normalenpuffer gibt es nicht, die Normale entsteht deshalb aus der Ableitung der wiedergewonnenen Position. Um jeden Punkt liegen zwölf Proben auf einer Spirale im goldenen Winkel; liegt eine näher an der Kamera als die dort gemessene Tiefe, verdeckt sie. Der Durchgang läuft auf **halber Kantenlänge** und wird danach zweimal weichgezeichnet – Verdeckung ist großflächig, Rauschen fiele sonst auf. Ab 28 m blendet sie aus, weil die Tiefe dort zu grob wird und es sonst flimmert.
+
+Eingerechnet wird sie **vor** Bloom und Sonnenstrahlen: Licht darf eine Ecke überstrahlen, aber eine Ecke darf das Licht nicht schlucken.
+
+Sie hat einen **eigenen Schalter** in den Einstellungen und ist ab Werk aus. Sie hängt bewusst nicht an der Grafikstufe: Sie ist der einzige Posten im ganzen Spiel, der spürbar Leistung kostet, und ob einem das Bild das wert ist, entscheidet man selbst. Solange sie an ist, entfällt MSAA – die Tiefe ließe sich sonst nicht lesen, und ein Schalter, der in kleinen Fenstern stumm bleibt, wäre schlimmer als kein Schalter.
+
+| Auflösung | aus | an | Kosten je Bild |
+|---|---|---|---|
+| 2,05 MP | 59,4 fps | 57,2 fps | 0,65 ms |
+| 4,18 MP | 39,0 fps | 37,9 fps | 0,71 ms |
+| 7,06 MP | 28,6 fps | 27,5 fps | 1,46 ms |
 
 ### Licht unter Wasser
 
