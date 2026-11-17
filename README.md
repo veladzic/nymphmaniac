@@ -293,6 +293,54 @@ Deutsch, Englisch und Italienisch – Auswahl auf dem Startbildschirm. Die Texte
 - Alles Weitere (Fluss, Bäume, Angler, Fische, Sound) wird im Code erzeugt
 - Der Spielstand liegt im `localStorage` des Browsers
 
+### Jahreszeiten
+
+Die vier Staffeln spielen zu verschiedenen Jahreszeiten, und das Revier sieht jetzt auch danach aus. Die Staffel des Reviers (`season` in `js/data.js`) schaltet das um: 3 ist Herbst, 4 Winter.
+
+**Winter** (Winterzug, Eisrinne, Nebelstrecke, Mündung):
+
+- **Kahle Laubbäume.** Dieselbe Krone wie im Sommer, aber mit einer Geäst-Karte statt der Laubkarte. Die Karte wird im Code gezeichnet (`twigTex` in `js/world.js`): rekursiv verzweigte Linien, vom Mittelpunkt nach außen immer dünner. Keine Datei, kein Ladezeit-Zuschlag.
+- Die Winterreviere standen in den Daten auf `leafShare: 0` – das war bisher die einzige Art zu sagen „hier hängt kein Laub". Da es nun kahles Geäst gibt, stehen dort wieder Laubbäume (45 %), sie tragen eben keine Blätter.
+- **Schnee am Boden.** Im Bodenshader: hält auf Gras und Kies, kaum an der blanken Felswand (Gewichte 1 / 0,85 / 0,22), setzt erst ein Stück über der Wasserlinie an, damit der Saum nass bleibt, und wird von der Rauschtextur fleckig aufgebrochen.
+- **Schnee auf Steinen, Treibholz und der Wathose.** Über denselben Weg wie die Kaustiken (`World.caustic`), nur andersherum: unter Wasser Kaustiken, darüber Schnee auf allem, was nach oben zeigt (`smoothstep(0.32, 0.82, Normale.y)`).
+- **Es schneit.** 900 Flocken als `Points` um den Angler herum; jede fällt, driftet seitlich und setzt oben wieder an, sobald sie unten ankommt. Bei praller Mittagssonne schneit es nicht. Insekten schwärmen im Winter keine mehr.
+- Gras ist auf 28 % ausgedünnt, halb so hoch und grau; Farne fehlen ganz, Schilf steht nur halb so dicht.
+- Die **Schneegrenze** im Hintergrundgebirge rückt von 104 m auf 34 m herunter.
+
+**Herbst** (Auwald, Altarm, Steinbrücke, altes Wehr):
+
+- **Gelbes Laub.** Die Laubkarte ist grün; damit daraus Gelb wird, muss Rot weit über Grün liegen und Blau fast verschwinden – der Faktor ist `[3,1 / 2,0 / 0,16]`. Ein sanfterer Wert ergibt nur Oliv, wie die erste Fassung gezeigt hat.
+- **Laubteppich am Ufer:** 2600 flach hingelegte Laubkarten, dieselbe Textur.
+- Gras auf 40 % ausgedünnt und braun, Farne auf 45 % und ebenfalls braun.
+
+**Der Hintergrund folgt mit.** Wald und Almen im Hintergrundgebirge waren fest auf Grün verdrahtet und wurden nur vom Licht getönt – obwohl sie die halbe Bildfläche füllen. Jetzt färbt die Staffel sie mit: im Herbst warm (`[1,5 / 1,12 / 0,52]`), im Winter kühl (`[0,85 / 0,88 / 0,95]`).
+
+Gemessen kostet das nichts: 60,3 Bilder je Sekunde im Sommer, 60,1 im Winter; die Zeichenaufrufe steigen um rund 28.
+
+### Licht
+
+Die Szene wurde bisher von zwei Lampen beleuchtet: einer gerichteten Sonne und einem Halbkugellicht, das den ganzen Himmel mit zwei Farben nachstellte. Ein `scene.environment` gab es nicht – obwohl die Himmelsbilder als Kugelprojektion ohnehin schon geladen werden.
+
+**Jetzt beleuchtet der Himmel die Szene selbst.** `PMREMGenerator` macht aus dem Himmelsbild eine vorgefilterte Umgebung (einmal je Lichtstimmung, danach behalten). Das Halbkugellicht ist auf den Anteil zurückgefahren, den die Umgebung nicht kennt – das Licht, das vom **Boden** zurückkommt. Dessen Farbe hängt jetzt davon ab, was dort liegt: Schnee wirft hell und kühl zurück, Herbstlaub warm, eine Wiese grün. In three r160 gibt es `scene.environmentIntensity` noch nicht, die Stärke setzt `World.setEnvK` deshalb je Material.
+
+Die **Belichtung** folgt der Lichtstimmung statt einem festen Wert für alles:
+
+| Licht | Sonne | Halbkugel | Belichtung |
+|---|---|---|---|
+| Mittagssonne | 3,56 | 0,78 | 0,98 |
+| Morgennebel | 2,79 | 0,75 | 1,06 |
+| Abendlicht | 2,79 | 0,75 | 1,06 |
+| bedeckt | 0,80 | 1,10 | 1,12 |
+
+**Ehrlich zum Ergebnis:** Der Sprung ist kleiner, als er sein müsste, und der Grund steht im Code – fast alles hat `roughness: 1`. Bei vollständig matten Flächen liefert eine Umgebungskarte kaum mehr als das Halbkugellicht, das sie ersetzt. Sichtbar wird sie dort, wo etwas glänzt. Deshalb kamen zwei Dinge dazu, die mehr bringen als die Umgebungskarte selbst:
+
+- **Nasser Saum an den Steinen.** Was gerade aus dem Wasser ragt (bis 34 cm darüber), ist dunkler und glänzt (`roughness` 0,16 statt 0,95); darüber bleibt der Fels matt. Vorher war ein Stein über und unter der Wasserlinie gleich stumpf – das ließ das ganze Ufer tot aussehen und gab der Umgebungskarte nichts zu spiegeln.
+- **Verschattung am Fuß des Bodenbewuchses.** Zwischen den Halmen kommt unten kaum Licht an. Ohne das sitzt jeder Grasbüschel wie aufgeklebt auf dem Boden. Stärke in `World.aoU`, zum Abstimmen zur Laufzeit.
+
+Gemessen kostet die ganze Umarbeitung nichts Messbares: bei 4,18 Megapixeln 38,0 statt 37,9 Bilder je Sekunde, bei 7,06 Megapixeln 27,6 statt 27,7.
+
+**Was noch fehlt**, und was mehr brächte als alles oben: echte Umgebungsverdeckung (SSAO). Wo Stein, Ufer und Bewuchs aufeinandertreffen, fehlt die Verdunkelung – das ist der deutlichste verbliebene Unterschied zu einer Fotografie. Das ist ein eigener Durchgang in der Nachbearbeitung und kostet echte Millisekunden.
+
 ### Licht unter Wasser
 
 Die bewegte Oberfläche bündelt das Sonnenlicht zu einem hellen Netz, das über den Grund wandert (Kaustiken). Gerechnet wird es aus zwei gegenläufig verschobenen Abgriffen derselben Rauschtextur, die auch die Wellen formt: Wo beide Abgriffe gleich hell sind, liegt ein Strahl – `pow(1 - |c1 - c2| * 3.4, 7)` macht daraus scharfe Linien statt weicher Flecken.

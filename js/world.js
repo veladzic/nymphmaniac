@@ -313,6 +313,27 @@ function makeNoiseTex() {
   t.wrapS = t.wrapT = THREE.RepeatWrapping; t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearMipmapLinearFilter; t.generateMipmaps = true; t.needsUpdate = true;
   return t;
 }
+// Kahles Geaest fuer den Winter. Im Code gezeichnet statt als Foto geladen: rekursiv
+// verzweigte Linien, die vom Mittelpunkt nach aussen immer duenner werden. Aus der
+// Entfernung - und dort stehen diese Karten - liest sich das als Krone ohne Laub.
+function twigTex(S = 256) {
+  return canvasTex(S, (g, s) => {
+    g.clearRect(0, 0, s, s);
+    g.lineCap = 'round';
+    const r = mulberry32(31);
+    const branch = (x, y, ang, len, w, d) => {
+      if (w < 0.45 || d > 8) return;
+      const x2 = x + Math.cos(ang) * len, y2 = y + Math.sin(ang) * len;
+      const v = 52 + d * 10;
+      g.strokeStyle = `rgba(${v | 0},${(v * 0.86) | 0},${(v * 0.72) | 0},${Math.min(1, 0.5 + w * 0.22)})`;
+      g.lineWidth = w;
+      g.beginPath(); g.moveTo(x, y); g.lineTo(x2, y2); g.stroke();
+      for (let i = 0, n = d < 2 ? 3 : 2; i < n; i++) branch(x2, y2, ang + (r() - 0.5) * 1.45, len * (0.64 + r() * 0.2), w * (0.58 + r() * 0.2), d + 1);
+    };
+    // vom Mittelpunkt in alle Richtungen, damit die Karte in jeder Lage als Geaest liest
+    for (let i = 0; i < 9; i++) branch(s * 0.5, s * 0.56, (i / 9) * 6.283 + r() * 0.5, s * 0.17, 5.5, 0);
+  }, true);
+}
 function canvasTex(S, draw, srgb) {
   const cv = document.createElement('canvas'); cv.width = cv.height = S;
   draw(cv.getContext('2d'), S);
@@ -653,6 +674,11 @@ export class World {
     this.mobile = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
     this.hi = true;
     R.toneMapping = THREE.ACESFilmicToneMapping; R.toneMappingExposure = 1.02;
+    // Bildbasiertes Licht: der Himmel beleuchtet die Szene selbst, statt dass ein
+    // Halbkugellicht ihn mit zwei Farben nachstellt. Die Himmelsbilder liegen ohnehin
+    // schon als Kugelprojektion vor; PMREM macht daraus eine vorgefilterte Umgebung.
+    this.pmrem = new THREE.PMREMGenerator(R);
+    this.envMaps = {}; this.envK = 1; this.envOn = true;
     R.shadowMap.enabled = true; R.shadowMap.type = THREE.PCFShadowMap;
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1200);
@@ -673,11 +699,16 @@ export class World {
     // Staerke der Kaustiken, haengt am Licht des Reviers. Liegt hier und nicht im Revieraufbau,
     // weil Fischmaterialien ueber Reviergrenzen hinweg bestehen bleiben.
     this.causticU = { value: 1 };
+    // Schneedecke: 0 im Sommer, 1 im Winter. Liegt neben den Kaustiken, weil dieselben
+    // Materialien betroffen sind und sie ueber Reviergrenzen hinweg bestehen bleiben.
+    this.snowU = { value: 0 };
+    // Staerke der Fussverschattung beim Bodenbewuchs, zum Abstimmen zur Laufzeit
+    this.aoU = { value: 0.45 };
     const TL = this.loader = new THREE.TextureLoader();
     const load = (f, srgb) => { const t = TL.load('assets/' + f); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; if (srgb) t.colorSpace = THREE.SRGBColorSpace; return t; };
     const loadA = f => { const t = TL.load('assets/' + f); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };   // freigestellte Fotos (Poly Haven, CC0)
     this.tex = { grass: load('grass_d.jpg', 1), grassN: load('grass_n.jpg'), peb: load('peb_d.jpg', 1), pebN: load('peb_n.jpg'), cliff: load('cliff_d.jpg', 1), cliffN: load('cliff_n.jpg'),
-      rock: load('rock_d.jpg', 1), rockN: load('rock_n.jpg'), bark: load('bark_d.jpg', 1), barkN: load('bark_n.jpg'), tuft: loadA('tuft.png'), branch: loadA('branch.png'), leaf: loadA('leaf.png'), fern: loadA('fern.png'), reed: loadA('reed.png') };
+      rock: load('rock_d.jpg', 1), rockN: load('rock_n.jpg'), bark: load('bark_d.jpg', 1), barkN: load('bark_n.jpg'), tuft: loadA('tuft.png'), branch: loadA('branch.png'), leaf: loadA('leaf.png'), fern: loadA('fern.png'), reed: loadA('reed.png'), twig: twigTex() };
     this.skyTex = {};
     this.skyU = { uSky: { value: null }, uRot: { value: 0 }, uGain: { value: 1.2 }, uFogC: { value: new THREE.Color() } };
     this.sky = new THREE.Mesh(new THREE.SphereGeometry(900, 48, 24), new THREE.ShaderMaterial({
@@ -1193,6 +1224,14 @@ export class World {
     ig.setAttribute('position', new THREE.BufferAttribute(ip, 3));
     this.bugs = new THREE.Points(ig, new THREE.PointsMaterial({ color: 0xfff6d8, size: 0.035, transparent: true, opacity: 0.8, depthWrite: false }));
     this.bugs.frustumCulled = false; this.scene.add(this.bugs);
+    // Schneefall: eine Wolke um den Angler, die mit ihm mitwandert. Jede Flocke faellt,
+    // driftet seitlich und setzt oben wieder an, sobald sie unten ankommt - so reichen 900.
+    const SN = 900, flakeG = new THREE.BufferGeometry(), flakeP = new Float32Array(SN * 3);
+    this.snowSeed = Array.from({ length: SN }, () => [Math.random() * 44 - 22, Math.random() * 15, Math.random() * 44 - 22, 0.5 + Math.random() * 0.9, Math.random() * 6.3]);
+    for (let i = 0; i < SN; i++) { flakeP[i * 3] = this.snowSeed[i][0]; flakeP[i * 3 + 1] = this.snowSeed[i][1]; flakeP[i * 3 + 2] = this.snowSeed[i][2]; }
+    flakeG.setAttribute('position', new THREE.BufferAttribute(flakeP, 3));
+    this.snow = new THREE.Points(flakeG, new THREE.PointsMaterial({ color: 0xffffff, size: 0.075, transparent: true, opacity: 0.85, depthWrite: false, sizeAttenuation: true }));
+    this.snow.frustumCulled = false; this.snow.visible = false; this.scene.add(this.snow);
   }
 
   setFlyLook(body, bead, hot, id) {
@@ -1338,6 +1377,9 @@ export class World {
     const C = hex => { const c = new THREE.Color(hex); c.r *= tint[0]; c.g *= tint[1]; c.b *= tint[2]; return c; };
     const murk = cond.clarity / 2;
     const sunK = cond.light.sun, overcast = lid === 'bedeckt';
+    // Jahreszeit aus der Staffel: 3 ist Herbst, 4 Winter. Steht hier oben, weil schon das
+    // Licht davon abhaengt - Schnee wirft anders zurueck als eine Wiese.
+    const aut = rv.season === 3, win = rv.season === 4;
 
     // Licht & Himmel
     const sd = SUNS[lid] || SUNS.mittag, sk = SKY[lid] || SKY.mittag;
@@ -1346,9 +1388,18 @@ export class World {
     const sunCol = new THREE.Color(1, lid === 'abend' ? 0.74 : lid === 'morgen' ? 0.84 : 0.96, lid === 'abend' ? 0.52 : lid === 'morgen' ? 0.7 : 0.88);
     this.sun.color.copy(sunCol); this.sun.intensity = overcast ? 0.8 : 3.1 * sunK;
     this.causticU.value = overcast ? 0.3 : 1;   // bedeckt buendelt die Oberflaeche kaum noch Licht
-    this.hemi.intensity = overcast ? 2.5 : 1.75 + 0.3 * sunK;
-    this.hemi.color.setRGB(sk.mid[0], sk.mid[1], sk.mid[2], THREE.SRGBColorSpace).lerp(new THREE.Color(1, 1, 1), 0.45); this.hemi.groundColor.copy(C(0x5a6a3c));
-    if (!this.skyTex[lid]) { const t = this.loader.load('assets/sky_' + lid + '.jpg'); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.ClampToEdgeWrapping; t.minFilter = THREE.LinearFilter; t.generateMipmaps = false; this.skyTex[lid] = t; }
+    // Das Halbkugellicht stellte bisher den ganzen Himmel mit zwei Farben nach. Das macht
+    // jetzt die Umgebung aus dem Himmelsbild; geblieben ist der Anteil, den die Umgebung
+    // nicht kennt: das Licht, das vom Boden zurueckkommt.
+    this.hemi.intensity = (overcast ? 1.1 : 0.62 + 0.14 * sunK) * (this.envOn ? 1 : 2.6);
+    this.hemi.color.setRGB(sk.mid[0], sk.mid[1], sk.mid[2], THREE.SRGBColorSpace).lerp(new THREE.Color(1, 1, 1), 0.45);
+    // Was der Boden zurueckwirft, haengt davon ab, was dort liegt: Schnee wirft hell und
+    // kuehl zurueck, Herbstlaub warm, Wiese gruen.
+    this.hemi.groundColor.copy(C(win ? 0xcfd8e4 : aut ? 0x7a6230 : 0x5a6a3c));
+    // Belichtung nach Lichtstimmung statt einem festen Wert fuer alles
+    this.renderer.toneMappingExposure = overcast ? 1.12 : lid === 'mittag' ? 0.98 : 1.06;
+    if (!this.skyTex[lid]) { const t = this.loader.load('assets/sky_' + lid + '.jpg', () => this.applyEnv(lid)); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.ClampToEdgeWrapping; t.minFilter = THREE.LinearFilter; t.generateMipmaps = false; this.skyTex[lid] = t; }
+    this.envLid = lid; this.applyEnv(lid);
     this.skyU.uSky.value = this.skyTex[lid];
     this.skyU.uRot.value = sk.u - (Math.atan2(this.sunDir.z, this.sunDir.x) / (Math.PI * 2) + 0.5);
     const fog = new THREE.Color().setRGB(sk.hor[0], sk.hor[1], sk.hor[2], THREE.SRGBColorSpace).multiplyScalar(this.skyU.uGain.value);
@@ -1357,6 +1408,9 @@ export class World {
     this.scene.fog.near = lid === 'morgen' ? 10 : 30; this.scene.fog.far = lid === 'morgen' ? 190 : 330;
     if (rv.fog) { this.scene.fog.near = rv.fog[0]; this.scene.fog.far = rv.fog[1]; }   // Revier mit eigenem, dichterem Nebel
     this.bugs.visible = lid === 'morgen' || lid === 'abend';
+    this.snowU.value = win ? 1 : 0;
+    this.snow.visible = win && lid !== 'mittag';
+    this.bugs.visible = this.bugs.visible && !win;   // im Winter schwaermt nichts
 
     // Gelände
     const NX = 124, NZ = 262, W = 96, Z0 = -150, Z1 = 72;
@@ -1387,10 +1441,10 @@ export class World {
     const tm = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, map: this.tex.grass });
     tm.onBeforeCompile = s => {
       const T = this.tex;
-      Object.assign(s.uniforms, { uPeb: { value: T.peb }, uRockT: { value: T.cliff }, uGrassN: { value: T.grassN }, uPebN: { value: T.pebN }, uRockN: { value: T.cliffN }, uNz: { value: this.noiseTex }, uTime: this.timeU, uCaust: this.causticU });
+      Object.assign(s.uniforms, { uPeb: { value: T.peb }, uRockT: { value: T.cliff }, uGrassN: { value: T.grassN }, uPebN: { value: T.pebN }, uRockN: { value: T.cliffN }, uNz: { value: this.noiseTex }, uTime: this.timeU, uCaust: this.causticU, uSnow: this.snowU });
       s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nattribute vec3 aW; varying vec3 vWgt; varying vec3 vTp;')
         .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWgt=aW; vTp=position;');
-      s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vWgt; varying vec3 vTp; uniform sampler2D uPeb,uRockT,uGrassN,uPebN,uRockN,uNz; uniform float uTime,uCaust;')
+      s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vWgt; varying vec3 vTp; uniform sampler2D uPeb,uRockT,uGrassN,uPebN,uRockN,uNz; uniform float uTime,uCaust,uSnow;')
         .replace('#include <map_fragment>', `
           vec2 uvG=vMapUv*0.62, uvP=vMapUv*0.95, uvR=vec2(vTp.x+vTp.z, vTp.y*1.4)*0.13;
           vec3 cG=mix(texture2D(map,uvG).rgb, texture2D(map,uvG*0.23).rgb, 0.4);
@@ -1401,7 +1455,17 @@ export class World {
             float c1=texture2D(uNz,vTp.xz*0.11+vec2(0.02*tt,-0.05*tt)).b, c2=texture2D(uNz,vTp.xz*0.14+vec2(0.31-0.03*tt,0.17-0.07*tt)).a;
             float ca=pow(clamp(1.-abs(c1-c2)*3.4,0.,1.),7.);
             diffuseColor.rgb*=0.8+ca*1.5*shw*uCaust; }
-          else if(vTp.y<0.16) diffuseColor.rgb*=mix(0.6,1.,vTp.y/0.16);`)
+          else {
+            if(vTp.y<0.16) diffuseColor.rgb*=mix(0.6,1.,vTp.y/0.16);
+            // Schneedecke: haelt auf Gras und Kies, kaum an der blanken Felswand, und
+            // setzt erst ein Stueck ueber der Wasserlinie an - der Saum bleibt nass.
+            if(uSnow>0.001){
+              float dry=smoothstep(0.03,0.5,vTp.y);
+              float lay=vWgt.x+vWgt.y*0.85+vWgt.z*0.45;
+              float pat=0.52+0.48*texture2D(uNz,vTp.xz*0.5).b;
+              diffuseColor.rgb=mix(diffuseColor.rgb,vec3(0.94,0.96,1.0),clamp(dry*lay*pat*uSnow*1.35,0.,1.));
+            }
+          }`)
         .replace('#include <normal_fragment_maps>', `
           vec3 nmT=(texture2D(uGrassN,uvG).xyz*2.-1.)*vWgt.x+(texture2D(uPebN,uvP).xyz*2.-1.)*vWgt.y*1.4+(texture2D(uRockN,uvR).xyz*2.-1.)*vWgt.z*1.6;
           normal=normalize(normal+mat3(viewMatrix)*vec3(nmT.x,0.,-nmT.y)*0.95);`);
@@ -1412,7 +1476,13 @@ export class World {
     // Hintergrund: Hügel & Berge
     const bg = new THREE.PlaneGeometry(1000, 700, 150, 105); bg.rotateX(-Math.PI / 2); bg.translate(0, 0, -260);
     const bp = bg.attributes.position, bc = new Float32Array(bp.count * 3), so = rv.seed * 3.7;
-    const cFor = new THREE.Color(0x2e4a2c), cFor2 = new THREE.Color(0x466a3a), cAlp = new THREE.Color(0x6f7f52), cSt = new THREE.Color(0x74777c), cSn = new THREE.Color(0xf4f7fb);
+    // Der Hintergrundwald stand bisher in jeder Jahreszeit sommergruen, obwohl er die Haelfte
+    // des Bildes fuellt. Jetzt faerbt ihn die Staffel mit, und im Winter rueckt die Schneegrenze
+    // weit herunter.
+    const fTint = win ? [0.85, 0.88, 0.95] : aut ? [1.5, 1.12, 0.52] : [1, 1, 1];
+    const FC = hex => { const c = new THREE.Color(hex); c.r *= fTint[0]; c.g *= fTint[1]; c.b *= fTint[2]; return c; };
+    const cFor = FC(0x2e4a2c), cFor2 = FC(0x466a3a), cAlp = FC(0x6f7f52), cSt = new THREE.Color(0x74777c), cSn = new THREE.Color(0xf4f7fb);
+    const snowLine = win ? 34 : 104, snowBand = win ? 58 : 128;
     for (let i = 0; i < bp.count; i++) {
       const x = bp.getX(i), z = bp.getZ(i), ax = Math.abs(x);
       const base = ax < 37 && z > Z0 - 3 ? -8 : rv.bankMax - 0.8;
@@ -1424,7 +1494,7 @@ export class World {
       tmp.copy(cFor).lerp(cFor2, n2);
       tmp.lerp(cAlp, smooth(34, 62, rel + n * 22));
       tmp.lerp(cSt, smooth(58, 92, rel + n * 30));
-      tmp.lerp(cSn, smooth(104, 128, rel + n * 34));
+      tmp.lerp(cSn, smooth(snowLine, snowBand, rel + n * 34));
       bc[i * 3] = tmp.r * tint[0]; bc[i * 3 + 1] = tmp.g * tint[1]; bc[i * 3 + 2] = tmp.b * tint[2];
     }
     bg.setAttribute('color', new THREE.BufferAttribute(bc, 3)); bg.computeVertexNormals();
@@ -1612,8 +1682,19 @@ export class World {
     const barkMat = new THREE.MeshStandardMaterial({ map: this.tex.bark, normalMap: this.tex.barkN, roughness: 1, color: C(0xddd2c4) });
     const cardMat = tex => new THREE.MeshLambertMaterial({ map: tex, alphaTest: 0.5, side: THREE.DoubleSide, vertexColors: true });
     const cardDepth = tex => new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: tex, alphaTest: 0.5, side: THREE.DoubleSide });
-    const needleMat = cardMat(this.tex.branch), needleDepth = cardDepth(this.tex.branch), leafMat = cardMat(this.tex.leaf), leafDepth = cardDepth(this.tex.leaf);
-    const leafShare = rv.leafShare !== undefined ? rv.leafShare : rv.cliff ? 0.08 : rv.id === 'wiese' || rv.id === 'aeschenzug' ? 0.5 : 0.25;
+    const needleMat = cardMat(this.tex.branch), needleDepth = cardDepth(this.tex.branch);
+    // Im Winter tragen die Laubbaeume Geaest statt Laub - dieselbe Krone, andere Karte.
+    const crownTex = win ? this.tex.twig : this.tex.leaf;
+    const leafMat = cardMat(crownTex), leafDepth = cardDepth(crownTex);
+    // Herbst: kraeftig gelb. Winter: das Geaest bleibt holzfarben, der Laubfaktor des Reviers
+    // wuerde es sonst einfaerben.
+    // Die Laubkarte ist gruen; um daraus Gelb zu machen, muss Rot weit ueber Gruen liegen
+    // und Blau fast verschwinden. Ein sanfter Faktor ergibt nur Oliv.
+    const crownMul = win ? [1.0, 0.95, 0.9] : aut ? [3.1, 2.0, 0.16] : rv.leaf;
+    // Die Winterreviere stehen in den Daten auf leafShare 0 - das war bisher die einzige Art,
+    // "kein Laub" zu sagen. Jetzt gibt es kahles Geaest, also duerfen dort wieder Laubbaeume
+    // stehen; sie tragen eben keine Blaetter.
+    const leafShare = win ? (rv.cliff ? 0.1 : 0.45) : rv.leafShare !== undefined ? rv.leafShare : rv.cliff ? 0.08 : rv.id === 'wiese' || rv.id === 'aeschenzug' ? 0.5 : 0.25;
     const nT = Math.floor(300 * rv.trees * vk), nL = Math.floor(nT * leafShare), nC = nT - nL;
     for (let v = 0; v < 2; v++) {
       const list = spots(Math.ceil(nC / 2), () => { const q = bankSpot(3.2, 40, 1.3); if (!q) return null; q.y -= 0.2; q.s = 1.0 + rnd() * 1.15; q.sy = 0.9 + rnd() * 0.4; q.c = shade(); return clearOf(q, 2.4) ? q : null; });
@@ -1621,12 +1702,12 @@ export class World {
     }
     if (nL) for (let v = 0; v < 2; v++) {
       const list = spots(Math.ceil(nL / 2), () => { const q = bankSpot(3.4, 32, 1.5); if (!q) return null; q.y -= 0.15; q.s = 1.0 + rnd() * 0.9; q.sy = 0.9 + rnd() * 0.3; q.c = shade(); return clearOf(q, 2.0) ? q : null; });
-      block(list, 2.0); inst(leafTrunk(rnd), barkMat, list); inst(crownGeo(rnd, 2.2, 4.7, 90, 1.5), leafMat, list, { color: true, depth: leafDepth, mul: rv.leaf });
+      block(list, 2.0); inst(leafTrunk(rnd), barkMat, list); inst(crownGeo(rnd, 2.2, 4.7, 90, 1.5), leafMat, list, { color: true, depth: leafDepth, mul: crownMul });
     }
-    inst(crownGeo(rnd, 0.72, 0.5, 18, 0.9), leafMat, block(spots(Math.floor(190 * clamp(rv.trees + 0.3, 0.4, 1.2) * vk), () => {
+    inst(crownGeo(rnd, 0.72, 0.5, 18, 0.9), leafMat, block(spots(Math.floor(190 * clamp(rv.trees + 0.3, 0.4, 1.2) * vk * (win ? 0.35 : 1)), () => {
       const q = bankSpot(0.9, 17, 1.7); if (!q || q.y < 0.3) return null;
       q.y -= 0.05; q.s = 0.7 + rnd() * 1.1; q.sy = 0.8 + rnd() * 0.4; q.c = shade(); return clearOf(q, 1.1) ? q : null;
-    }), 1.1), { color: true, depth: leafDepth, mul: rv.leaf });
+    }), 1.1), { color: true, depth: leafDepth, mul: crownMul });
     // Bodenbewuchs: Grasbueschel, Farne unter den Baeumen, hohes Gras an der Wasserkante
     const sway = (tex, amp) => {
       const m = new THREE.MeshLambertMaterial({ map: tex, alphaTest: 0.42, side: THREE.DoubleSide });
@@ -1634,6 +1715,12 @@ export class World {
         sh.uniforms.uTime = this.timeU;
         sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTime;')
           .replace('#include <begin_vertex>', '#include <begin_vertex>\n#ifdef USE_INSTANCING\ntransformed.x+=sin(uTime*1.8+instanceMatrix[3].x*0.9+instanceMatrix[3].z*0.6)*' + amp.toFixed(3) + '*uv.y*uv.y;\n#endif');
+        // Verschattung am Fuss: zwischen den Halmen kommt unten kaum Licht an. Ohne das
+        // sitzt jeder Grasbuschel wie aufgeklebt auf dem Boden - das ist der deutlichste
+        // Unterschied zwischen gerechnetem und wirklichem Bewuchs, und er kostet nichts.
+        sh.uniforms.uAo = this.aoU;
+        sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uAo;')
+          .replace('#include <color_fragment>', '#include <color_fragment>\n          diffuseColor.rgb*=1.-uAo*(1.-smoothstep(0.0,0.5,vMapUv.y));');
       };
       return m;
     };
@@ -1650,18 +1737,30 @@ export class World {
       im.receiveShadow = true; veg.add(im); return im;
     };
     const mob = this.mobile ? 0.55 : 1;
-    scatter(tuftGeo(), sway(this.tex.tuft, 0.07), Math.round(4800 * mob), () => { const q = bankSpot(-0.4, 15, 1.9, -78); return !q || q.y < 0.28 || (rv.cliff && q.y > 1.2) ? null : q; },
-      () => { const z = 0.7 + rnd() * 1.1; return [z, z * (0.7 + rnd() * 0.8)]; }, [1.3, 1.36, 1.0]);
-    scatter(fernGeo(rnd), sway(this.tex.fern, 0.03), Math.round(520 * clamp(rv.trees + 0.3, 0.4, 1.2) * mob), () => { const q = bankSpot(0.7, 11, 1.5, -78); return !q || q.y < 0.3 || (rv.cliff && q.y > 1.6) ? null : q; },
-      () => { const z = 0.8 + rnd() * 0.9; return [z, z * (0.8 + rnd() * 0.5)]; }, [1.2, 1.3, 0.98]);
+    // Im Winter steht kaum noch etwas und was steht, ist grau und niedrig; im Herbst ist das
+    // Gras welk und schon duenner. Farne sterben als Erstes ab, Schilf bleibt als Horst stehen.
+    const grassN = win ? 0.28 : aut ? 0.4 : 1, grassCol = win ? [1.25, 1.2, 1.05] : aut ? [2.0, 1.45, 0.42] : [1.3, 1.36, 1.0];
+    const grassH = win ? 0.55 : aut ? 0.85 : 1;
+    scatter(tuftGeo(), sway(this.tex.tuft, 0.07), Math.round(4800 * mob * grassN), () => { const q = bankSpot(-0.4, 15, 1.9, -78); return !q || q.y < 0.28 || (rv.cliff && q.y > 1.2) ? null : q; },
+      () => { const z = (0.7 + rnd() * 1.1) * grassH; return [z, z * (0.7 + rnd() * 0.8)]; }, grassCol);
+    scatter(fernGeo(rnd), sway(this.tex.fern, 0.03), Math.round(520 * clamp(rv.trees + 0.3, 0.4, 1.2) * mob * (win ? 0 : aut ? 0.45 : 1)), () => { const q = bankSpot(0.7, 11, 1.5, -78); return !q || q.y < 0.3 || (rv.cliff && q.y > 1.6) ? null : q; },
+      () => { const z = 0.8 + rnd() * 0.9; return [z, z * (0.8 + rnd() * 0.5)]; }, aut ? [1.55, 1.18, 0.6] : [1.2, 1.3, 0.98]);
     let rc = null;
-    scatter(tuftGeo(0.5, 0.92), sway(this.tex.reed, 0.09), rv.cliff ? 0 : Math.round(420 * mob), () => {   // in Horsten an ruhigen Uferstellen
+    scatter(tuftGeo(0.5, 0.92), sway(this.tex.reed, 0.09), rv.cliff ? 0 : Math.round(420 * mob * (win ? 0.5 : 1)), () => {   // in Horsten an ruhigen Uferstellen
       if (!rc || rnd() < 0.12) { rc = bankSpot(-0.9, 0.5, 1, -78); if (rc && river.speedAt(rc.x - rc.side * 0.8, rc.z) > rv.speed * 0.55) rc = null; }
       if (!rc) return null;
       const x = rc.x + (rnd() - 0.5) * 1.6, z = rc.z + (rnd() - 0.5) * 3.2, h = river.heightAt(x, z);
       return h < -0.1 || h > 0.22 ? null : { x, z, y: h };
-    }, () => { const z = 0.75 + rnd() * 0.6; return [z, z * (0.7 + rnd() * 0.5)]; }, [1.45, 1.5, 1.12]);
+    }, () => { const z = 0.75 + rnd() * 0.6; return [z, z * (0.7 + rnd() * 0.5)]; }, win ? [1.5, 1.38, 1.05] : aut ? [1.6, 1.3, 0.7] : [1.45, 1.5, 1.12]);
+    // Herbst: ein Laubteppich am Ufer. Dieselbe Laubkarte, flach hingelegt und leicht gedreht.
+    if (aut) {
+      const litter = new THREE.PlaneGeometry(0.55, 0.55); litter.rotateX(-Math.PI / 2);
+      scatter(litter, cardMat(this.tex.leaf), Math.round(2600 * mob), () => { const q = bankSpot(-0.2, 13, 1.7, -78); return !q || q.y < 0.26 ? null : q; },
+        () => { const z = 0.8 + rnd() * 1.4; return [z, 1]; }, [3.0, 1.9, 0.18]);
+    }
     veg.visible = this.hi; this.grass = veg; this.env.add(veg);
+    // bedeckt streut der Himmel diffus und traegt mehr, pralle Sonne weniger
+    this.setEnvK(overcast ? 1.15 : 0.85);
     return river;
   }
 
@@ -1678,14 +1777,18 @@ export class World {
     mat.onBeforeCompile = s => {
       if (prev) prev(s);
       Object.assign(s.uniforms, { uNz: { value: this.noiseTex }, uTime: this.timeU, uCaust: this.causticU, uCk: mat.userData.uCk, uCf: { value: floor } });
-      s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vCW;')
+      s.uniforms.uSnow = this.snowU;
+      s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vCW; varying vec3 vCN;')
         .replace('#include <begin_vertex>', `#include <begin_vertex>
           #ifdef USE_INSTANCING
             vCW=(modelMatrix*instanceMatrix*vec4(transformed,1.)).xyz;
+            vCN=normalize(mat3(modelMatrix)*mat3(instanceMatrix)*objectNormal);
           #else
             vCW=(modelMatrix*vec4(transformed,1.)).xyz;
+            vCN=normalize(mat3(modelMatrix)*objectNormal);
           #endif`);
-      s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vCW; uniform sampler2D uNz; uniform float uTime,uCaust,uCk,uCf;')
+      s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vCW; varying vec3 vCN; float vWet=0.; uniform sampler2D uNz; uniform float uTime,uCaust,uCk,uCf,uSnow;')
+        .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n          roughnessFactor=mix(roughnessFactor,0.16,vWet);')
         .replace('#include <map_fragment>', `#include <map_fragment>
           if(vCW.y<0.0){
             float shw=smoothstep(-1.8,-0.04,vCW.y), tt=uTime*0.5;
@@ -1693,10 +1796,45 @@ export class World {
             float c2=texture2D(uNz,vCW.xz*0.14+vec2(0.31-0.03*tt,0.17-0.07*tt)).a;
             float ca=pow(clamp(1.-abs(c1-c2)*3.4,0.,1.),7.)*shw;
             diffuseColor.rgb*=uCf+ca*uCk*uCaust;
+          }
+          // Nasser Saum: was gerade aus dem Wasser ragt, ist dunkel und glaenzt, trockener
+          // Fels darueber bleibt matt. Bisher war alles gleich matt - das ist der Grund,
+          // warum das Ufer leblos aussah, und das Umgebungslicht hatte dort nichts zu spiegeln.
+          else if(vCW.y<0.34){
+            vWet=1.-smoothstep(0.02,0.34,vCW.y);
+            diffuseColor.rgb*=mix(1.,0.6,vWet);
+          }
+          // Schnee liegt nur, wo es nach oben zeigt und ueber dem Wasser ist.
+          else if(uSnow>0.001){
+            float up=smoothstep(0.32,0.82,vCN.y);
+            float dry=smoothstep(0.02,0.3,vCW.y);
+            float pat=0.55+0.45*texture2D(uNz,vCW.xz*0.7).b;
+            float sn=clamp(up*dry*pat*uSnow,0.,1.);
+            diffuseColor.rgb=mix(diffuseColor.rgb,vec3(0.93,0.95,0.99),sn);
           }`);
     };
     mat.customProgramCacheKey = () => 'caust' + k + '_' + floor;
     return mat;
+  }
+
+  // Umgebungslicht aus dem Himmelsbild. Einmal je Lichtstimmung gerechnet und behalten -
+  // PMREM kostet beim Bauen ein paar Millisekunden, danach nichts mehr.
+  applyEnv(lid) {
+    if (lid !== this.envLid) return;
+    if (!this.envOn) { this.scene.environment = null; return; }
+    let e = this.envMaps[lid];
+    if (!e) {
+      const t = this.skyTex[lid];
+      if (!t || !t.image) return;                     // Bild noch unterwegs; der Ladehaken ruft erneut
+      e = this.envMaps[lid] = this.pmrem.fromEquirectangular(t).texture;
+    }
+    this.scene.environment = e;
+    this.setEnvK(this.envK);
+  }
+  // r160 kennt scene.environmentIntensity noch nicht, also je Material setzen
+  setEnvK(k) {
+    this.envK = k;
+    this.scene.traverse(o => { if (!o.material) return; for (const m of [].concat(o.material)) if (m.envMapIntensity !== undefined) m.envMapIntensity = k; });
   }
 
   setClearView(on) { this.waterU.uNoRefl.value = on ? 1 : 0; }   // Spiegelung ausblenden (Sichthilfe)
@@ -1707,7 +1845,7 @@ export class World {
     const g = base.clone();
     const m = new THREE.Mesh(g, this.fishMats[species] || // Fische bekommen nur Licht dazu, nie weniger (Grundwert 1.0): einen Fisch zu entdecken ist Spielinhalt,
 // und der Grund um ihn herum steht im Bettshader schon auf 0.8 - ein Fisch darf davor nicht absaufen
-(this.fishMats[species] = this.caustic(new THREE.MeshStandardMaterial({ map: fishSkin(species), roughness: 0.4, metalness: 0.1, side: THREE.DoubleSide }), 0.8, 1.0)));
+(this.fishMats[species] = this.caustic(new THREE.MeshStandardMaterial({ map: fishSkin(species), roughness: 0.4, metalness: 0.1, side: THREE.DoubleSide, envMapIntensity: this.envK }), 0.8, 1.0)));
     m.userData.base = Float32Array.from(base.attributes.position.array);
     m.scale.setScalar(len / 100 * 1.15);
     m.castShadow = true; m.frustumCulled = false; m.layers.enable(1);
@@ -1897,6 +2035,18 @@ export class World {
         b[i * 3 + 2] = cz + s[2] + Math.cos(t * 0.8 * s[4] + s[3]) * 0.9;
       });
       this.bugs.geometry.attributes.position.needsUpdate = true;
+    }
+    if (this.snow.visible) {
+      const a = this.snow.geometry.attributes.position.array, H = 15;
+      for (let i = 0; i < this.snowSeed.length; i++) {
+        const s = this.snowSeed[i];
+        s[1] -= dt * (0.55 + s[3] * 0.5);                         // leichte Flocken fallen langsamer
+        if (s[1] < -0.5) { s[1] = H; s[0] = Math.random() * 44 - 22; s[2] = Math.random() * 44 - 22; }
+        a[i * 3] = cxp + s[0] + Math.sin(t * 0.5 * s[3] + s[4]) * 1.1;   // seitliches Treiben
+        a[i * 3 + 1] = s[1];
+        a[i * 3 + 2] = cz + s[2] + Math.cos(t * 0.38 * s[3] + s[4]) * 0.9;
+      }
+      this.snow.geometry.attributes.position.needsUpdate = true;
     }
     const R = this.renderer, U = this.waterU, cam = this.camera;
     if (this._needLayers) {   // alles, was unter Wasser sichtbar sein kann, zusaetzlich auf Ebene 1
