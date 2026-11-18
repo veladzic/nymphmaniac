@@ -424,6 +424,61 @@ Die vier Staffeln spielen zu verschiedenen Jahreszeiten, und das Revier sieht je
 
 Gemessen kostet das nichts: 60,3 Bilder je Sekunde im Sommer, 60,1 im Winter; die Zeichenaufrufe steigen um rund 28.
 
+## Ufer und Wald
+
+**Das Gras war zu hoch.** Die Büschel standen zwischen 0,49 m und 1,89 m – das ist kein Ufergras, das ist ein Schilfgürtel, und der Angler watete bis zur Brust hindurch. Jetzt stehen sie 0,18 bis 0,73 m, im Mittel gut 40 cm. Dafür die Hälfte mehr Büschel (7000 statt 4800), sonst liegt der Boden frei. Das Schilf am Wasserrand ist mitgegangen: 0,35 bis 1,1 m statt bis 1,5 m – höher als das Gras, wie es sich gehört, aber kein Kamm aus schwarzen Spitzen mehr.
+
+**Drei Reviere stehen im Wald.** Sie heißen schon so, also sollen sie auch so aussehen:
+
+| Revier | | Bäume |
+|---|---|---|
+| Der Mühlbach | „schmal und verwachsen" | `forest: 2.6` |
+| Der Quellbach | Fichtenwald, fast nur Nadelholz | `forest: 2.3` |
+| Der Auwald | Auwald heißt Wald | `forest: 2.4` |
+
+`forest` vervielfacht Bäume, Büsche und Farne – aus 300 Bäumen werden 780. Aber Dichte allein macht noch keinen Wald: Entscheidend ist, wie nah sie ans Wasser reichen. Die Regel, die den Angler aus dem Geäst hält (`clearOf`), hält Bäume sonst 4 bis 6,8 m vom Ufer fern, und dazwischen bleibt ein offener Streifen stehen. In Waldrevieren kommen deshalb zwei Gürtel dazu:
+
+- **Jungwuchs**, kleine Fichten mit halber Größe. Ein kleiner Baum hat eine kleine Krone, also lässt ihn dieselbe Regel von selbst dichter heran – mit kleinerem Rand (0,6 statt 1,2 m) stehen sie 2,1 bis 3,3 m vom Wasser.
+- **Ufergehölz**, wo das Revier überhaupt Laubholz trägt. Weiden und Pappeln wurzeln im Ufer; ohne sie sieht ein Auwald aus wie eine Wiese mit Wald am Horizont. Genau so sah er in der ersten Fassung aus.
+
+**Was es kostet:** 2236 Bauminstanzen statt 204, **1,38 Millionen gezeichnete Dreiecke statt 0,56**. Die Zeichenaufrufe bleiben dagegen fast gleich (466 statt 460), weil alle Bäume einer Art in einer einzigen `InstancedMesh` stecken – das ist der Grund, warum sich das überhaupt rechnet. Die CPU-Zeit je Bild steigt von 1,40 auf 1,67 ms, der Aufbau des Reviers von 150 auf 202 ms. Am Handy fällt der Wald auf 60 % aus; 1,3 Millionen Dreiecke trägt ein Telefon nicht in voller Dichte.
+
+Was die GPU dazu sagt, steht noch offen: Die Messung lief in einem ausgeblendeten Fenster, und dort bremst der Browser die Bildrate auf 15 Hz herunter. Die Dreieckszahl und die Zeichenaufrufe sind davon unberührt, die Bildrate wäre es nicht – deshalb steht hier keine.
+
+## Tiere am Fluss
+
+Vögel in der Luft, Eichhörnchen am Ufer – in `js/fauna.js`. Was ein Tier lebendig macht, ist nicht seine Form, sondern seine Bewegung: Aus zehn Metern sieht man von einem Vogel ohnehin nur die Silhouette. Darum steckt dort wenig Geometrie und viel Verhalten.
+
+**Kleinvögel fliegen in Wellen.** Sie schlagen nur, solange sie steigen, und legen die Flügel beim Sinken an – daher der Auf-und-ab-Flug jedes Spatzen. Genau so ist es gebaut: Eine Phase läuft durch, ihr Kosinus entscheidet, ob gerade gestiegen wird; beim Steigen schlagen die Flügel mit 27 rad/s, beim Sinken stehen sie angelegt und nach hinten geschwungen, der Schwanz fächert auf. Ein Vogel, der gleichmäßig durch die Luft schlägt, sieht aus wie ein Spielzeug.
+
+Dazu legen sie sich in die Kurve: Die Rolllage folgt der Drehrate um die Hochachse, begrenzt auf ±0,9 rad. Ein Schwarm von neun Vögeln sitzt in den Baumkronen, fliegt nach drei bis zwölf Sekunden auf, wechselt den Baum und setzt sich wieder. Gemessen über zwanzig Sekunden: zwei Drittel der Zeit sitzend, ein Drittel fliegend.
+
+**Der Greifvogel schlägt fast nie.** Er kreist auf dem Aufwind in 24 bis 40 m Höhe, legt sich mit 0,34 rad in die Kurve und schlägt nur alle sechs bis zweiundzwanzig Sekunden ein paar Mal nach. Der Kreismittelpunkt folgt dem Angler, aber nur weiträumig – sonst würde der Vogel mitwandern, und das fiele auf.
+
+**Eichhörnchen gehen nicht, sie springen.** Beide Hinterbeine zugleich, der Rücken macht dabei einen Buckel; jeder Sprung dauert 0,3 s und trägt bis 0,5 m. Dazwischen sitzen sie aufrecht, zucken mit dem Schwanz und drehen den Kopf ruckartig – ein Eichhörnchen schaut nicht, es zuckt hin. Das Sitzen ist ein gutes Drittel der Zeit; ein durchgehend laufendes Eichhörnchen wirkt falsch, auch wenn niemand sagen kann, warum.
+
+Beim Aufrichten dreht sich **nicht der Rumpf, sondern die Hüfte**. Rücken, Bauch, Kopf und Schwanz hängen an einer Gruppe, deren Drehpunkt bei den Hinterbeinen liegt; nur die Hinterbeine bleiben am Boden. Die erste Fassung kippte die Rumpfkugel um ihre eigene Mitte – der Bauch blieb stehen, und das Tier fiel sichtbar auseinander.
+
+**Sie wohnen im Baum.** Ein Eichhörnchen setzt sich an den Fuß eines Baumes in Sichtweite und bleibt in dessen Nähe (höchstens 4,5 m), und in über der Hälfte der Pausen läuft es den Stamm hinauf, verharrt oben kurz und kommt kopfüber wieder herunter. Das ist nicht nur richtiger, es ist auch das Einzige, was man sieht: Im Ufergras von einem Meter Höhe verschwindet ein 22 cm langes Tier vollständig. Die erste Fassung setzte sie irgendwo ans Ufer, und sie waren dort unsichtbar.
+
+Wo die Bäume stehen, wird beim Bau des Reviers mitgeschrieben – Vögel setzen sich hinein, Eichhörnchen klettern daran hoch. Ein Tier, das an einem Baum hochläuft, der nicht da ist, wäre schlimmer als gar keines.
+
+**Was es kostet:** 14 Tiere, 79 Meshes, 4178 Dreiecke, **0,01 ms Rechenzeit je Bild**. Schnabel, Nase und Ohren bewegen sich nie für sich und sind deshalb in Kopf und Schädel hineingelegt – das spart 22 Zeichenaufrufe. Am Handy ist alles auf 55 % heruntergesetzt, im Winter ebenso: Krähen fliegen auch dann, und Eichhörnchen graben ihre Verstecke aus, nur die Schwärme sind kleiner.
+
+Nachgemessen über zwanzig Sekunden: kein Eichhörnchen im Wasser, keines schwebt (höchstens 0,098 m über dem Boden, und das ist der Sprungbogen).
+
+**Eine Katze kommt ans Wasser, trinkt und geht wieder.** Sie ist nicht immer da: Zwischen zwei Besuchen vergeht eine gute Minute. Ein Tier, das dauernd herumsteht, ist Kulisse; eines, das man manchmal erwischt, ist ein Ereignis. Sie kommt aus dem Baumsaum neun Meter landeinwärts, geht mit 0,85 m/s ans Wasser, trinkt sieben bis sechzehn Sekunden und geht mit 1,35 m/s zurück – auf dem Rückweg hat sie es eiliger.
+
+Im Gehen hält eine Katze den Rücken waagrecht und den Kopf ruhig; daran erkennt man sie noch auf dreißig Meter. Der Körper hebt und senkt sich um 6 mm, mehr nicht. Die Beine schwingen über Kreuz – vorn links mit hinten rechts. Wer alle vier gleich schwingen lässt, baut ein Schaukelpferd.
+
+**Die Trinkstelle wird gesucht, nicht geraten.** Das Ufer fällt in jedem Revier anders ab, also halbiert `_tränke` das Intervall zwischen „noch im Wasser" und „schon trocken", bis die Kante auf wenige Zentimeter feststeht. Liegt der Boden dort höher als 12 cm, wird der Platz verworfen: Auf einer Kante von 20 cm trinkt die Katze Luft. Am Ziel tritt sie genau auf den geprüften Punkt – ein paar Zentimeter daneben steht sie schon wieder auf der Böschung.
+
+Beim Trinken bleibt sie auf den Beinen und senkt nur Brust und Hals; eine trinkende Katze legt sich nicht hin. Alle zweieinhalb bis fünfeinhalb Sekunden hebt sie den Kopf und schaut – länger als zehn Sekunden säuft keine Katze am Stück.
+
+Zwei Dinge haben beim Bauen nicht gestimmt, beide an derselben Stelle: Der Kopf saß zunächst **im** Halsgelenk, und eine Drehung des Halses bewegte ihn deshalb gar nicht; und das Vorzeichen dieser Drehung war verkehrt, sodass sich der Kopf hob statt senkte. Beides zusammen ergab eine Katze, die 38 cm über dem Wasser andächtig in die Luft schaute. Nachgemessen steht sie jetzt 5 cm vom Wasserrand auf 2 cm Höhe, und die Nasenunterkante liegt bei **−0,014 m** – also knapp unter der Oberfläche.
+
+**Gesamtkosten aller Tiere:** 15 Stück, 92 Meshes, 5626 Dreiecke, **0,009 ms Rechenzeit je Bild**.
+
 ### Licht
 
 Die Szene wurde bisher von zwei Lampen beleuchtet: einer gerichteten Sonne und einem Halbkugellicht, das den ganzen Himmel mit zwei Farben nachstellte. Ein `scene.environment` gab es nicht – obwohl die Himmelsbilder als Kugelprojektion ohnehin schon geladen werden.

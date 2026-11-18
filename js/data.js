@@ -148,7 +148,7 @@ export const REVIERE = [
   {
     id: 'muehlbach', season: 1, name: "Der Mühlbach", sub: "Schmal und verwachsen",
     seed: 29, width: 8.5, depth: 0.6, speed: 0.7, rocks: 14, rockSize: 0.4, pools: 3, poolDepth: 0.45, bend: [4.5, 0.075],
-    bankSlope: 0.25, bankMax: 2.4, trees: 0.9, leafShare: 0.7,
+    bankSlope: 0.25, bankMax: 2.4, trees: 1.0, leafShare: 0.7, forest: 2.6,   // "schmal und verwachsen" - hier steht der Wald bis ans Wasser
     pal: { grass: 0x6f9c48, rock: 0x8a8880, gravel: 0xb4a88c, bed: 0x3e5e4c, shallow: 0x88dcc2, deep: 0x1e8070, skyTop: 0x4a98e0, skyBot: 0xd6eef8, fog: 0xcce6ee },
     species: { bachforelle: 7, saibling: 2, aesche: 1 }, sizeMul: 0.65, fishN: 10,
     clarity: [0, 0, 1], insects: ['baetis', 'caddis', 'gammarus'],
@@ -214,7 +214,7 @@ export const REVIERE = [
   {
     id: 'quellbach', fall: 2.8, season: 2, name: "Der Quellbach", sub: "Klein und kalt",
     seed: 91, width: 9, depth: 0.5, speed: 0.95, rocks: 40, rockSize: 0.45, pools: 4, poolDepth: 0.45, bend: [4, 0.08],
-    bankSlope: 0.9, bankMax: 8, trees: 0.3, leafShare: 0.05,
+    bankSlope: 0.9, bankMax: 8, trees: 0.85, leafShare: 0.05, forest: 2.3,   // Quellbach im Fichtenwald, fast nur Nadelholz
     pal: { grass: 0x6f9a4a, rock: 0x86888a, gravel: 0xb4ae9c, bed: 0x3f5f52, shallow: 0x9aeadc, deep: 0x1f8a7e, skyTop: 0x3f8fd8, skyBot: 0xcfe8f5, fog: 0xc8e2ec },
     species: { saibling: 6, bachforelle: 4 }, sizeMul: 0.55, fishN: 12,
     clarity: [0, 0, 0], insects: ['stone', 'baetis', 'caddis'],
@@ -267,7 +267,7 @@ export const REVIERE = [
   {
     id: 'auwald', season: 3, name: "Der Auwald", sub: "Trübes Wasser, graue Schatten",
     seed: 131, width: 14, depth: 1.1, speed: 0.6, rocks: 12, rockSize: 0.5, pools: 3, poolDepth: 0.6, bend: [8, 0.045],
-    bankSlope: 0.15, bankMax: 1.8, trees: 1.1, leafShare: 0.8, leaf: [1.75, 0.9, 0.32], veg: [1.3, 0.95, 0.55], ground: [1.25, 0.92, 0.7],
+    bankSlope: 0.15, bankMax: 1.8, trees: 1.1, leafShare: 0.8, forest: 2.4, leaf: [1.75, 0.9, 0.32], veg: [1.3, 0.95, 0.55], ground: [1.25, 0.92, 0.7],   // Auwald heisst Wald
     pal: { grass: 0x9a9048, rock: 0x8a877c, gravel: 0xb8aa88, bed: 0x4a5f48, shallow: 0x9ed8b4, deep: 0x2a7a62, skyTop: 0x5a9ad8, skyBot: 0xe2eef2, fog: 0xd8e4e0 },
     species: { barbe: 5, aesche: 3, bachforelle: 2, regenbogen: 1 }, sizeMul: 0.95, fishN: 11,
     clarity: [1, 1, 2], insects: ['worm', 'gammarus', 'caddis'],

@@ -2,6 +2,7 @@
 import * as THREE from './three.module.min.js';
 import { makeRiver, mulberry32, vnoise, LANE_X } from './river.js';
 import { LOOK as FISH_LOOK } from './fishart.js';
+import { Fauna } from './fauna.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 const _d = new THREE.Vector3(), _a = new THREE.Vector3(), _b = new THREE.Vector3();
@@ -1500,6 +1501,7 @@ export class World {
 
   buildRevier(rv, cond) {
     for (const c of [...this.env.children]) { this.env.remove(c); c.traverse?.(o => { o.geometry?.dispose?.(); o.material?.dispose?.(); }); }
+    this.fauna = null;   // die Tiere haengen in env und sind mit ihm gerade weggeraeumt
     this._catch = null; this._cv = 0; if (this.catchNet) this.catchNet.visible = false; if (this.backNet) this.backNet.visible = true;
     this.clearFish();
     const river = makeRiver(rv);
@@ -1802,7 +1804,7 @@ export class World {
     };
     const obst = this.obst = [];   // Baeume und Buesche als Kreise: die Kamera weicht ihnen aus
     const block = (list, r) => { for (const q of list) obst.push({ x: q.x, z: q.z, r2: (r * q.s + 0.45) ** 2 }); return list; };
-    const clearOf = (q, r) => Math.abs(river.off(q.x, q.z)) - river.halfW >= 1.2 + r * q.s + 0.45;   // der Angler (bis 1 m an Land) steht nie im Laub
+    const clearOf = (q, r, m = 1.2) => Math.abs(river.off(q.x, q.z)) - river.halfW >= m + r * q.s + 0.45;   // der Angler (bis 1 m an Land) steht nie im Laub; im Wald darf es enger zugehen
     const spots = (n, place) => { const l = []; for (let i = 0; i < n * 4 && l.length < n; i++) { const q = place(); if (q) { q.ry = rnd() * 6.3; l.push(q); } } return l; };
     const bankSpot = (minO, maxO, pw, zMin = Z0 + 4) => {
       const side = rnd() < 0.5 ? -1 : 1, z = zMin + rnd() * (Z1 - zMin - 3), x = river.cx(z) + side * (river.halfW + minO + Math.pow(rnd(), pw) * (maxO - minO));
@@ -1827,16 +1829,53 @@ export class World {
     // "kein Laub" zu sagen. Jetzt gibt es kahles Geaest, also duerfen dort wieder Laubbaeume
     // stehen; sie tragen eben keine Blaetter.
     const leafShare = win ? (rv.cliff ? 0.1 : 0.45) : rv.leafShare !== undefined ? rv.leafShare : rv.cliff ? 0.08 : rv.id === 'wiese' || rv.id === 'aeschenzug' ? 0.5 : 0.25;
-    const nT = Math.floor(300 * rv.trees * vk), nL = Math.floor(nT * leafShare), nC = nT - nL;
+    // Waldreviere: dieselben Baeume, nur viel mehr davon - und ein Band Jungwuchs, das
+    // bis dicht ans Wasser reicht. Erst das macht den Unterschied zwischen "Baeume am
+    // Ufer" und "der Bach laeuft durch den Wald".
+    // Am Handy faellt der Wald duenner aus: Die Waldreviere zeichnen 1,3 Millionen
+    // Dreiecke statt 0,56 - das traegt ein Telefon nicht in voller Dichte.
+    const forest = (rv.forest || 1) * (this.mobile ? 0.6 : 1);
+    const nT = Math.floor(300 * rv.trees * vk * forest), nL = Math.floor(nT * leafShare), nC = nT - nL;
+    // Wo die Baeume stehen, merken wir uns: Voegel setzen sich hinein, Eichhoernchen
+    // klettern daran hoch. Ein Tier, das an einem Baum hochlaeuft, der nicht da ist,
+    // waere schlimmer als gar keines.
+    const treeSpots = [];
     for (let v = 0; v < 2; v++) {
       const list = spots(Math.ceil(nC / 2), () => { const q = bankSpot(3.2, 40, 1.3); if (!q) return null; q.y -= 0.2; q.s = 1.0 + rnd() * 1.15; q.sy = 0.9 + rnd() * 0.4; q.c = shade(); return clearOf(q, 2.4) ? q : null; });
       block(list, 2.4); inst(spruceTrunk(), barkMat, list); inst(spruceGeo(rnd), needleMat, list, { color: true, depth: needleDepth });
+      for (const q of list) treeSpots.push({ x: q.x, z: q.z, y: q.y, s: q.s, leaf: false });
     }
     if (nL) for (let v = 0; v < 2; v++) {
       const list = spots(Math.ceil(nL / 2), () => { const q = bankSpot(3.4, 32, 1.5); if (!q) return null; q.y -= 0.15; q.s = 1.0 + rnd() * 0.9; q.sy = 0.9 + rnd() * 0.3; q.c = shade(); return clearOf(q, 2.0) ? q : null; });
       block(list, 2.0); inst(leafTrunk(rnd), barkMat, list); inst(crownGeo(rnd, 2.2, 4.7, 90, 1.5), leafMat, list, { color: true, depth: leafDepth, mul: crownMul });
+      for (const q of list) treeSpots.push({ x: q.x, z: q.z, y: q.y, s: q.s, leaf: true });
     }
-    inst(crownGeo(rnd, 0.72, 0.5, 18, 0.9), leafMat, block(spots(Math.floor(190 * clamp(rv.trees + 0.3, 0.4, 1.2) * vk * (win ? 0.35 : 1)), () => {
+    // Jungwuchs: kleine Fichten, die naeher ans Wasser duerfen. Ein kleiner Baum hat eine
+    // kleine Krone, also laesst ihn dieselbe Freihalteregel von selbst dichter heran -
+    // der Angler steht trotzdem nie im Geaest.
+    if (rv.forest) {
+      const list = spots(Math.round(130 * vk * forest), () => {
+        const q = bankSpot(1.4, 15, 1.4); if (!q) return null;
+        q.y -= 0.12; q.s = 0.45 + rnd() * 0.5; q.sy = 0.85 + rnd() * 0.45; q.c = shade();
+        return clearOf(q, 2.4, 0.6) ? q : null;
+      });
+      block(list, 2.0); inst(spruceTrunk(), barkMat, list); inst(spruceGeo(rnd), needleMat, list, { color: true, depth: needleDepth });
+      for (const q of list) treeSpots.push({ x: q.x, z: q.z, y: q.y, s: q.s, leaf: false });
+      // Wo Laubholz steht, gehoert es ans Wasser: Weiden und Pappeln wurzeln im Ufer.
+      // Ohne diesen Guertel bleibt zwischen Wasser und Wald ein offener Streifen stehen,
+      // und ein Auwald sieht aus wie eine Wiese mit Wald am Horizont.
+      if (leafShare > 0.3) {
+        const nah = spots(Math.round(110 * vk * forest), () => {
+          const q = bankSpot(1.6, 13, 1.5); if (!q) return null;
+          q.y -= 0.12; q.s = 0.62 + rnd() * 0.5; q.sy = 0.95 + rnd() * 0.35; q.c = shade();
+          return clearOf(q, 2.0, 0.6) ? q : null;
+        });
+        block(nah, 1.7); inst(leafTrunk(rnd), barkMat, nah); inst(crownGeo(rnd, 2.2, 4.7, 90, 1.5), leafMat, nah, { color: true, depth: leafDepth, mul: crownMul });
+        for (const q of nah) treeSpots.push({ x: q.x, z: q.z, y: q.y, s: q.s, leaf: true });
+      }
+    }
+    this.fauna = new Fauna(this.env, { rnd, river, trees: treeSpots, C, win, mobile: this.mobile });
+    inst(crownGeo(rnd, 0.72, 0.5, 18, 0.9), leafMat, block(spots(Math.floor(190 * clamp(rv.trees + 0.3, 0.4, 1.2) * vk * forest * (win ? 0.35 : 1)), () => {
       const q = bankSpot(0.9, 17, 1.7); if (!q || q.y < 0.3) return null;
       q.y -= 0.05; q.s = 0.7 + rnd() * 1.1; q.sy = 0.8 + rnd() * 0.4; q.c = shade(); return clearOf(q, 1.1) ? q : null;
     }), 1.1), { color: true, depth: leafDepth, mul: crownMul });
@@ -1873,9 +1912,12 @@ export class World {
     // Gras welk und schon duenner. Farne sterben als Erstes ab, Schilf bleibt als Horst stehen.
     const grassN = win ? 0.28 : aut ? 0.4 : 1, grassCol = win ? [1.25, 1.2, 1.05] : aut ? [2.0, 1.45, 0.42] : [1.3, 1.36, 1.0];
     const grassH = win ? 0.55 : aut ? 0.85 : 1;
-    scatter(tuftGeo(), sway(this.tex.tuft, 0.07), Math.round(4800 * mob * grassN), () => { const q = bankSpot(-0.4, 15, 1.9, -78); return !q || q.y < 0.28 || (rv.cliff && q.y > 1.2) ? null : q; },
-      () => { const z = (0.7 + rnd() * 1.1) * grassH; return [z, z * (0.7 + rnd() * 0.8)]; }, grassCol);
-    scatter(fernGeo(rnd), sway(this.tex.fern, 0.03), Math.round(520 * clamp(rv.trees + 0.3, 0.4, 1.2) * mob * (win ? 0 : aut ? 0.45 : 1)), () => { const q = bankSpot(0.7, 11, 1.5, -78); return !q || q.y < 0.3 || (rv.cliff && q.y > 1.6) ? null : q; },
+    // Die Bueschel standen zwischen 0,49 m und 1,89 m hoch - das ist kein Ufergras, das ist
+    // ein Schilfguertel, und der Angler watete bis zur Brust darin. Jetzt 0,18 bis 0,73 m,
+    // im Mittel gut 40 cm. Dafuer die Haelfte mehr Bueschel, sonst liegt der Boden frei.
+    scatter(tuftGeo(), sway(this.tex.tuft, 0.07), Math.round(7000 * mob * grassN), () => { const q = bankSpot(-0.4, 15, 1.9, -78); return !q || q.y < 0.28 || (rv.cliff && q.y > 1.2) ? null : q; },
+      () => { const z = (0.34 + rnd() * 0.46) * grassH; return [z, z * (0.75 + rnd() * 0.55)]; }, grassCol);
+    scatter(fernGeo(rnd), sway(this.tex.fern, 0.03), Math.round(520 * clamp(rv.trees + 0.3, 0.4, 1.2) * mob * Math.min(forest, 1.8) * (win ? 0 : aut ? 0.45 : 1)), () => { const q = bankSpot(0.7, 11, 1.5, -78); return !q || q.y < 0.3 || (rv.cliff && q.y > 1.6) ? null : q; },
       () => { const z = 0.8 + rnd() * 0.9; return [z, z * (0.8 + rnd() * 0.5)]; }, aut ? [1.55, 1.18, 0.6] : [1.2, 1.3, 0.98]);
     let rc = null;
     scatter(tuftGeo(0.5, 0.92), sway(this.tex.reed, 0.09), rv.cliff ? 0 : Math.round(420 * mob * (win ? 0.5 : 1)), () => {   // in Horsten an ruhigen Uferstellen
@@ -1883,7 +1925,7 @@ export class World {
       if (!rc) return null;
       const x = rc.x + (rnd() - 0.5) * 1.6, z = rc.z + (rnd() - 0.5) * 3.2, h = river.heightAt(x, z);
       return h < -0.1 || h > 0.22 ? null : { x, z, y: h };
-    }, () => { const z = 0.75 + rnd() * 0.6; return [z, z * (0.7 + rnd() * 0.5)]; }, win ? [1.5, 1.38, 1.05] : aut ? [1.6, 1.3, 0.7] : [1.45, 1.5, 1.12]);
+    }, () => { const z = 0.52 + rnd() * 0.42; return [z, z * (0.75 + rnd() * 0.5)]; }, win ? [1.5, 1.38, 1.05] : aut ? [1.6, 1.3, 0.7] : [1.45, 1.5, 1.12]);   // hoeher als das Gras, aber kein Kamm aus schwarzen Spitzen mehr
     // Herbst: ein Laubteppich am Ufer. Dieselbe Laubkarte, flach hingelegt und leicht gedreht.
     if (aut) {
       const litter = new THREE.PlaneGeometry(0.55, 0.55); litter.rotateX(-Math.PI / 2);
@@ -2489,6 +2531,7 @@ export class World {
       });
       this.bugs.geometry.attributes.position.needsUpdate = true;
     }
+    if (this.fauna) this.fauna.update(dt, t, px, pz);
     if (this.snow.visible) {
       const a = this.snow.geometry.attributes.position.array, H = 15;
       for (let i = 0; i < this.snowSeed.length; i++) {
