@@ -195,9 +195,9 @@ export class Sfx {
     o.connect(g); g.connect(this._out(pan)); o.start(t); o.stop(t + dur + 0.02);
   }
 
-  burst(dur, vol, freq, pan, q = 0.8, white = false) {
+  burst(dur, vol, freq, pan, q = 0.8, white = false, delay = 0) {
     if (!this.ctx || !this.on) return;
-    const t = this.ctx.currentTime, s = this.ctx.createBufferSource(), g = this.ctx.createGain(), f = this.ctx.createBiquadFilter();
+    const t = this.ctx.currentTime + delay, s = this.ctx.createBufferSource(), g = this.ctx.createGain(), f = this.ctx.createBiquadFilter();
     s.buffer = white ? this.white : this.brown; f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = q;
     g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     s.connect(f); f.connect(g); g.connect(this._out(pan)); s.start(t, Math.random() * 2, dur + 0.05);
@@ -251,6 +251,16 @@ export class Sfx {
     this.drg.g.gain.setTargetAtTime(this.on ? vol : 0, t, rate > 0 ? 0.05 : 0.12);
   }
 
+  // Schrotschuss: ein harter weisser Knall, darunter der tiefe Schlag der Ladung, und
+  // zweimal das Echo vom Hang gegenueber. Ohne das Echo klingt ein Schuss im Tal wie ein
+  // Tuerschlag - der Nachhall ist die halbe Wucht.
+  shot() {
+    // Der Schuss kommt von der eigenen Schulter: mittig und laut, kein Ort im Raum.
+    this.burst(0.08, 0.85, 2200, 0, 0.3, true);
+    this.tone(160, 40, 0.24, 0.42, 'sawtooth');
+    this.burst(0.2, 0.3, 850, -0.5, 0.5, true, 0.19);     // Echo vom Hang, erst links
+    this.burst(0.34, 0.15, 480, 0.6, 0.5, true, 0.46);    // dann schwaecher von der anderen Seite
+  }
   tick() { this.tone(900, 700, 0.03, 0.05, 'triangle'); }
   reel() { this.tone(1500, 1200, 0.025, 0.07, 'square'); }
   snap() { this.tone(300, 60, 0.2, 0.3, 'sawtooth'); this.burst(0.1, 0.4, 4000); }

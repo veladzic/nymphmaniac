@@ -160,7 +160,7 @@ const S = {
   sndT: 0, stepD: 0.55, sx: LANE_X, sz: 0, aimU: null, aimP0: null, aimBase: 0, netT: 0,
   // was die Gegenseite zu sehen bekommt: die Rutenspitze, wie sie wirklich steht,
   // und im Wurf das Ende der fliegenden Schnur
-  wire: { x: 0, y: 0, z: 0 }, wired: 0, air: { x: 0, y: 0, z: 0, on: 0 },
+  wire: { x: 0, y: 0, z: 0 }, wired: 0, air: { x: 0, y: 0, z: 0, on: 0 }, zoom: 0,
 };
 function gaugeLabels() {
   const q = (s, v) => { const e = document.querySelector(s); if (e) e.textContent = v; };
@@ -187,6 +187,7 @@ function tip3() {
   return { x: S.tip.x, y: h.y + Math.sqrt(3.05 * 3.05 - c * c), z: S.tip.z };
 }
 function restTip() { const h = hand(), a = S.face + 0.25; S.tip.x = h.x - Math.sin(a) * 2.0; S.tip.z = h.z - Math.cos(a) * 2.0; }
+const _gv = new THREE_V3();
 const vibrate = p => { if (save.set.vib && navigator.vibrate) { try { navigator.vibrate(p); } catch (e) { /* */ } } };
 
 // ---------- Revier ----------
@@ -214,7 +215,7 @@ function enterRevier(i, keep) {
   applyHatch();
   world.setPolar(save.level >= 2);
   S.px = LANE_X; S.pz = 0; world.camZ = 0; world.camX = LANE_X; S.wade = null; S.fight = null; S.bite = null; S.snag = false;
-  fish = []; respawn = [];
+  fish = []; respawn = []; kormSt = 'weg'; kormOpfer = null; ottSt = 'weg'; ottOpfer = null;
   // Besatz: 40 % mehr als frueher und gleichmaessig ueber die Strecke verteilt, damit nicht zufaellig ganze Abschnitte leer bleiben
   const all = river.lies.filter(l => !l.big).sort((a, b) => b.z - a.z), want = Math.min(all.length, Math.round(rv.fishN * 1.4)), lies = [];
   for (let i = 0; i < want; i++) { const a = Math.floor(i * all.length / want), b = Math.max(a + 1, Math.floor((i + 1) * all.length / want)); lies.push(all[a + ((Math.random() * (b - a)) | 0)]); }
@@ -351,6 +352,230 @@ function updateHatch(dt) {
   if (!ins) { cond.hatchWait = 120; return; }               // Revier ohne schluepfende Art
   const w = (HATCH_LIGHT[cond.light.id] || 0.8) * (INSECTS[ins].hatch || 1);
   if (Math.random() < dt * w / HATCH_MEAN) startHatch(ins);
+}
+
+// ---------- Der Kormoran ----------
+// Er ist kein Tier zum Anschauen, sondern eine Konkurrenz. Solange er auf der Strecke
+// steht, steht dort nichts mehr: Jeder Tauchgang kostet einen Fisch, und der kommt erst
+// nach vier Minuten wieder - viermal so lange wie nach einem Fang. Wer ihn laesst, fischt
+// in einer leeren Rinne.
+let kormSt = 'weg', kormOpfer = null;
+function updateKormoran(dt) {
+  const f = world.fauna, k = f && f.korm;
+  if (!k || !river) return;
+  const auf = k.st === 'sitzt' || k.st === 'auf' || k.st === 'taucht' || k.st === 'unter';
+
+  // Ankunft und Abgang melden - sonst steht er irgendwann da, ohne dass man weiss, seit wann
+  if (kormSt === 'weg' && k.st === 'anflug') toast(T('Ein Kormoran kommt den Fluss herauf.'), 4200);
+  if (auf && kormSt === 'anflug') toast(T('Er steht auf deiner Strecke. Wo er taucht, bleibt nichts.'), 4600);
+  if ((k.st === 'weg' || k.st === 'abflug') && (kormSt === 'sitzt' || kormSt === 'auf' || kormSt === 'unter')) {
+    if (k.st === 'abflug') toast(T('Der Kormoran zieht ab.'), 3000);
+  }
+
+  if (auf) {
+    // In seiner Naehe steht kein Fisch ruhig. Das ist kein Schaden auf Dauer, aber
+    // solange er da ist, beisst dort nichts.
+    for (const fi of fish) if (Math.hypot(fi.x - k.pos.x, fi.z - k.pos.z) < 8) fi.wary = Math.max(fi.wary, 6);
+  }
+
+  // Er geht unter Wasser: Jetzt faellt die Entscheidung, ob er einen erwischt.
+  //
+  // Gesucht wird der naechste Fisch im Umkreis von 25 m, und er schwimmt unter Wasser
+  // auch dorthin - ein Kormoran taucht dort, wo etwas steht, nicht an einer zufaelligen
+  // tiefen Stelle. Ohne das Zielen blieb er gemessen zwei Tauchgaenge lang ohne Beute:
+  // Die Fische stehen auf ihren Standplaetzen, und die trifft man nicht aus Versehen.
+  if (k.st === 'unter' && kormSt === 'taucht') {
+    let best = null, bd = 25;
+    for (const fi of fish) {
+      if (fi.spooked > 0 || fi.old) continue;             // den Alten holt kein Vogel
+      if (Math.hypot(fi.x - S.px, fi.z - S.pz) < 15) continue;   // nicht unter die eigene Fluchtgrenze schwimmen
+      const d = Math.hypot(fi.x - k.pos.x, fi.z - k.pos.z);
+      if (d < bd) { bd = d; best = fi; }
+    }
+    if (best) k.ziel.set(best.x, 0, best.z);
+    // Nicht jeder Tauchgang geht auf - knapp jeder dritte. Die erste Fassung hatte
+    // kuerzere Pausen und eine hoehere Quote: gemessen fuenf Fische in anderthalb
+    // Minuten, gut ein Viertel des Besatzes auf einen Besuch. Das ist keine Konkurrenz
+    // mehr, das ist eine Abrissbirne.
+    if (best && Math.random() > 0.3) best = null;
+    for (const fi of fish) if (fi !== best && Math.hypot(fi.x - k.pos.x, fi.z - k.pos.z) < 3.5 && fi.spooked <= 0) fleeFish(fi, 60);
+    kormOpfer = best;
+    k.fang = best ? 1 : 0;
+  }
+  // Der Fisch ist erst weg, wenn der Vogel damit hochkommt. Vorher wurde er schon beim
+  // Abtauchen aus dem Besatz genommen - wer den Vogel mitten im Tauchgang vergraemte,
+  // verlor den Fisch trotzdem. Gemessen kamen so mehr gefressene Fische heraus als
+  // Tauchgaenge.
+  if (kormOpfer && kormSt === 'unter' && k.st !== 'unter') {
+    const o = kormOpfer; kormOpfer = null;
+    if (k.st === 'auf') {
+      fish = fish.filter(x => x !== o);
+      if (o.mesh.parent) o.mesh.parent.remove(o.mesh);
+      respawn.push({ lie: o.lie, t: 240 });
+      save.korm = save.korm || { frass: 0, schuss: 0, treffer: 0 };
+      save.korm.frass++;
+      sfx.splash(k.pos.x, k.pos.z, 1);
+      toast(T('Der Kormoran hat einen Fisch – {0} cm, {1}.', o.len, T(SPECIES[o.species].name)), 4000);
+    }
+  }
+  kormSt = k.st;
+}
+
+// ---------- Der Fischotter ----------
+// Dasselbe Problem wie der Kormoran, nur teurer. Der Vogel nimmt, was am naechsten
+// steht; der Otter sucht sich den groessten Fisch im Zug - genau den, auf den du es
+// abgesehen hattest. Dafuer kommt er seltener und ist viel schwerer zu erwischen:
+// Im Wasser schauen nur Kopf, ein Stueck Ruecken und die Schwanzspitze heraus.
+let ottSt = 'weg', ottOpfer = null;
+function updateOtter(dt) {
+  const f = world.fauna, o = f && f.otter;
+  if (!o || !river) return;
+  const da = o.st !== 'weg' && o.st !== 'faellt';
+
+  if (ottSt === 'weg' && o.st === 'kommt') toast(T('Ein Fischotter zieht die Uferkante entlang.'), 4600);
+  if (o.st === 'geht' && ottSt !== 'geht' && ottSt !== 'weg') toast(T('Der Otter ist weg.'), 3000);
+
+  // Ein jagender Otter raeumt den Zug auf, nicht nur die Stelle: 12 m statt der 8 m
+  // des Kormorans. Ein Fisch, der einen Otter im Wasser hat, frisst nicht.
+  if (da) for (const fi of fish) if (Math.hypot(fi.x - o.pos.x, fi.z - o.pos.z) < 12) fi.wary = Math.max(fi.wary, 8);
+
+  if (o.st === 'unter' && ottSt === 'taucht') {
+    // Er nimmt den groessten, nicht den naechsten. Das ist der Unterschied, der wehtut:
+    // Ein Kormoran kostet dich einen Fisch, ein Otter kostet dich den Fisch.
+    // Fische zu nah am Angler kommen nicht in Frage. Nicht aus Ruecksicht, sondern
+    // weil der Otter sich sonst selbst vertreibt: Er schwimmt unter Wasser auf seine
+    // Beute zu, geraet dabei unter die eigene Fluchtgrenze von 15 m und bricht ab.
+    // Gemessen endete so der halbe Besuch nach einem einzigen angefangenen Tauchgang.
+    let best = null;
+    for (const fi of fish) {
+      if (fi.spooked > 0 || fi.old) continue;
+      if (Math.hypot(fi.x - o.pos.x, fi.z - o.pos.z) > 18) continue;
+      if (Math.hypot(fi.x - S.px, fi.z - S.pz) < 18) continue;
+      if (!best || fi.len > best.len) best = fi;
+    }
+    if (best) o.ziel.set(best.x, 0, best.z);
+    if (best && Math.random() > 0.3) best = null;          // knapp jeder dritte Tauchgang geht auf
+    for (const fi of fish) if (fi !== best && Math.hypot(fi.x - o.pos.x, fi.z - o.pos.z) < 4.5 && fi.spooked <= 0) fleeFish(fi, 70);
+    ottOpfer = best;
+    o.fang = best ? 1 : 0;
+  }
+  // Auch hier: erst beim Auftauchen ist der Fisch wirklich weg
+  if (ottOpfer && ottSt === 'unter' && o.st !== 'unter') {
+    const op = ottOpfer; ottOpfer = null;
+    if (o.st !== 'geht' && o.st !== 'weg' && o.st !== 'faellt') {
+      fish = fish.filter(x => x !== op);
+      if (op.mesh.parent) op.mesh.parent.remove(op.mesh);
+      respawn.push({ lie: op.lie, t: 300 });               // laenger als beim Kormoran - es war der beste Fisch
+      save.korm = save.korm || { frass: 0, schuss: 0, treffer: 0 };
+      save.korm.otter = (save.korm.otter || 0) + 1;
+      sfx.splash(o.pos.x, o.pos.z, 1.1);
+      toast(T('Der Otter hat {0} mit {1} cm – er frisst sie am Ufer.', T(SPECIES[op.species].name), op.len), 4600);
+    }
+  }
+  ottSt = o.st;
+}
+
+// ---------- Die Flinte ----------
+// Sie steht nicht im Weg: Der Knopf erscheint nur, solange ein Kormoran zu sehen ist.
+// Niemand watet mit der Flinte in der Hand durch den Fluss.
+// Was gerade vor der Flinte stehen koennte. Der Otter ist das schwerere Ziel: kuerzere
+// Reichweite, und solange er schwimmt, schaut nur der Kopf heraus - der erlaubte Fehler
+// halbiert sich. Ganz zu sehen ist er nur am Ufer, wo er frisst. Das ist das Zeitfenster.
+function wildZiel() {
+  const f = world.fauna;
+  if (!f) return null;
+  const aus = [];
+  const k = f.korm, o = f.otter;
+  if (k && k.st !== 'weg' && k.st !== 'faellt') aus.push({ art: 'kormoran', a: k, reach: 35, nah: 22, oben: 0.12, eng: 1 });
+  if (o && o.st !== 'weg' && o.st !== 'faellt') {
+    const land = o.st === 'frisst' && !o.imWasser;   // ganz heraus ist er nur am Ufer
+    aus.push({ art: 'otter', a: o, reach: 28, nah: 16, oben: land ? 0.12 : 0.03, eng: land ? 1 : o.st === 'frisst' ? 0.75 : 0.5 });
+  }
+  if (!aus.length) return null;
+  const d = q => Math.hypot(q.a.pos.x - S.px, q.a.pos.z - S.pz);
+  aus.sort((x, y) => d(x) - d(y));
+  return aus[0];
+}
+const kormDa = () => !!wildZiel();
+const feineMaus = () => { try { return matchMedia('(pointer: fine)').matches; } catch (e) { return false; } };
+const gunLock = () => S.mode === 'gun' && document.pointerLockElement === canvas;
+function toGun(on) {
+  if (on && (S.mode !== 'idle' || !kormDa())) return;
+  if (!on && S.mode !== 'gun') return;
+  // Im Anschlag schaut man ueber die Schiene, nicht sich selbst ueber die Schulter:
+  // Die Sicht wechselt in die des Anglers und danach zurueck auf das, was eingestellt
+  // war. Das ist nicht nur huebscher, es ist auch das Einzige, womit man zielen kann.
+  if (on) { S.povVor = save.set.pov; world.setPov(true); }
+  else world.setPov(!!S.povVor);
+  S.mode = on ? 'gun' : 'idle';
+  S.aim = null; S.aimU = null;
+  S.zoom = 0; world.setZoom(1); zoomLabel();
+  // Am Rechner faengt der Anschlag den Mauszeiger ein: Die Maus fuehrt dann das Bild,
+  // ohne dass man ziehen muss, und der linke Knopf ist der Abzug. Am Finger bleibt es
+  // beim Ziehen - dort gibt es keinen Zeiger zum Einfangen.
+  if (on && feineMaus()) { try { canvas.requestPointerLock(); } catch (e) { /* egal */ } }
+  if (!on && document.pointerLockElement === canvas) { try { document.exitPointerLock(); } catch (e) { /* egal */ } }
+  if (on) { S.pitch = clamp(S.pitch, -0.12, 0.2); sfx.tick(); }
+  restTip(); updateHUD(); updateTip(); updateGauges();
+}
+// Treffen oder nicht: Der Winkel zwischen Blickmitte und Tier entscheidet, nicht der
+// Zufall. Eine Schrotgarbe deckt einen Kegel ab - nah ist sie breit genug, dass grobes
+// Zielen reicht, weit duennt sie aus und verlangt genaues Halten. Reichweite und
+// Engstellung kommen vom Ziel (siehe wildZiel); jenseits davon ist Schluss, und ein
+// angeschossenes Tier kommt hier nicht vor: getroffen oder daneben, nichts dazwischen.
+const GUN_GARBE = 0.085;
+// Vergroesserung im Anschlag: einfach, dreifach, fuenffach, dann wieder von vorn.
+// Auf einen Vogel auf dreissig Meter ist einfach zu wenig, um den Kopf vom Ruecken zu
+// unterscheiden - und genau das braucht man, um ueberhaupt zu wissen, worauf man haelt.
+const ZOOMS = [1, 3, 5];
+function shoot() {
+  if (S.mode !== 'gun') return;
+  const f = world.fauna;
+  sfx.shot(); vibrate([60, 30, 40]);
+  save.korm = save.korm || { frass: 0, schuss: 0, treffer: 0 };
+  save.korm.schuss++;
+  // Der Knall gilt dem ganzen Zug, ob getroffen oder nicht. Das ist der Preis: Du
+  // rettest die Strecke fuer den naechsten Besuch und opferst den jetzigen.
+  let spk = 0;
+  for (const fi of fish) {
+    const d = Math.hypot(fi.x - S.px, fi.z - S.pz);
+    if (d > 25) continue;
+    if (fi.spooked <= 0 && d < 16) { fleeFish(fi, 90); spk++; } else fi.wary = Math.max(fi.wary, 45);
+  }
+  let hit = false, dist = 0, zuWeit = false;
+  const z = wildZiel();
+  if (z && z.a.m.g.visible) {
+    const a = z.a, cam = world.camera;
+    cam.updateMatrixWorld(true);
+    dist = Math.hypot(a.pos.x - S.px, a.pos.z - S.pz, a.pos.y - groundY() - 1.4);
+    const p = _gv.set(a.pos.x, a.pos.y + z.oben, a.pos.z).project(cam);
+    const ab = Math.hypot(p.x * (canvas.clientWidth / Math.max(1, canvas.clientHeight)), p.y);
+    // Jenseits der nahen Zone duennt die Garbe aus: Der erlaubte Fehler schrumpft bis auf
+    // die Haelfte auf volle Reichweite. z.eng verkleinert ihn zusaetzlich, wenn vom Tier
+    // kaum etwas zu sehen ist.
+    // Der Zoom darf das Treffen nicht schwerer machen: Derselbe Winkelfehler landet bei
+    // dreifacher Vergroesserung dreimal so weit von der Bildmitte. Die erlaubte
+    // Abweichung waechst deshalb mit der Vergroesserung mit - gezielter wird trotzdem
+    // genauer, weil man im Bild viel besser sieht, worauf man haelt.
+    const garbe = GUN_GARBE * z.eng * ZOOMS[S.zoom] *
+      (dist <= z.nah ? 1 : Math.max(0.45, 1 - (dist - z.nah) / (z.reach - z.nah) * 0.55));
+    hit = p.z < 1 && ab < garbe && dist <= z.reach;
+    zuWeit = dist > z.reach;
+  }
+  if (hit) {
+    if (z.art === 'otter') f.killOtter(); else f.killKormoran();
+    save.korm.treffer++;
+    toast(spk ? T('Getroffen. Der Zug ist jetzt für eine Weile tot – aber beim nächsten Mal steht hier wieder Fisch.')
+              : T('Getroffen.'), 5000);
+    toGun(false);
+  } else {
+    toast(zuWeit ? T('Zu weit. So weit trägt eine Flinte nicht.')
+        : z && !z.a.m.g.visible ? T('Unter Wasser. Warte, bis er hochkommt.')
+        : z ? T('Daneben – und der ganze Zug hat es gehört.')
+        : T('Ins Leere geschossen.'), 4200);
+    if (z && z.a.m.g.visible) { if (z.art === 'otter') f.scareOtter(); else f.scareKormoran(); toGun(false); }
+  }
+  persist(); updateHUD();
 }
 
 function flyMatch(fly, f) {
@@ -897,7 +1122,11 @@ function updateMove(dt) {
   const ok = (x, z) => {
     const d = river.depthAt(x, z);
     if (d > 1.05 || z < Z_MIN || z > Z_MAX) return false;
-    if (Math.abs(river.off(x, z)) > river.halfW + 1.0 || river.heightAt(x, z) > 0.9) return false;   // höchstens 1 m Uferstreifen
+    // Fuenf Meter Uferstreifen statt einem. Dazu muss die Hoehengrenze mit: Auf fuenf
+    // Metern steigt das Ufer meist ueber die alten 0,9 m, und dann haette die Boeschung
+    // den Spieler weiter nach einem Meter gestoppt - die groessere Breite waere wirkungslos
+    // geblieben. 1,8 m laesst ihn die Boeschung hinauf, haelt ihn aber aus der Felswand.
+    if (Math.abs(river.off(x, z)) > river.halfW + 5.0 || river.heightAt(x, z) > 1.8) return false;
     for (const k of river.rocks) if (Math.hypot(x - k.x, z - k.z) < k.r + 0.3) return false;
     return true;
   };
@@ -1337,10 +1566,50 @@ joy.addEventListener('pointermove', e => { if (e.pointerId === joyId) joySet(e);
 for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) joy.addEventListener(ev, () => { joyId = null; S.joy.x = S.joy.z = 0; knob.style.transform = ''; });
 $('btnStone').addEventListener('click', () => lowOk() && kickSample());
 $('btnSwap').addEventListener('click', () => lowOk() && swapRig());
+$('btnGun').addEventListener('click', () => { sfx.start(); toGun(S.mode !== 'gun'); });
+// Die Beschriftung sofort setzen, nicht erst im naechsten Bild: Ein Knopf, der auf den
+// Druck nicht antwortet, fuehlt sich kaputt an.
+function zoomLabel() {
+  const zb = $('btnZoom'), zt = ZOOMS[S.zoom] + '×';
+  if (zb.firstChild.nodeValue !== zt) zb.firstChild.nodeValue = zt;
+  zb.classList.toggle('on', S.zoom > 0);
+}
+function setZoomStufe(i) {
+  if (S.mode !== 'gun') return;
+  const n = clamp(i, 0, ZOOMS.length - 1);
+  if (n === S.zoom) return;
+  S.zoom = n; world.setZoom(ZOOMS[S.zoom]); zoomLabel(); sfx.tick();
+}
+$('btnZoom').addEventListener('click', () => { if (S.mode === 'gun') { S.zoom = (S.zoom + 1) % ZOOMS.length; world.setZoom(ZOOMS[S.zoom]); zoomLabel(); sfx.tick(); } });
+// Solange die Maus eingefangen ist, laesst sich kein Knopf mehr anklicken - es gibt ja
+// keinen Zeiger mehr. Darum geht der Zoom auch ueber das Rad und ueber Z.
+addEventListener('wheel', e => {
+  if (S.mode !== 'gun') return;
+  e.preventDefault();
+  setZoomStufe(S.zoom + (e.deltaY < 0 ? 1 : -1));
+}, { passive: false });
+
+// Eingefangener Zeiger: Die Maus fuehrt das Bild, der linke Knopf schiesst. Die
+// Empfindlichkeit sinkt mit der Vergroesserung - bei fuenffach bewegt derselbe Weg
+// sonst das Fuenffache, und das Korn springt ueber das Ziel hinweg.
+document.addEventListener('mousemove', e => {
+  if (!gunLock()) return;
+  const k = 0.0022 / ZOOMS[S.zoom];
+  // Minus, nicht plus: Dieselbe Richtung wie beim Ziehen mit der Maus (dort steht sg
+  // auf -1). Mit Plus wanderte das Korn nach rechts, wenn man die Maus nach links schob.
+  S.yaw -= e.movementX * k;
+  S.pitch = clamp(S.pitch - e.movementY * k * 0.85, -0.75, 0.55);
+});
+document.addEventListener('mousedown', e => { if (gunLock() && e.button === 0) { e.preventDefault(); shoot(); } });
+// Der Browser gibt den Zeiger bei Escape von selbst frei - dann ist auch der Anschlag
+// vorbei, sonst stuende man plotzlich mit Korn da und koennte sich nicht mehr umsehen.
+document.addEventListener('pointerlockchange', () => {
+  if (S.mode === 'gun' && document.pointerLockElement !== canvas) toGun(false);
+});
 $('btnRestart').addEventListener('click', () => { if (S.mode !== 'idle' || Load.on) return; S.yaw = 0; S.pitch = 0; travel(save.revier, () => { enterRevier(save.revier); toast(T('Zurück am Einstieg. Die Fische stehen neu.'), 2600); }); });
 
 // Anhieb / Drill
-function pressDown() { sfx.start(); if (S.mode === 'fight') S.hold = true; else if (S.mode === 'drift') strike(); }
+function pressDown() { sfx.start(); if (S.mode === 'fight') S.hold = true; else if (S.mode === 'drift') strike(); else if (S.mode === 'gun') shoot(); }
 function pressUp() { S.hold = false; }
 const sb = $('strike');
 sb.addEventListener('pointerdown', e => { e.preventDefault(); try { sb.setPointerCapture(e.pointerId); } catch (err) { /* */ } sb.classList.add('down'); pressDown(); });
@@ -1360,6 +1629,7 @@ for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) rp.addEve
 const ptr = { id: null, x: 0, y: 0, ax: 0, ay: 0, hist: [], look: false };
 // Umschauen: Ziehen, das nicht auf befischbarem Wasser beginnt (Himmel, Ufer, weit weg), oder Rechtsklick-Ziehen
 function isLookStart(e) {
+  if (S.mode === 'gun') return true;                       // im Anschlag dreht jeder Zug den Blick
   if (S.mode !== 'idle' && S.mode !== 'landed') return false;
   if (e.button === 2) return true;
   const pt = world.screenToWater(e.clientX, e.clientY);
@@ -1383,6 +1653,7 @@ function aimAt(cx, cy, start) {
 }
 canvas.addEventListener('pointerdown', e => {
   sfx.start();
+  if (gunLock()) return;                                  // im Anschlag fuehrt die Maus, nicht der Zug
   if (modalOpen() || S.mode === 'title') return;
   const lk = isLookStart(e);
   if (e.button === 2 && !lk) return;
@@ -1397,7 +1668,7 @@ canvas.addEventListener('pointermove', e => {
   const dx = e.clientX - ptr.x, dy = e.clientY - ptr.y; ptr.x = e.clientX; ptr.y = e.clientY;
   if (ptr.look) {
     const k = 3.2 / Math.min(window.innerWidth, 900), sg = e.pointerType === 'mouse' ? -1 : 1;   // Finger schiebt die Szene, Maus dreht den Blick
-    S.yaw += dx * k * sg; S.pitch = clamp(S.pitch + dy * k * 0.7 * sg, -0.12, 0.55);
+    S.yaw += dx * k * sg; S.pitch = clamp(S.pitch + dy * k * 0.7 * sg, S.mode === 'gun' ? -0.75 : -0.12, 0.55);   // im Anschlag auch steil nach oben
   }
   else if (S.mode === 'idle') {
     if (S.wade) return;
@@ -1437,15 +1708,19 @@ const ptrEnd = e => {
 };
 canvas.addEventListener('pointerup', ptrEnd);
 canvas.addEventListener('pointercancel', ptrEnd);
-canvas.addEventListener('contextmenu', e => { e.preventDefault(); if (S.mode === 'drift') strike(); });
+canvas.addEventListener('contextmenu', e => { e.preventDefault(); if (S.mode === 'drift') strike(); else if (S.mode === 'gun') toGun(false); });
 window.addEventListener('keydown', e => {
   if (e.repeat) return;
   if (e.code === 'Escape' && modalOpen() && modalOpts && !modalOpts.lock) return closeModal();
+  // Aus dem Anschlag kommt man mit Escape heraus. Der Knopf links unten tut dasselbe,
+  // aber ein Modus ohne offensichtlichen Rueckweg ist eine Falle - gefragt wurde danach.
+  if (e.code === 'Escape' && S.mode === 'gun') return toGun(false);
   if (modalOpen() || S.mode === 'title') return;
   if (e.code === 'Space') { e.preventDefault(); pressDown(); }
   else if (KEYMAP[e.code]) { const k = KEYMAP[e.code]; K[k] = 1; if (S.mode === 'fight') { if (k === 'left') S.rodX = -1.6; if (k === 'right') S.rodX = 1.6; } }
   else if (e.code === 'KeyF') canMenu() && showBox();
   else if (e.code === 'KeyR') canMenu() && showRig();
+  else if (e.code === 'KeyZ' && S.mode === 'gun') { S.zoom = (S.zoom + 1) % ZOOMS.length; world.setZoom(ZOOMS[S.zoom]); zoomLabel(); sfx.tick(); }
   else if (e.code === 'KeyV') togglePov();
   else if (e.code === 'KeyT') canMenu() && showJournal();
 });
@@ -1528,12 +1803,28 @@ function updateGauges() {
     if (S.mode === 'idle' && was && was !== 'title') { $('hud').classList.add('late'); clearTimeout(lateT); lateT = setTimeout(() => $('hud').classList.remove('late'), 900); }
   }   // das Layout richtet sich nach der Spielphase
   $('btnRestart').classList.toggle('show', S.mode === 'idle' && S.pz < Z_MIN + 4 && !modalOpen());
+  // Der Flintenknopf haengt am Vogel, nicht an einem Ereignis - er muss jedes Bild
+  // nachgefuehrt werden, sonst steht er noch da, wenn der Kormoran laengst weg ist.
+  { const gn = $('btnGun'), zeig = kormDa() && (S.mode === 'idle' || S.mode === 'gun') && !modalOpen();
+    gn.classList.toggle('hidden', !zeig);
+    const im = S.mode === 'gun';
+    const lb = T(im ? 'Zurück' : 'Flinte'), zc = im ? '↩' : '▬';
+    const sm = gn.querySelector('small'); if (sm.textContent !== lb) sm.textContent = lb;
+    if (gn.firstChild.nodeValue !== zc) gn.firstChild.nodeValue = zc;
+    gn.classList.toggle('on', im);
+    $('btnZoom').classList.toggle('hidden', !im);
+    zoomLabel();
+    $('hud').classList.toggle('gunmode', S.mode === 'gun');
+    if (S.mode === 'gun' && !kormDa()) toGun(false);          // Vogel weg, Flinte weg
+  }
   const euroG = isEuro();
   $('read').classList.toggle('off', !drift);
   $('gauge').classList.toggle('off', !drift);
   $('depthG').style.visibility = isDry() ? 'hidden' : '';          // an der Oberflaeche gibt es keine Tiefe zu lesen
   $('gauge').classList.toggle('driftmode', !euroG);
-  $('strike').classList.toggle('off', !drift && S.mode !== 'fight');
+  $('strike').classList.toggle('off', !drift && S.mode !== 'fight' && S.mode !== 'gun');
+  { const lab = T(S.mode === 'fight' ? 'DRILL' : S.mode === 'gun' ? 'SCHUSS' : 'ANHIEB');
+    if ($('strike').textContent !== lab) $('strike').textContent = lab; }
   // Euro: lose - Kontakt - Zug. Indikator und Trockenfliege: wie natuerlich die Fliege treibt; lose Schnur ist dort richtig, nur Zug schadet
   $('gMark').style.left = (euroG ? 50 + (drift ? S.g : 0) * 46 : 6 + (drift ? clamp(S.g, 0, 1) : 0) * 88) + '%';
   $('gauge').classList.toggle('bad', drift && (euroG ? Math.abs(S.g) > 0.4 : S.g > 0.4));
@@ -1568,6 +1859,7 @@ function frame(now) {
   if (!paused) {
     S.walk = 0; updateMove(dt);
     updateHatch(dt);
+    updateKormoran(dt); updateOtter(dt);
     if (S.mode === 'cast') updateCast(dt);
     else if (S.mode === 'drift') updateDrift(dt);
     else if (S.mode === 'fight') updateFight(dt);
@@ -1783,12 +2075,13 @@ function applyLang() {
   set('#fightUI .lab', 'Schnurspannung', 0); set('#fightUI .lab', 'Kraft des Fisches', 1);
   set('#btnRestart', '↺ Strecke von vorn beginnen'); set('#joy small', 'waten'); set('#btnStone small', 'Stein');
   set('#btnSwap small', 'Rute'); set('#btnMulti', 'Zu zweit fischen');
-  set('#strike', S.mode === 'fight' ? 'DRILL' : 'ANHIEB');
+  set('#strike', S.mode === 'fight' ? 'DRILL' : S.mode === 'gun' ? 'SCHUSS' : 'ANHIEB');
   // Die Beschriftungen fuer Vorlesewerkzeuge stehen fest im HTML und blieben deutsch,
   // egal welche Sprache eingestellt war
   const aria = (sel, de) => { const el = document.querySelector(sel); if (el) el.setAttribute('aria-label', T(de)); };
   aria('#btnJournal', 'Tagebuch'); aria('#btnPov', 'Sicht des Anglers'); aria('#btnSet', 'Einstellungen');
-  aria('#joy', 'Waten'); aria('#btnStone', 'Stein umdrehen'); aria('#btnSwap', 'Rute wechseln');
+  aria('#joy', 'Waten'); aria('#btnStone', 'Stein umdrehen'); aria('#btnSwap', 'Rute wechseln'); aria('#btnGun', 'Flinte'); aria('#btnZoom', 'Vergrößerung');
+  set('#btnZoom small', 'Zoom');
   aria('#modalClose', 'Schließen');
   document.title = 'Nymphmaniac – ' + T('Das Erbe der Smaragda');
   for (const v of Object.values(SPECIES)) loc(v, 'name', 'note');
@@ -1833,4 +2126,4 @@ showLoader(T('Ein Euro-Nymphing-Abenteuer'), '', T('Das Erbe der Smaragda'), T('
 
 enterRevier(Math.min(save.revier, save.unlocked - 1), true);
 requestAnimationFrame(frame);
-window.__nm = { S, world, sfx, net, castAim, aimStart, castBand, get netRevier() { return netRevier; }, get save() { return save; }, get fish() { return fish; }, get river() { return river; }, get cond() { return cond; }, doCast, strike, startFight, landed, enterRevier, hand, fleeFish, startBite, kickSample, startHatch, endHatch, closeModal, makeFish, flyMatch, get respawn() { return respawn; } };
+window.__nm = { S, world, sfx, net, castAim, aimStart, castBand, get netRevier() { return netRevier; }, get save() { return save; }, get fish() { return fish; }, get river() { return river; }, get cond() { return cond; }, doCast, strike, startFight, landed, enterRevier, hand, fleeFish, startBite, kickSample, startHatch, endHatch, updateKormoran, updateOtter, toGun, shoot, wildZiel, closeModal, makeFish, flyMatch, get respawn() { return respawn; } };

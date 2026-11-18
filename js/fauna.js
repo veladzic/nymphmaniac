@@ -82,6 +82,127 @@ function birdMesh(span, bodyL, mat) {
   return { g, wR, wL, tail, head };
 }
 
+// Kormoran: lang, tief liegend, mit langem Hals und Hakenschnabel. Der Hals haengt in
+// zwei Gliedern, weil er beim Schwimmen geknickt aufrecht steht und beim Tauchen und im
+// Flug gestreckt nach vorn zeigt - diese beiden Haltungen sind es, an denen man den Vogel
+// auf dreissig Meter erkennt. Vorn ist +z.
+function cormorantMesh(mat, billMat, fishMat) {
+  const g = new THREE.Group();
+  const L = 0.82;                                 // Kopf-Rumpf-Laenge in Metern
+  const body = new THREE.Mesh(new THREE.SphereGeometry(1, 9, 7), mat);
+  body.scale.set(L * 0.17, L * 0.17, L * 0.46);
+  g.add(body);
+  // Langer Keilschwanz, steif - er liegt beim Schwimmen auf dem Wasser
+  const tail = new THREE.Mesh(wingGeo(L * 0.34, L * 0.3), mat);
+  tail.rotation.z = Math.PI / 2;
+  tail.position.set(0, L * 0.02, -L * 0.44);
+  g.add(tail);
+  // Unterhals am Schulterpunkt, Oberhals mit Kopf im Knick darauf
+  const hals = new THREE.Group();
+  hals.position.set(0, L * 0.1, L * 0.3);
+  g.add(hals);
+  const h1 = new THREE.Mesh(new THREE.CylinderGeometry(L * 0.045, L * 0.06, L * 0.3, 6), mat);
+  h1.position.y = L * 0.15;
+  hals.add(h1);
+  const hals2 = new THREE.Group();
+  hals2.position.y = L * 0.3;
+  hals.add(hals2);
+  const h2 = new THREE.Mesh(new THREE.CylinderGeometry(L * 0.04, L * 0.045, L * 0.22, 6), mat);
+  h2.position.y = L * 0.11;
+  hals2.add(h2);
+  // Kopf mit Schnabel: langer Kegel, vorn ein kleiner Haken nach unten - ohne den
+  // koennte es auch ein Taucher oder eine Gans sein
+  const head = new THREE.Mesh(merge([
+    new THREE.SphereGeometry(L * 0.075, 7, 5).scale(1, 1, 1.25),
+  ]), mat);
+  head.position.y = L * 0.24;
+  hals2.add(head);
+  const bill = new THREE.Mesh(merge([
+    new THREE.CylinderGeometry(L * 0.016, L * 0.032, L * 0.2, 5).rotateX(Math.PI / 2).translate(0, 0, L * 0.1),
+    new THREE.ConeGeometry(L * 0.018, L * 0.05, 5).rotateX(Math.PI).translate(0, -L * 0.012, L * 0.195),
+  ]), billMat);
+  bill.position.set(0, L * 0.235, L * 0.07);
+  hals2.add(bill);
+  // Beute im Schnabel: ein silbriger Splitter, nur zu sehen, wenn er mit einem Fisch
+  // auftaucht. Genau das ist der Moment, in dem man begreift, was der Vogel hier tut.
+  const fisch = new THREE.Mesh(new THREE.SphereGeometry(L * 0.05, 6, 5), fishMat);
+  fisch.scale.set(0.42, 0.7, 2.3);
+  fisch.position.set(0, L * 0.235, L * 0.24);
+  fisch.visible = false;
+  hals2.add(fisch);
+  const span = L * 1.55, chord = span * 0.26;     // Spannweite gut 1,25 m
+  const wR = new THREE.Mesh(wingGeo(span * 0.5, chord), mat);
+  const wL = new THREE.Mesh(wingGeo(-span * 0.5, chord), mat);
+  for (const w of [wR, wL]) { w.position.set(0, L * 0.06, L * 0.02); g.add(w); }
+  for (const m of [body, tail, h1, h2, head, bill, fisch, wR, wL]) m.frustumCulled = false;
+  return { g, hals, hals2, head, bill, fisch, tail, wR, wL, L };
+}
+
+// Fischotter: lang, tief, kurzbeinig, mit einem dicken Schwanz, der sich zur Spitze
+// verjuengt. Im Wasser sieht man von ihm fast nichts - Kopf, ein Stueck Ruecken und die
+// Schwanzspitze, dazwischen Wasser. Genau diese drei Punkte in einer Linie sind das
+// Erkennungszeichen; ein ganzer sichtbarer Koerper waere ein Biber.
+function otterMesh(mat, bellyMat) {
+  const g = new THREE.Group();
+  const L = 0.72;                                 // Kopf-Rumpf-Laenge in Metern
+  const rumpf = new THREE.Group();
+  g.add(rumpf);
+  const body = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 7), mat);
+  body.scale.set(L * 0.12, L * 0.125, L * 0.46);  // walzenfoermig, nicht rund
+  rumpf.add(body);
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(1, 8, 6), bellyMat);
+  belly.scale.set(L * 0.1, L * 0.085, L * 0.3);
+  belly.position.y = -L * 0.06;
+  rumpf.add(belly);
+  // Hals und Kopf sind beim Otter kaum zu trennen - der Kopf sitzt flach vorn drauf,
+  // breit und stumpf, mit heller Kehle. Ein spitzer Kopf waere ein Marder.
+  const hals = new THREE.Group();
+  hals.position.set(0, L * 0.03, L * 0.38);
+  rumpf.add(hals);
+  const head = new THREE.Mesh(merge([
+    new THREE.SphereGeometry(L * 0.105, 8, 6).scale(1.05, 0.85, 1.0),
+    new THREE.SphereGeometry(L * 0.07, 7, 5).scale(0.95, 0.8, 1.1).translate(0, -L * 0.022, L * 0.095),
+  ]), mat);
+  head.position.set(0, 0, L * 0.08);
+  hals.add(head);
+  const kehle = new THREE.Mesh(new THREE.SphereGeometry(L * 0.055, 7, 5), bellyMat);
+  kehle.scale.set(1, 0.6, 1.1);
+  kehle.position.set(0, -L * 0.055, L * 0.07);
+  hals.add(kehle);
+  // Der Schwanz traegt die halbe Silhouette: an der Wurzel so dick wie der Rumpf,
+  // zur Spitze hin duenn, und er liegt im Wasser flach hinter dem Tier.
+  const curve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0, 0, -L * 0.4),
+    new THREE.Vector3(0, -L * 0.01, -L * 0.6),
+    new THREE.Vector3(0, -L * 0.02, -L * 0.78),
+    new THREE.Vector3(0, -L * 0.01, -L * 0.94),
+  ]);
+  const schwanz = new THREE.Group();
+  const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 10, L * 0.055, 6, false), mat);
+  // zur Spitze hin verjuengen: die Punkte der Roehre nach ihrer Laenge einziehen
+  { const pos = tube.geometry.attributes.position, n = pos.count;
+    for (let i = 0; i < n; i++) {
+      const z = pos.getZ(i), u = Math.min(1, Math.max(0, (-z / L - 0.4) / 0.54));
+      const k = 1 - u * 0.72;
+      pos.setX(i, pos.getX(i) * k); pos.setY(i, pos.getY(i) * k);
+    }
+    tube.geometry.computeVertexNormals();
+  }
+  schwanz.add(tube);
+  rumpf.add(schwanz);
+  // Kurze Beine. Im Wasser sieht man sie nie, an Land tragen sie den watschelnden Gang.
+  const legs = [];
+  for (const vorn of [1, -1]) for (const r of [1, -1]) {
+    const l = new THREE.Mesh(new THREE.CapsuleGeometry(L * 0.035, L * 0.1, 3, 6), mat);
+    l.position.set(r * L * 0.095, -L * 0.14, vorn * L * 0.26);
+    l.userData.vorn = vorn > 0;
+    l.frustumCulled = false;
+    rumpf.add(l); legs.push(l);
+  }
+  for (const m of [body, belly, head, kehle, tube]) m.frustumCulled = false;
+  return { g, rumpf, hals, head, schwanz, legs, L };
+}
+
 // Eichhoernchen: Der Schwanz ist das Erkennungszeichen, nicht der Koerper. Er ist deshalb
 // so lang wie das Tier und steht in einem Bogen ueber dem Ruecken.
 function squirrelMesh(mat, bellyMat, tailMat) {
@@ -285,6 +406,40 @@ export class Fauna {
       m: cm, st: 'weg', t: 8 + rnd() * 25, pos: new THREE.Vector3(), yaw: 0,
       ziel: new THREE.Vector3(), heim: new THREE.Vector3(), gang: 0, lap: 0, blick: 0,
     };
+
+    // Der Kormoran ist kein Tier zum Anschauen, sondern eine Konkurrenz: Wo er taucht,
+    // steht nichts mehr. Wie oft er kommt, bestimmt das Revier (o.korm) - im Winter und
+    // im Herbst am Unterlauf ist er das echte Problem, am Quellbach im Sommer nie.
+    // o.korm teilt alle Wartezeiten: 1 heisst Herbst und Winter am Unterlauf, 0,12 die
+    // erste Staffel - dort wartet er also achtmal so lange. Vorher war der Wert nur ein
+    // Ein-Aus-Schalter, und der Vogel kam am sommerlichen Quellbach genauso oft wie im
+    // Winterzug; die Zahl stand da und tat nichts.
+    const korm = this.o.korm;
+    const km = cormorantMesh(M(0x26272b, 0.45), M(0xc9b36a, 0.6), M(0xcfd6d2, 0.3));
+    km.g.rotation.order = 'YXZ';
+    km.g.visible = false;
+    this.group.add(km.g);
+    this.korm = {
+      m: km, st: 'weg', t: (20 + rnd() * 50) / Math.max(0.05, korm || 1), pos: new THREE.Vector3(), yaw: 0,
+      ziel: new THREE.Vector3(), von: new THREE.Vector3(), y: 0, flug: 0, ph: rnd() * TAU,
+      tauch: 0, dives: 0, fang: 0, bleib: 0, tot: 0, weg: 0, hals: 0,
+    };
+
+    // Der Fischotter ist die andere Haelfte desselben Problems - und die teurere. Der
+    // Kormoran nimmt, was am naechsten steht; der Otter nimmt den groessten Fisch im
+    // Zug. Er ist seltener zu sehen, scheuer, und im Wasser sieht man von ihm fast
+    // nichts: Kopf, ein Stueck Ruecken, Schwanzspitze. Zu treffen ist er nur dort, wo
+    // er herauskommt und frisst.
+    const ott = this.o.otter;
+    const om = otterMesh(M(0x4a3a2c, 0.75), M(0xbfae92, 0.8));
+    om.g.rotation.order = 'YXZ';
+    om.g.visible = false;
+    this.group.add(om.g);
+    this.otter = {
+      m: om, st: 'weg', t: (40 + rnd() * 80) / Math.max(0.05, ott || 1), pos: new THREE.Vector3(), yaw: 0,
+      ziel: new THREE.Vector3(), von: new THREE.Vector3(), fress: null, gang: 0,
+      tauch: 0, dives: 0, fang: 0, bleib: 0, platsch: 0, vy: 0,
+    };
   }
 
   // Ein Eichhoernchen wohnt im Baum, nicht auf der Wiese. Es setzt sich deshalb an den
@@ -336,6 +491,44 @@ export class Fauna {
     this._big(dt, px, pz);
     this._squirrel(dt, px, pz);
     this._cat(dt, px, pz);
+    this._kormoran(dt, px, pz);
+    this._otter(dt, px, pz);
+  }
+
+  // Von aussen: vergraemen (er fliegt ab) und erlegen (er faellt ins Wasser).
+  // Beides setzt dieselbe lange Pause - er kommt wieder, nur nicht gleich.
+  scareKormoran() {
+    const k = this.korm;
+    if (k.st === 'weg' || k.st === 'abflug' || k.st === 'faellt') return false;
+    k.st = 'abflug'; k.t = 9; k.flug = 0;
+    k.von.copy(k.pos);
+    k.ziel.set(k.pos.x + (this.rnd() - 0.5) * 20, 0, k.pos.z - 55);
+    return true;
+  }
+  scareOtter() {
+    const o = this.otter;
+    if (o.st === 'weg' || o.st === 'geht' || o.st === 'faellt') return false;
+    o.st = 'geht'; o.t = 14;
+    o.ziel.set(o.pos.x, 0, o.pos.z + (this.rnd() < 0.5 ? 46 : -46));
+    o.m.g.visible = true;
+    return true;
+  }
+  killOtter() {
+    const o = this.otter;
+    if (o.st === 'weg' || o.st === 'faellt') return false;
+    o.m.g.visible = true;
+    o.st = 'faellt'; o.t = 1.4; o.vy = 0; o.platsch = 0;
+    return true;
+  }
+
+  killKormoran() {
+    const k = this.korm;
+    if (k.st === 'weg' || k.st === 'faellt') return false;
+    const flog = k.st === 'anflug' || k.st === 'abflug';
+    if (k.st === 'unter') k.m.g.visible = true;      // unter Wasser getroffen gibt es nicht, aber sichtbar muss er werden
+    k.st = 'faellt'; k.t = 1.6; k.vy = flog ? -1 : 0; k.platsch = 0;
+    k.m.fisch.visible = false;
+    return true;
   }
 
   // ---------- Kleinvoegel ----------
@@ -634,6 +827,349 @@ export class Fauna {
     s.to.y = river.heightAt(s.to.x, s.to.z);
     s.yaw = Math.atan2(s.to.x - s.from.x, s.to.z - s.from.z);
     if (d < 0.6) s.hops = 1;
+  }
+
+  // ---------- Kormoran ----------
+  //
+  // Ein Platz zum Fischen: ueber den Standplaetzen des Reviers, nicht auf beliebigem
+  // tiefen Wasser - und nicht vor der Nase des Anglers.
+  //
+  // Die Standplaetze sind der Punkt. Gemessen landete er ohne sie 35 m unterhalb des
+  // letzten Fisches und tauchte zweimal ins Leere: Der Besatz steht auf river.lies, und
+  // die trifft man nicht aus Versehen. Ein Kormoran arbeitet genau dieses Wasser ab.
+  _platz(px, pz) {
+    const rnd = this.rnd, river = this.o.river, lies = river.lies || [];
+    for (let i = 0; i < 30 && lies.length; i++) {
+      const q = lies[(rnd() * lies.length) | 0];
+      if (Math.hypot(q.x - px, q.z - pz) < 13) continue;
+      const a = rnd() * TAU, r = 1 + rnd() * 3;
+      const x = q.x + Math.sin(a) * r, z = q.z + Math.cos(a) * r;
+      if (river.depthAt(x, z) < 0.4) continue;
+      if (Math.hypot(x - px, z - pz) < 13) continue;
+      return _v.set(x, 0, z).clone();
+    }
+    // Revier ohne brauchbaren Standplatz in Reichweite: irgendein tiefer Zug
+    for (let i = 0; i < 30; i++) {
+      const z = pz + (rnd() * 2 - 1) * 32;
+      if (Math.abs(z - pz) < 13) continue;
+      const x = river.cx(z) + (rnd() * 2 - 1) * river.halfW * 0.65;
+      if (river.depthAt(x, z) < 0.45) continue;
+      return _v.set(x, 0, z).clone();
+    }
+    return null;
+  }
+
+  _kormoran(dt, px, pz) {
+    const k = this.korm, m = k.m, g = m.g, rnd = this.rnd, river = this.o.river, L = m.L;
+    k.t -= dt;
+
+    if (k.st === 'weg') {
+      g.visible = false;
+      if (k.t > 0 || !(this.o.korm > 0)) return;
+      const ziel = this._platz(px, pz);
+      if (!ziel) { k.t = 8; return; }
+      k.ziel.copy(ziel);
+      // Er kommt tief ueber dem Wasser den Fluss herauf oder herunter, nicht aus dem Nichts
+      const her = ziel.z > pz ? 1 : -1;
+      k.von.set(river.cx(ziel.z + her * 46), 7.5 + rnd() * 3, ziel.z + her * 46);
+      k.pos.copy(k.von);
+      k.st = 'anflug'; k.flug = 0; k.t = 30; k.bleib = 55 + rnd() * 70;
+      g.visible = true;
+      return;
+    }
+
+    // Zu nah? Dann geht er von selbst - das ist der Ausweg ohne Schuss.
+    // Wie beim Otter: Die Besuchsuhr darf keinen laufenden Tauchgang abschneiden.
+    if ((k.st === 'sitzt' || k.st === 'unter' || k.st === 'auf') &&
+        (Math.hypot(k.pos.x - px, k.pos.z - pz) < 12 || (k.bleib <= 0 && k.st === 'sitzt'))) {
+      this.scareKormoran();
+    }
+    k.bleib -= dt;
+
+    if (k.st === 'anflug' || k.st === 'abflug') {
+      const ab = k.st === 'abflug';
+      k.flug += dt / (ab ? 7.5 : 6.5);
+      const u = Math.min(1, k.flug);
+      k.pos.x = k.von.x + (k.ziel.x - k.von.x) * u;
+      k.pos.z = k.von.z + (k.ziel.z - k.von.z) * u;
+      // Anflug sinkt bis aufs Wasser, Abflug steigt - beides weich, nicht linear
+      k.pos.y = ab ? 0.05 + Math.pow(u, 1.6) * 9 : k.von.y * Math.pow(1 - u, 1.5) + 0.06;
+      // Kormorane fliegen mit gleichmaessigen, schnellen Schlaegen und gestrecktem Hals.
+      // Sie gleiten fast nie - daran erkennt man sie am Himmel.
+      k.ph += dt * 13;
+      const schlag = Math.sin(k.ph) * 0.9;
+      m.wR.rotation.set(0, 0.05, -schlag); m.wL.rotation.set(0, -0.05, schlag);
+      k.hals += (1.5 - k.hals) * Math.min(1, dt * 6);
+      m.hals.rotation.x = k.hals; m.hals2.rotation.x = -0.1;
+      m.fisch.visible = false;
+      g.position.copy(k.pos);
+      g.rotation.set(ab ? -0.18 : 0.06, Math.atan2(k.ziel.x - k.von.x, k.ziel.z - k.von.z), 0);
+      if (u >= 1) {
+        if (ab) { k.st = 'weg'; k.t = (90 + rnd() * 150) / Math.max(0.05, this.o.korm); g.visible = false; }
+        else { k.st = 'sitzt'; k.t = 4 + rnd() * 7; k.yaw = g.rotation.y; }
+      }
+      return;
+    }
+
+    if (k.st === 'faellt') {
+      // Getroffen: er kippt aus der Haltung und faellt ins Wasser
+      k.vy = (k.vy || 0) - 9.8 * dt;
+      k.pos.y = Math.max(-0.3, k.pos.y + k.vy * dt);
+      g.position.copy(k.pos);
+      g.rotation.z += dt * 5.5; g.rotation.x = -0.9;
+      m.wR.rotation.set(0, 0, 0.5); m.wL.rotation.set(0, 0, -0.5);
+      if (k.pos.y <= -0.25 || k.t <= 0) {
+        if (!k.platsch) { k.platsch = 1; if (this.o.splash) this.o.splash(k.pos.x, k.pos.z, 1.5); }
+        if (k.t <= -1.2) { k.st = 'weg'; k.t = (240 + rnd() * 240) / Math.max(0.05, this.o.korm); k.platsch = 0; g.visible = false; g.rotation.set(0, 0, 0); }
+      }
+      return;
+    }
+
+    // Auf dem Wasser: er treibt langsam mit der Stroemung, Hals geknickt aufrecht
+    const str = river.speedAt ? Math.min(0.5, river.speedAt(k.pos.x, k.pos.z) * 0.25) : 0.12;
+    k.pos.z += str * dt;
+    k.pos.x = river.cx(k.pos.z) + (k.pos.x - river.cx(k.pos.z - str * dt));
+
+    if (k.st === 'sitzt' || k.st === 'auf') {
+      k.pos.y += (-0.05 - k.pos.y) * Math.min(1, dt * 4);   // sie liegen tief, der Ruecken schaut knapp heraus
+      k.hals += (-0.12 - k.hals) * Math.min(1, dt * 5);
+      m.hals.rotation.x = k.hals;
+      m.hals2.rotation.x = 0.42 + Math.sin(k.t * 1.3) * 0.06;
+      m.wR.rotation.set(0, 0, 0.04); m.wL.rotation.set(0, 0, -0.04);
+      // Er sieht sich um, ruckartig wie ein Vogel, nicht weich wie ein Saeuger
+      k.yaw += (((k.yaw + Math.sin(k.t * 0.8) * 0.5 - k.yaw + Math.PI * 3) % TAU) - Math.PI) * dt;
+      g.position.copy(k.pos);
+      g.rotation.set(0, k.yaw + Math.sin(k.t * 0.7) * 0.35, 0);
+      if (k.st === 'auf' && k.t <= 0) { m.fisch.visible = false; k.st = 'sitzt'; k.t = 4 + rnd() * 7; }
+      if (k.st === 'sitzt' && k.t <= 0) {
+        k.st = 'taucht'; k.t = 0.75; k.tauch = 0;
+        if (this.o.splash) this.o.splash(k.pos.x, k.pos.z, 0.5);
+      }
+      return;
+    }
+
+    if (k.st === 'taucht') {
+      // Der Bogen nach vorn und unter Wasser: erst streckt sich der Hals, dann kippt
+      // der Koerper nach, der Schwanz geht zuletzt. Kein Absacken, ein Abtauchen.
+      k.tauch += dt / 0.75;
+      const u = Math.min(1, k.tauch);
+      k.hals += (1.35 - k.hals) * Math.min(1, dt * 9);
+      m.hals.rotation.x = k.hals; m.hals2.rotation.x = -0.15;
+      m.wR.rotation.set(0, 0, 0.02); m.wL.rotation.set(0, 0, -0.02);
+      k.pos.y = -0.05 - Math.pow(u, 1.7) * 0.8;
+      g.position.copy(k.pos);
+      g.rotation.set(-0.3 - u * 0.9, k.yaw, 0);
+      if (u >= 1) {
+        k.st = 'unter'; k.t = 5 + rnd() * 6;
+        k.von.copy(k.pos);
+        const ziel = this._platz(px, pz);
+        k.ziel.copy(ziel || k.pos);
+        g.visible = false;                         // unter Wasser sieht man ihn nicht
+      }
+      return;
+    }
+
+    if (k.st === 'unter') {
+      // Unter Wasser legt er Strecke zurueck - er taucht nie dort auf, wo er wegging
+      const d = Math.hypot(k.ziel.x - k.pos.x, k.ziel.z - k.pos.z);
+      if (d > 0.3) { const sp = Math.min(d, 2.6 * dt); k.pos.x += (k.ziel.x - k.pos.x) / d * sp; k.pos.z += (k.ziel.z - k.pos.z) / d * sp; }
+      if (k.t <= 0) {
+        k.st = 'auf'; k.t = k.fang ? 2.8 : 1.2;
+        k.dives++;
+        k.pos.y = -0.05;
+        g.visible = true;
+        g.rotation.set(0, k.yaw, 0);
+        m.fisch.visible = !!k.fang;
+        if (this.o.splash) this.o.splash(k.pos.x, k.pos.z, k.fang ? 0.9 : 0.6);
+      }
+      return;
+    }
+  }
+
+  // ---------- Fischotter ----------
+  //
+  // Ein Platz zum Jagen: im Wasser, in Reichweite der Standplaetze, aber nahe genug am
+  // Ufer - ein Otter arbeitet die Kante ab, nicht die Strommitte.
+  _otterZug(px, pz) {
+    const rnd = this.rnd, river = this.o.river, lies = river.lies || [];
+    for (let i = 0; i < 30 && lies.length; i++) {
+      const q = lies[(rnd() * lies.length) | 0];
+      const d = Math.hypot(q.x - px, q.z - pz);
+      if (d < 16 || d > 40) continue;
+      const seite = river.off(q.x, q.z) >= 0 ? 1 : -1;
+      const x = river.cx(q.z) + seite * river.halfW * (0.55 + rnd() * 0.3), z = q.z + (rnd() * 2 - 1) * 2;
+      if (river.depthAt(x, z) < 0.25) continue;
+      return _v.set(x, 0, z).clone();
+    }
+    return null;
+  }
+
+  // Ein Fressplatz fuer den Otter: die Wasserkante in seiner Naehe, nicht in der des
+  // Anglers. Gemessen schwamm er mit _tränke 37 s lang zu einem Platz, den er nie
+  // erreichte - der wird naemlich um den Angler herum gesucht, und das Zeitfenster zum
+  // Schiessen ging nie auf.
+  _otterUfer(ox, oz, px, pz) {
+    const rnd = this.rnd, river = this.o.river;
+    for (let i = 0; i < 34; i++) {
+      const side = rnd() < 0.5 ? -1 : 1;
+      const z = oz + (rnd() * 2 - 1) * 13;
+      let lo = river.halfW - 0.6, hi = river.halfW + 5;
+      for (let k = 0; k < 18; k++) {
+        const mid = (lo + hi) / 2;
+        if (river.heightAt(river.cx(z) + side * mid, z) < 0.02) lo = mid; else hi = mid;
+      }
+      const x = river.cx(z) + side * (hi + 0.1);
+      const y = river.heightAt(x, z);
+      if (y < 0.0 || y > 0.35) continue;                    // steile Boeschung taugt nicht
+      if (Math.hypot(x - px, z - pz) < 15) continue;        // nicht in Scheuchweite des Anglers
+      if (Math.hypot(x - ox, z - oz) > 14) continue;        // und in seiner eigenen Reichweite
+      return new THREE.Vector3(x, y, z);
+    }
+    return null;
+  }
+
+  _otter(dt, px, pz) {
+    const o = this.otter, m = o.m, g = m.g, rnd = this.rnd, river = this.o.river, L = m.L;
+    o.t -= dt;
+
+    if (o.st === 'weg') {
+      g.visible = false;
+      if (o.t > 0 || !(this.o.otter > 0)) return;
+      const ziel = this._otterZug(px, pz);
+      if (!ziel) { o.t = 10; return; }
+      o.ziel.copy(ziel);
+      // Er kommt schwimmend den Fluss herauf oder herunter, nicht aus dem Nichts
+      const her = ziel.z > pz ? 1 : -1;
+      o.pos.set(river.cx(ziel.z + her * 24), -0.07, ziel.z + her * 24);
+      o.yaw = Math.atan2(o.ziel.x - o.pos.x, o.ziel.z - o.pos.z);
+      o.st = 'kommt'; o.t = 60; o.bleib = 100 + rnd() * 120;
+      g.visible = true;
+      return;
+    }
+
+    // Otter sind scheuer als Kormorane: Auf 15 m sind sie weg.
+    // Zu nah ist immer Schluss. Die Besuchsuhr dagegen laeuft nicht ab, solange er zum
+    // Ufer zieht oder frisst - sonst reisst sie genau das Zeitfenster weg, in dem er
+    // ueberhaupt ganz zu sehen ist.
+    // Die Besuchsuhr laeuft nur zwischen zwei Tauchgaengen ab: nicht unter Wasser und
+    // nicht beim Fressen. Sonst endet der Besuch mitten im Tauchgang, der Fisch bleibt
+    // verschont und das Zeitfenster zum Schiessen geht nie auf - gemessen kam so von
+    // sechs Tauchgaengen nur einer durch.
+    const mitten = o.st === 'anLand' || o.st === 'frisst' || o.st === 'taucht' || o.st === 'unter';
+    if (o.st !== 'geht' && o.st !== 'faellt' &&
+        (Math.hypot(o.pos.x - px, o.pos.z - pz) < 15 || (o.bleib <= 0 && !mitten))) {
+      this.scareOtter();
+    }
+    o.bleib -= dt;
+
+    if (o.st === 'faellt') {
+      o.vy -= 9.8 * dt;
+      o.pos.y = Math.max(-0.25, o.pos.y + o.vy * dt);
+      g.position.copy(o.pos);
+      g.rotation.z += dt * 4;
+      if (o.pos.y <= -0.2 || o.t <= 0) {
+        if (!o.platsch) { o.platsch = 1; if (this.o.splash) this.o.splash(o.pos.x, o.pos.z, 1.2); }
+        if (o.t <= -1.2) { o.st = 'weg'; o.t = (300 + rnd() * 300) / Math.max(0.05, this.o.otter); o.platsch = 0; g.visible = false; g.rotation.set(0, 0, 0); }
+      }
+      return;
+    }
+
+    // Unter Wasser: nicht zu sehen, er legt Strecke zurueck
+    if (o.st === 'unter') {
+      const d = Math.hypot(o.ziel.x - o.pos.x, o.ziel.z - o.pos.z);
+      if (d > 0.3) { const sp = Math.min(d, 3.4 * dt); o.pos.x += (o.ziel.x - o.pos.x) / d * sp; o.pos.z += (o.ziel.z - o.pos.z) / d * sp; }
+      if (o.t <= 0) {
+        o.dives++;
+        g.visible = true;
+        o.pos.y = -0.07;
+        if (o.fang) {
+          // Mit Beute geht er ans Ufer und frisst dort - der einzige Moment, in dem er
+          // ganz aus dem Wasser kommt und stillhaelt.
+          // Mit Beute zieht er ans Ufer. Findet sich dort kein flacher Platz - steile
+          // Boeschung, Felskante -, frisst er im Wasser auf dem Ruecken treibend. Das
+          // macht ein Otter wirklich so, und es schliesst die Luecke: Ohne diesen Fall
+          // kam er gemessen ueber 25 Minuten kein einziges Mal heraus, und damit ging
+          // das Zeitfenster zum Schiessen nie auf.
+          o.fress = this._otterUfer(o.pos.x, o.pos.z, px, pz);
+          o.imWasser = o.fress ? 0 : 1;
+          o.st = o.fress ? 'anLand' : 'frisst';
+          o.t = o.fress ? 30 : 8 + rnd() * 6;
+          if (this.o.splash) this.o.splash(o.pos.x, o.pos.z, 0.8);
+        } else { o.st = 'jagt'; o.t = 8 + rnd() * 10; }
+      }
+      return;
+    }
+
+    const schwimmt = o.st === 'kommt' || o.st === 'jagt' || o.st === 'geht' || o.st === 'anLand';
+
+    if (schwimmt) {
+      // Schwimmhaltung: fast alles unter Wasser, nur Kopf, ein Stueck Ruecken und die
+      // Schwanzspitze schauen heraus. Deshalb liegt der Rumpf so tief.
+      const ziel = o.st === 'anLand' && o.fress ? o.fress : o.ziel;
+      const dx = ziel.x - o.pos.x, dz = ziel.z - o.pos.z, d = Math.hypot(dx, dz);
+      const sp = o.st === 'geht' ? 2.6 : o.st === 'kommt' ? 1.9 : 1.3;
+      if (d > 0.25) {
+        const schritt = Math.min(d, sp * dt);
+        o.pos.x += dx / d * schritt; o.pos.z += dz / d * schritt;
+        const soll = Math.atan2(dx, dz);
+        o.yaw += (((soll - o.yaw + Math.PI * 3) % TAU) - Math.PI) * Math.min(1, dt * 3);
+      }
+      const amUfer = o.st === 'anLand' && d < 0.3;
+      o.gang += dt * (amUfer ? 0 : sp * 2.2);
+      const grund = river.heightAt(o.pos.x, o.pos.z);
+      o.pos.y = amUfer ? Math.max(0.02, grund) + L * 0.14 : -0.07 + Math.sin(o.gang) * 0.012;
+      g.position.copy(o.pos);
+      // Im Wasser schlaengelt der Koerper, an Land steht er
+      g.rotation.set(0, o.yaw, amUfer ? 0 : Math.sin(o.gang * 0.5) * 0.08);
+      m.rumpf.rotation.x = amUfer ? 0 : Math.sin(o.gang) * 0.05;
+      m.schwanz.rotation.y = Math.sin(o.gang * 0.5) * (amUfer ? 0.05 : 0.3);
+      m.hals.rotation.x = amUfer ? -0.35 : -0.12;
+      for (const l of m.legs) l.rotation.x = amUfer ? 0 : (l.userData.vorn ? 0.5 : -0.5);
+      if (amUfer) { o.st = 'frisst'; o.t = 9 + rnd() * 7; o.gang = 0; }
+      else if (o.st === 'kommt' && d < 0.5) { o.st = 'jagt'; o.t = 6 + rnd() * 8; }
+      else if (o.st === 'geht' && (d < 0.5 || o.t <= 0)) { o.st = 'weg'; o.t = (170 + rnd() * 250) / Math.max(0.05, this.o.otter); g.visible = false; }
+      else if (o.st === 'jagt' && o.t <= 0) {
+        o.st = 'taucht'; o.t = 0.5; o.tauch = 0;
+        if (this.o.splash) this.o.splash(o.pos.x, o.pos.z, 0.45);
+      }
+      return;
+    }
+
+    if (o.st === 'frisst') {
+      // Am Ufer, ganz sichtbar, mit dem Fisch zwischen den Vorderpfoten. Er kaut und
+      // schaut dabei auf - das ist das Zeitfenster. Im Wasser treibt er dabei auf dem
+      // Ruecken, also hoeher als beim Schwimmen, aber nicht ganz heraus.
+      const grund = river.heightAt(o.pos.x, o.pos.z);
+      o.pos.y = o.imWasser ? -0.015 : Math.max(0.02, grund) + L * 0.14;
+      g.position.copy(o.pos);
+      g.rotation.set(0, o.yaw, o.imWasser ? 0.55 : 0);
+      m.rumpf.rotation.x = 0.1;
+      m.hals.rotation.x = -0.75 + Math.sin(o.t * 9) * 0.1;      // Kauen
+      m.schwanz.rotation.y = Math.sin(o.t * 1.1) * 0.12;
+      for (const l of m.legs) l.rotation.x = 0;
+      if (o.t <= 0) {
+        o.fang = 0; o.fress = null; o.imWasser = 0;
+        const z = this._otterZug(px, pz);
+        o.ziel.copy(z || o.pos);
+        o.st = 'jagt'; o.t = 6 + rnd() * 9;
+      }
+      return;
+    }
+
+    if (o.st === 'taucht') {
+      o.tauch += dt / 0.5;
+      const u = Math.min(1, o.tauch);
+      o.pos.y = -0.07 - Math.pow(u, 1.6) * 0.5;
+      g.position.copy(o.pos);
+      g.rotation.set(-u * 0.9, o.yaw, 0);
+      if (u >= 1) {
+        o.st = 'unter'; o.t = 8 + rnd() * 10;
+        const z = this._otterZug(px, pz);
+        o.ziel.copy(z || o.pos);
+        g.visible = false;
+      }
+      return;
+    }
   }
 
   // Naechster Sprung ins Blaue - aber nicht ins Wasser und nicht dem Angler ins Gesicht

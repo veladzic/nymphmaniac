@@ -234,6 +234,13 @@ label.slider { display: block; padding: 10px 0 6px; border-top: 1px solid var(--
 #rodPad { width: calc(var(--cb) - 6px); height: calc(var(--cb) - 6px); margin-left: calc(var(--cb) / -2 + 3px); bottom: calc(19px + var(--sab)); }
 #hud:not([data-mode=idle]) #menuBtns button:not(#btnPov) { display: none; }
 #hud:not([data-mode=idle]) #leftBtns .col { display: none; }
+/* Im Anschlag bleibt die Spalte stehen - sonst verschwindet mit ihr der einzige Knopf,
+   der wieder herausfuehrt, und der Modus ist eine Falle. Stein, Rutenwechsel und
+   Rig-Anzeige haben dort nichts zu suchen, die Flinte schon. */
+#hud[data-mode=gun] #leftBtns .col { display: flex; }
+#hud[data-mode=gun] #rig, #hud[data-mode=gun] #btnStone, #hud[data-mode=gun] #btnSwap { display: none; }
+#btnZoom { font-variant-numeric: tabular-nums; }
+#btnZoom.on { background: rgba(230, 184, 74, .25); border-color: rgba(230, 184, 74, .6); }
 #hud.fighting #tip, #hud.fighting #revierInfo { display: none; }
 #hud.fighting #fightUI { top: calc(8px + var(--sat)); left: calc(8px + var(--sal)); right: calc(58px + var(--sar)); width: auto; max-width: 420px; transform: none; }
 #hud.fighting #toast { top: calc(100px + var(--sat)); }
@@ -410,3 +417,18 @@ label.slider { display: block; padding: 10px 0 6px; border-top: 1px solid var(--
   letter-spacing: .16em; text-align: center; text-transform: uppercase; background: rgba(0,0,0,.35);
   color: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 12px 8px; margin: 4px 0 8px; }
 #netStep a { color: var(--gold); opacity: .8; text-decoration: underline; }
+
+/* Korn der Flinte: vier Striche und ein Punkt in der Bildmitte. Ein Ring waere ein
+   Zielfernrohr - eine Flinte hat keins, man schaut ueber die Schiene. */
+/* fixed, nicht absolute: Es muss in der Mitte des Bildes stehen, nicht in der Mitte
+   irgendeines Elternteils. In der Kopfzeile sass es auf halber Hoehe der Kopfzeile. */
+#korn { position: fixed; left: 50%; top: 50%; width: 92px; height: 92px; margin: -46px 0 0 -46px; display: none; pointer-events: none; z-index: 5; }
+#hud.gunmode #korn { display: block; }
+#korn i { position: absolute; background: rgba(255, 255, 255, .78); box-shadow: 0 0 3px rgba(0, 0, 0, .7); }
+#korn i:nth-child(1), #korn i:nth-child(2) { width: 2px; height: 20px; left: 45px; }
+#korn i:nth-child(1) { top: 0; } #korn i:nth-child(2) { bottom: 0; }
+#korn i:nth-child(3), #korn i:nth-child(4) { height: 2px; width: 20px; top: 45px; }
+#korn i:nth-child(3) { left: 0; } #korn i:nth-child(4) { right: 0; }
+#korn b { position: absolute; left: 43px; top: 43px; width: 6px; height: 6px; border-radius: 50%; background: rgba(255, 220, 120, .95); box-shadow: 0 0 4px rgba(0, 0, 0, .8); }
+#hud.gunmode #gauge, #hud.gunmode #read, #hud.gunmode #quest { display: none; }
+#btnGun.on { background: rgba(230, 184, 74, .25); border-color: rgba(230, 184, 74, .6); }

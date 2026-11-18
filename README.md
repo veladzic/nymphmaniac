@@ -483,6 +483,20 @@ Die vier Staffeln spielen zu verschiedenen Jahreszeiten, und das Revier sieht je
 
 Gemessen kostet das nichts: 60,3 Bilder je Sekunde im Sommer, 60,1 im Winter; die Zeichenaufrufe steigen um rund 28.
 
+## Wie weit man ins Ufer darf
+
+**Fünf Meter auf beiden Seiten** statt einem (`updateMove` in `js/main.js`). Damit das etwas bringt, musste die Höhengrenze mit: Auf fünf Metern steigt das Ufer meist über die alten 0,9 m, und dann hätte die Böschung den Spieler weiter nach einem Meter gestoppt. Jetzt 1,8 m – hoch genug für die Böschung, zu niedrig für die Felswand.
+
+Nachgemessen kommt man in Wiesenstrecke, Moorbach und Nebelstrecke die vollen 5 m auf beide Seiten; am alten Wehr sind es 3,1 bzw. 2,5 m, dort steigt das Ufer früher über 1,8 m. Das ist die Höhengrenze bei der Arbeit, kein Fehler.
+
+**Die Kamera war dafür nicht gebaut.** Am Wasser steht hinter dem Angler nichts; fünf Meter im Ufer steht dort Gebüsch, und der Kameraarm von 3,9 m landet mitten darin – gemessen war das Bild schwarz vor Laub. Drei Dinge zusammen lösen das:
+
+- **Der Arm wird kürzer und die Kamera höher**, je weiter der Angler im Ufer steht (bis −1,1 m und +1,9 m bei fünf Metern).
+- Die vorhandene Ausweichregel für Bäume und Büsche zieht die Kamera näher heran, wenn eines davon die Sichtlinie schneidet.
+- **Steht der Angler selbst im Busch oder unter einer Krone**, hilft beides nicht mehr – dann steckt die Kamera mit ihm darin. In diesem Fall blendet das Bild weich auf die **Sicht des Anglers** um und ebenso weich zurück. Nachgemessen: bei 3 bis 4,6 m im Ufer voll umgeblendet, ab 1,5 m wieder Normalsicht, und der Arm fährt beim Zurückwaten von 1,2 über 1,7 auf 3,1 m aus.
+
+Das ist nicht nur ein Notbehelf: Wer im Gebüsch steht, sieht eben Blätter und schaut zwischen ihnen hindurch aufs Wasser. Nur den eigenen Rücken von außerhalb des Busches zu sehen wäre falsch.
+
 ## Ufer und Wald
 
 **Das Gras war zu hoch.** Die Büschel standen zwischen 0,49 m und 1,89 m – das ist kein Ufergras, das ist ein Schilfgürtel, und der Angler watete bis zur Brust hindurch. Jetzt stehen sie 0,18 bis 0,73 m, im Mittel gut 40 cm. Dafür die Hälfte mehr Büschel (7000 statt 4800), sonst liegt der Boden frei. Das Schilf am Wasserrand ist mitgegangen: 0,35 bis 1,1 m statt bis 1,5 m – höher als das Gras, wie es sich gehört, aber kein Kamm aus schwarzen Spitzen mehr.
@@ -503,6 +517,101 @@ Gemessen kostet das nichts: 60,3 Bilder je Sekunde im Sommer, 60,1 im Winter; di
 **Was es kostet:** 2236 Bauminstanzen statt 204, **1,38 Millionen gezeichnete Dreiecke statt 0,56**. Die Zeichenaufrufe bleiben dagegen fast gleich (466 statt 460), weil alle Bäume einer Art in einer einzigen `InstancedMesh` stecken – das ist der Grund, warum sich das überhaupt rechnet. Die CPU-Zeit je Bild steigt von 1,40 auf 1,67 ms, der Aufbau des Reviers von 150 auf 202 ms. Am Handy fällt der Wald auf 60 % aus; 1,3 Millionen Dreiecke trägt ein Telefon nicht in voller Dichte.
 
 Was die GPU dazu sagt, steht noch offen: Die Messung lief in einem ausgeblendeten Fenster, und dort bremst der Browser die Bildrate auf 15 Hz herunter. Die Dreieckszahl und die Zeichenaufrufe sind davon unberührt, die Bildrate wäre es nicht – deshalb steht hier keine.
+
+## Der Kormoran
+
+Er ist das einzige Tier im Spiel, das etwas von dir will. Alle anderen sind Kulisse; er ist Konkurrenz.
+
+**Was er tut.** Er kommt tief über dem Wasser den Fluss herauf, landet auf einem tiefen Zug und fischt: alle vier bis elf Sekunden ein Tauchgang, unter Wasser legt er zehn bis fünfzehn Meter zurück, taucht woanders wieder auf – mit oder ohne Fisch im Schnabel. Solange er da ist, steht im Umkreis von 8 m kein Fisch ruhig (`wary`). **Jeder erfolgreiche Tauchgang kostet dich einen Fisch**: Er wird aus dem Besatz genommen und mit 240 s in die Nachbesetzung gelegt – viermal so lange wie nach einem eigenen Fang. Die Fische im Umkreis von 3,5 m des Tauchgangs flüchten.
+
+**Er sucht die Standplätze, nicht irgendein tiefes Wasser.** `_platz` greift auf `river.lies` zu, und unter Wasser schwimmt er zum nächsten Fisch im Umkreis von 25 m. Ohne beides landete er gemessen 35 m unterhalb des letzten Fisches und tauchte zweimal ins Leere – der Besatz steht auf seinen Plätzen, und die trifft man nicht aus Versehen.
+
+**Wie viel er kostet:** gemessen über eine halbe Stunde – 8 Besuche, 33 Tauchgänge, 6 Fische, also **null bis drei je Besuch**, meist einer. Die erste Fassung war deutlich schärfer: kürzere Pausen und eine höhere Quote, gemessen fünf Fische in anderthalb Minuten und damit gut ein Viertel des Besatzes auf einen Besuch. Das ist keine Konkurrenz mehr, das ist eine Abrissbirne.
+
+Kommst du auf 12 m heran, fliegt er von selbst ab. Das ist der Ausweg ohne Schuss – er kommt nur in ein paar Minuten wieder.
+
+**Wie oft er kommt**, bestimmt das Revier (`kormoran` in `js/data.js`, sonst aus der Staffel). Der Wert teilt alle Wartezeiten:
+
+| Staffel | Wert | Pause zwischen zwei Besuchen |
+|---|---|---|
+| 3 und 4 (Herbst, Winter) | 1 | 1,5 bis 4 min |
+| 2 | 0,35 | 4 bis 11 min |
+| 1 | 0,12 | 12 bis 33 min |
+
+Die erste Pause nach dem Betreten eines Reviers ist kürzer (20 bis 70 s, ebenfalls geteilt), nach einem Abschuss länger (240 bis 480 s). Das ist nicht gewürfelte Abwechslung, sondern das echte Muster – Kormorane ziehen im Winter ins Binnenland, wenn die Seen zufrieren.
+
+Dieser Wert war in der ersten Fassung nur ein Ein-Aus-Schalter: Er stand in den Daten, wurde aber bloß auf „größer als null" geprüft. Der Vogel kam am sommerlichen Quellbach genauso oft wie im Winterzug.
+
+Das Korn liegt dabei `position: fixed` und damit in der Mitte des **Bildes**, nicht in der Mitte seines Elternteils. In der Kopfzeile stand es auf halber Höhe der Kopfzeile – also ganz oben am Rand, Zentimeter neben dem Punkt, auf den der Schuss tatsächlich geht. Nachgemessen decken sich Korn, Fenstermitte und Leinwandmitte jetzt auf den Bildpunkt genau.
+
+**Am Rechner führt die Maus.** Der Anschlag fängt den Mauszeiger ein (`requestPointerLock`): Die Maus bewegt dann das Bild, ohne dass man ziehen muss, und der **linke Knopf ist der Abzug**. Die waagrechte Achse läuft dabei mit Minus, wie beim Ziehen auch (dort steht `sg` auf −1); mit Plus wanderte das Korn nach rechts, wenn man die Maus nach links schob. Das gilt nur im Anschlag – beim Fischen bleibt alles, wie es war. Am Finger gibt es keinen Zeiger zum Einfangen, dort wird weiter gezogen und über SCHUSS ausgelöst. Wird der Zeiger freigegeben (Escape tut das von selbst), endet auch der Anschlag; sonst stünde man mit Korn da und könnte sich nicht mehr umsehen.
+
+**Vergrößerung: 1×, 3×, 5×, dann wieder von vorn.** Auf einen Vogel auf dreißig Meter ist einfach zu wenig, um Kopf und Rücken zu unterscheiden – und genau das braucht man, um zu wissen, worauf man hält.
+
+Gerechnet wird über den **Tangens des halben Winkels**, nicht über den Winkel: Nur so ist dreifach wirklich dreifach. Den Winkel zu dritteln vergrößert in der Bildmitte stärker als am Rand. Nachgemessen 64° → 23,5° → 14,2°, also genau Faktor 3 und 5.
+
+Bedient wird er über den Knopf, über das **Mausrad** und über **Z** – denn solange der Zeiger eingefangen ist, lässt sich gar kein Knopf mehr anklicken.
+
+Zwei Dinge mussten dabei mitwandern:
+
+- **Die Mausempfindlichkeit sinkt mit der Vergrößerung.** Bei fünffach bewegt derselbe Mausweg sonst das Fünffache, und das Korn springt über das Ziel hinweg.
+- **Die Streuung wächst mit der Vergrößerung.** Derselbe Winkelfehler landet bei dreifach dreimal so weit von der Bildmitte; ohne diese Korrektur würde Zoomen das Treffen rechnerisch schwerer machen. Gezielt wird trotzdem genauer – aber weil man besser *sieht*, nicht weil die Rechnung nachgibt.
+
+**Heraus kommt man mit demselben Knopf** – er heißt im Anschlag „Zurück" und trägt ein ↩ – oder mit Escape, oder mit einem Rechtsklick. Zuerst gab es nur den Knopf, und den sah man nicht: `#hud:not([data-mode=idle]) #leftBtns .col { display: none }` blendet die linke Spalte in jedem Zustand außer „Leerlauf" aus, und im Anschlag heißt der Zustand `gun`. Damit verschwand mit der Spalte der einzige Rückweg – der Modus war eine Falle. Jetzt bleibt die Spalte im Anschlag stehen, aber nur mit der Flinte darin; Stein, Rutenwechsel und Rig-Anzeige haben dort nichts zu suchen.
+
+**Die Flinte.** Der Knopf erscheint nur, solange ein Kormoran zu sehen ist; niemand watet mit der Flinte in der Hand durch den Fluss. Ein Druck darauf wechselt in den Anschlag: Die Sicht springt in die des Anglers (ohne das kann man nicht zielen), in der Bildmitte steht ein Korn, und der große Knopf rechts heißt jetzt SCHUSS. Gezielt wird durch Ziehen auf dem Bild, im Anschlag auch steil nach oben – der Vogel fliegt ja.
+
+**Treffen ist Winkelarbeit, kein Würfel.** Der Vogel wird in die Bildebene gerechnet; der Abstand zur Bildmitte entscheidet:
+
+| | |
+|---|---|
+| bis 22 m | voller Streukegel, grobes Halten reicht |
+| 22 bis 35 m | der erlaubte Fehler schrumpft auf 45 % |
+| über 35 m | Fehlschuss, egal wie genau |
+
+Über 35 m trägt eine Flinte nicht. Einen angeschossenen Vogel gibt es hier nicht – getroffen oder daneben, nichts dazwischen.
+
+Vorhalt braucht es übrigens **nicht**, und das ist ehrlicher als es täuschend einzubauen: Schrot ist auf dreißig Meter in vier Hundertstelsekunden da. Die Schwierigkeit ist, einen schlagenden Vogel überhaupt in der Mitte zu halten.
+
+**Der Schuss kostet dich den Nachmittag.** Der Knall gilt dem ganzen Zug, ob getroffen oder nicht: Alles im Umkreis von 16 m flüchtet, alles bis 25 m wird für 45 s misstrauisch. Gemessen an einem Revier mit 20 Fischen flohen 4 und weitere 4 duckten sich – die eigene Strecke ist für eine Weile tot, der Rest des Reviers nicht. **Das ist die Entscheidung:** Du rettest den Zug für den nächsten Besuch und opferst den jetzigen. Ohne diesen Preis drückt man einfach immer ab.
+
+Ein Fehlschuss kostet genauso viel und vergrämt obendrein den Vogel – du hast den Zug geopfert und nichts dafür bekommen.
+
+**Gebaut ist er in zwei Hälften.** Körper und Bewegung stehen in `js/fauna.js` wie bei allen Tieren, die Wirkung aufs Spiel in `js/main.js`, das jedes Bild `world.fauna.korm` abfragt. `Fauna` kennt die Fische nicht und soll sie nicht kennen; nach außen gibt es nur `scareKormoran()` und `killKormoran()`.
+
+Am Modell tragen zwei Dinge die ganze Erkennbarkeit: der **Hals in zwei Gliedern** – beim Schwimmen geknickt aufrecht, beim Tauchen und im Flug gestreckt nach vorn – und dass er **tief im Wasser liegt**, der Rücken knapp heraus. Dazu der Hakenschnabel; ohne ihn könnte es auch eine Gans sein. Fliegen tut er mit gleichmäßigen schnellen Schlägen und gestrecktem Hals, er gleitet fast nie – daran erkennt man ihn am Himmel. Taucht er mit Beute auf, blitzt ein silbriger Splitter im Schnabel. Das ist der Moment, in dem man begreift, was der Vogel hier tut.
+
+**Der Schuss klingt** aus `js/audio.js` wie alles andere: ein harter weißer Knall, darunter der tiefe Schlag der Ladung, dann zweimal das Echo vom Hang – erst links, dann schwächer von der anderen Seite. Ohne das Echo klingt ein Schuss im Tal wie ein Türschlag; der Nachhall ist die halbe Wucht.
+
+## Der Fischotter
+
+Der Kormoran nimmt, was am nächsten steht. **Der Otter nimmt den größten Fisch im Zug** – genau den, auf den du es abgesehen hattest. Das ist der ganze Unterschied, und er ist der Grund, warum es ihn gibt.
+
+> In Wirklichkeit ist der Fischotter EU-weit streng geschützt, strenger als der Kormoran; ein Abschuss ist praktisch überall verboten. Im Spiel kann man ihn schießen, weil es so gewünscht war – hier steht es trotzdem, wie alles andere auch.
+
+**Was er tut.** Er zieht schwimmend die Uferkante entlang, nicht die Strommitte. Alle sechs bis fünfzehn Sekunden ein Tauchgang, acht bis achtzehn Sekunden unter Wasser, dabei schwimmt er zum **größten** Fisch im Umkreis von 18 m. Knapp jeder dritte Tauchgang geht auf. Ein erbeuteter Fisch ist 300 s weg – länger als beim Kormoran, denn es war der beste.
+
+Wo er jagt, steht im Umkreis von **12 m** kein Fisch ruhig (beim Kormoran sind es 8 m) und alles im Umkreis von 4,5 m eines Tauchgangs flüchtet. Ein Otter räumt den Zug auf, nicht nur die Stelle.
+
+**Gemessen** über eine halbe Stunde: 3 Besuche, 13 Tauchgänge, 5 Fische – **ein bis drei je Besuch**, und immer die größten in Reichweite. Er kommt dafür viel seltener als der Vogel.
+
+**Er ist scheuer:** auf 15 m ist er weg (Kormoran 12 m).
+
+**Zu treffen ist er fast nur beim Fressen.** Im Wasser schauen von ihm Kopf, ein Stück Rücken und die Schwanzspitze heraus – der erlaubte Fehler halbiert sich, und die Reichweite liegt bei 28 m statt 35. Mit Beute zieht er ans Ufer, legt sich den Fisch zwischen die Vorderpfoten und frisst: **rund 22 s je Besuch**, in denen er ganz zu sehen ist und stillhält. Das ist das Zeitfenster. Findet sich kein flacher Uferplatz, frisst er auf dem Rücken treibend im Wasser – dann ist er zu drei Vierteln zu treffen.
+
+Auf einen Schuss unter Wasser sagt das Spiel es dir, statt ihn als Fehlschuss zu werten.
+
+**Drei Fehler steckten in der ersten Fassung**, alle erst durch Messen gefunden:
+
+- **Er kam nie ans Ufer.** Der Fressplatz wurde mit `_tränke` gesucht, und das sucht um den *Angler* herum. Gemessen schwamm er 37 s auf einen Platz zu, den er nie erreichte – das Zeitfenster zum Schießen ging in 25 Minuten kein einziges Mal auf. Jetzt sucht `_otterUfer` die Kante in seiner eigenen Reichweite.
+- **Er vergrämte sich selbst.** Unter Wasser schwamm er auf seine Beute zu, geriet dabei unter die eigene Fluchtgrenze von 15 m und brach ab. Jetzt kommen nur Fische in Frage, die mindestens 18 m vom Angler entfernt stehen – beim Kormoran 15 m.
+- **Der Fisch war schon beim Abtauchen weg.** Wer das Tier mitten im Tauchgang vergrämte, verlor ihn trotzdem; gemessen kamen mehr gefressene Fische heraus als Tauchgänge. Jetzt ist er erst weg, wenn das Tier damit hochkommt. Dieselbe Korrektur hat auch der Kormoran bekommen.
+
+Dazu endet ein Besuch jetzt nur noch *zwischen* zwei Tauchgängen – die Besuchsuhr schnitt sonst laufende Tauchgänge ab, und von sechs kam nur einer durch.
+
+**Am Modell** tragen drei Dinge die Erkennbarkeit: der **walzenförmige Körper**, der **dicke Schwanz**, der sich zur Spitze auf ein Viertel verjüngt, und dass im Wasser nur Kopf, ein Stück Rücken und die Schwanzspitze herausschauen – diese drei Punkte in einer Linie. Ein ganz sichtbarer Körper wäre ein Biber, ein spitzer Kopf ein Marder.
+
+**Wie oft er kommt**, steht in `otter` (sonst aus der Staffel): Staffel 4 → 0,9, Staffel 2 und 3 → 0,65, Staffel 1 → 0,45. Flacher als beim Kormoran, denn der Otter ist überall und das ganze Jahr da – er ist nur selten zu sehen, weil er in der Dämmerung und nachts jagt.
 
 ## Tiere am Fluss
 

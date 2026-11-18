@@ -20,7 +20,7 @@ const ICE = {
   }],
 };
 
-export const MODES = ['title', 'idle', 'cast', 'drift', 'fight', 'landed'];
+export const MODES = ['title', 'idle', 'cast', 'drift', 'fight', 'landed', 'gun'];   // passt in die vier Bit des Zustandsbytes
 export const RIGS_N = ['euro', 'indi', 'dry'];   // die Montage gehoert mit uebertragen, siehe sendMove
 const PACK = 20;   // Bytes je Bewegungspaket
 

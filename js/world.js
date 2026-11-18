@@ -873,6 +873,7 @@ export class World {
   }
 
   setPov(on) { this.pov = !!on; this.resize(); }
+  setZoom(z) { if ((this.zoom || 1) === z) return; this.zoom = z; this.resize(); }
 
   setQuality(hi) {
     // auch sparsam bleibt die Nachbearbeitung an: sie glaettet die Kanten (FXAA), nur Bloom und Strahlen entfallen
@@ -953,7 +954,12 @@ export class World {
     this.camera.aspect = asp;
     let vf = 50;
     if (asp < 1.25) vf = Math.min(78, 2 * Math.atan(Math.tan(30 * Math.PI / 180) / asp) * 180 / Math.PI);
-    this.camera.fov = Math.max(50, vf) + (this.pov ? 14 : 0);   // aus den Augen des Anglers etwas weitwinkliger
+    // Im Anschlag verengt der Zoom das Blickfeld. Gerechnet wird ueber den Tangens des
+    // halben Winkels, nicht ueber den Winkel selbst - nur so ist dreifach wirklich
+    // dreifach. Den Winkel zu dritteln vergroessert in der Mitte staerker als am Rand.
+    const f0 = Math.max(50, vf) + (this.pov ? 14 : 0);
+    const zf = this.zoom || 1;
+    this.camera.fov = zf <= 1 ? f0 : 2 * Math.atan(Math.tan(f0 * Math.PI / 360) / zf) * 180 / Math.PI;
     this.camera.updateProjectionMatrix();
     this.portrait = asp < 1;
     this.makeTargets();
@@ -1894,7 +1900,16 @@ export class World {
         for (const q of nah) treeSpots.push({ x: q.x, z: q.z, y: q.y, s: q.s, leaf: true });
       }
     }
-    this.fauna = new Fauna(this.env, { rnd, river, trees: treeSpots, C, win, mobile: this.mobile });
+    // korm: wie oft ein Kormoran kommt. Im Herbst und Winter am Unterlauf ist er das
+    // echte Problem der Fischerei, am sommerlichen Quellbach sieht man ihn nicht.
+    // splash: die Ringe beim Tauchen und Auftauchen gehoeren der Welt, nicht der Fauna.
+    const korm = rv.kormoran != null ? rv.kormoran : (rv.season >= 3 ? 1 : rv.season === 2 ? 0.35 : 0.12);
+    // Der Otter ist ueberall, aber selten zu sehen: Er jagt in der Daemmerung und nachts.
+    // Darum liegt sein Wert flacher als der des Kormorans - kein Winterzug, sondern
+    // gleichmaessige Seltenheit, im Oberlauf sogar eher als unten.
+    const otter = rv.otter != null ? rv.otter : (rv.season === 4 ? 0.9 : rv.season === 1 ? 0.45 : 0.65);
+    this.fauna = new Fauna(this.env, { rnd, river, trees: treeSpots, C, win, mobile: this.mobile, korm, otter,
+      splash: (x, z, k) => this.splash(x, z, k) });
     inst(crownGeo(rnd, 0.72, 0.5, 18, 0.9), leafMat, block(spots(Math.floor(190 * clamp(rv.trees + 0.3, 0.4, 1.2) * vk * forest * (win ? 0.35 : 1)), () => {
       const q = bankSpot(0.9, 17, 1.7); if (!q || q.y < 0.3) return null;
       q.y -= 0.05; q.s = 0.7 + rnd() * 1.1; q.sy = 0.8 + rnd() * 0.4; q.c = shade(); return clearOf(q, 1.1) ? q : null;
@@ -2507,17 +2522,26 @@ export class World {
     // Umschauen: yaw dreht Kamera und Blickpunkt um den Angler, pitch hebt/senkt den Blick
     const yaw = this.yaw || 0, pit = this.pitch || 0, yc = Math.cos(yaw), ys = Math.sin(yaw), fw = Math.max(0, yc);
     const cu = cxp - (this.river ? this.river.cx(cz) : 0);   // Abstand des Anglers von der Flussmitte
-    const ox = clamp(cu * (por ? 0.13 : 0.42), -1.6, 1.6) * fw, back0 = por ? 3.7 : 3.9;
+    // Je weiter der Angler im Ufer steht, desto kuerzer und hoeher der Kameraarm. Am
+    // Wasser ist hinter ihm nichts; fuenf Meter im Ufer steht dort Gebuesch, und ein
+    // langer Arm landet mitten darin - gemessen war das Bild dann schwarz vor Laub.
+    const ufer = this.river ? Math.max(0, Math.abs(cu) - this.river.halfW) : 0;
+    const uk = Math.min(1, ufer / 5);
+    const ox = clamp(cu * (por ? 0.13 : 0.42), -1.6, 1.6) * fw, back0 = (por ? 3.7 : 3.9) - uk * 1.1;
     // Drift und Drill: Kamera steigt und schaut steiler aufs Wasser - sonst verdeckt der Angler die Fliege, und die Spiegelung den Fisch darunter
     this._lift = (this._lift || 0) + ((this.lift || 0) - (this._lift || 0)) * Math.min(1, dt * 2.2);
-    const lift = this._lift, cy = (por ? 2.75 : 2.25) - pit * 1.3 + lift * (por ? 2.3 : 1.9);
+    const lift = this._lift, cy = (por ? 2.75 : 2.25) - pit * 1.3 + lift * (por ? 2.3 : 1.9) + uk * 1.9;
     // Steht hinter dem Angler ein Baum oder Busch, rueckt die Kamera naeher heran statt ins Laub zu geraten
-    let want = back0;
+    let want = back0, drin = 0;
     if (this.obst && this.obst.length) {
       // Sichtlinie Angler -> Kamera: bis zum ersten Baum, der sie schneidet
       for (const o of this.obst) {
         const mx = cxp - o.x, mz = cz - o.z, c = mx * mx + mz * mz - o.r2;
-        if (c <= 0) { want = 0; break; }
+        // c <= 0 heisst: der Angler selbst steht im Busch oder unter der Krone. Dann
+        // hilft kein kuerzerer Arm mehr - die Kamera steckt mit ihm darin, und das Bild
+        // ist schwarz vor Laub. Seit man fuenf Meter ins Ufer gehen kann, passiert das
+        // regelmaessig; also uebernimmt dort die Sicht des Anglers.
+        if (c <= 0) { want = 0; drin = 1; break; }
         const bb = mx * ys + mz * yc, disc = bb * bb - c;
         if (bb < 0 && disc > 0) want = Math.min(want, -bb - Math.sqrt(disc) - 0.3);
       }
@@ -2535,10 +2559,15 @@ export class World {
     _d.set(cxp + lo * yc - 4.6 * ys, 0.45 + pit * 7 - lift * 0.45, cz - lo * ys - 4.6 * yc);
     if (focus && lift > 0.01) { const b = lift * 0.75; _d.x += (focus.x - _d.x) * b; _d.z += (focus.z - _d.z) * b; }   // Blickpunkt wandert zur Fliege bzw. zum Fisch
     this._look.lerp(_d, turned ? Math.min(1, dt * 14) : kk);
-    if (this.pov) {   // Sicht des Anglers: Kamera knapp vor dem Gesicht, damit Arme und Rute im Bild sind, der eigene Kopf aber nicht
+    // Im Laub weich auf die Sicht des Anglers umblenden und ebenso weich zurueck - ein
+    // Sprung waere schlimmer als das Laub.
+    this._busch = (this._busch || 0) + (drin - (this._busch || 0)) * Math.min(1, dt * (drin ? 5 : 2.2));
+    if (this.pov || this._busch > 0.004) {   // Sicht des Anglers: Kamera knapp vor dem Gesicht, damit Arme und Rute im Bild sind, der eigene Kopf aber nicht
       const g = this.angler.position;
-      this.camera.position.set(g.x - ys * 0.2, g.y + 1.16 + Math.sin(t * 0.7) * 0.006, g.z - yc * 0.2);
-      this._look.set(g.x - ys * 6, g.y - 0.2 + pit * 8, g.z - yc * 6);
+      _d.set(g.x - ys * 0.2, g.y + 1.16 + Math.sin(t * 0.7) * 0.006, g.z - yc * 0.2);
+      const zl = _b.set(g.x - ys * 6, g.y - 0.2 + pit * 8, g.z - yc * 6);
+      if (this.pov) { this.camera.position.copy(_d); this._look.copy(zl); }
+      else { const e = Math.min(1, this._busch); this.camera.position.lerp(_d, e); this._look.lerp(zl, e); }
     }
     // Fang im Kescher: weich zur Nahaufnahme und zurueck
     const lk = this._lk || (this._lk = new THREE.Vector3()); lk.copy(this._look);
