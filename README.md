@@ -241,9 +241,60 @@ Die übrigen wechseln selten zwischen zwei Zuständen:
 | am Grund | 200 bis 400 s, geteilt durch die Aktivität des Lichts | nur Nymphen (Euro oder Indikator) |
 | steigend | 150 bis 300 s; der Fisch steht dicht unter der Oberfläche und macht alle 2,5 bis 7 s einen Ring | nur Trockenfliegen |
 
-Die Uhr eines Fischs läuft nur, solange du weiter als 16 m entfernt bist. Ein Fisch in deiner Nähe bleibt also bei dem, was er gerade tut – wer sein Rig auf ihn abstimmt, trifft ihn auch so an.
+Die Uhr eines Fischs läuft nur, solange du weiter als 16 m entfernt bist. Ein Fisch in deiner Nähe bleibt also bei dem, was er gerade tut – wer sein Rig auf ihn abstimmt, trifft ihn auch so an. Im Schlupf sind es 9 m, sonst bliebe ausgerechnet das Wasser vor dir leer.
 
 Zu Beginn steigen etwa 35 % der steigfähigen Fische, und jeder startet an einer zufälligen Stelle seines Abschnitts, damit sie nicht alle gleichzeitig hochkommen. Bei Morgennebel und Abendlicht sind die Pausen am Grund kürzer, es steigen also mehr Fische.
+
+### Der Schlupf
+
+Für ein paar Minuten steigt **eine** Insektenart aus dem Wasser auf, die Fische stellen sich darauf ein und fressen oben. Das ist der Moment, in dem genau eine Fliege richtig ist – und der einzige im Spiel, in dem die Tageszeit etwas bedeutet.
+
+**Es schlüpft nur, was unter dem Stein lag.** Eintagsfliegen, Köcherfliegen und Steinfliegen haben in `js/data.js` ein Feld `adult` – Bachflohkrebse und Würmer nicht, die bleiben ihr Leben lang unten. Geschlüpft wird darum möglichst die Art, die als häufigstes Futter im Revier liegt (`cond.i1`), sonst die zweite. Nur wenn beide Fundstücke unter Wasser bleiben, kommt eine andere Art des Reviers dran. Anders wäre die Steinprobe ein Ratespiel.
+
+**Wann:** gewürfelt wird fortlaufend, mit einer mittleren Wartezeit von 190 s geteilt durch das Gewicht der Tageszeit und der Art.
+
+| | Abendlicht | Morgennebel | bedeckt | Mittagssonne |
+|---|---|---|---|---|
+| Gewicht | 1,35 | 1,0 | 0,85 | 0,3 |
+
+Dazu kommt die Art: Köcherfliegen 1,1, Eintagsfliegen 1,0, Steinfliegen 0,65. Am Abend schlüpft also im Mittel alle zweieinhalb Minuten etwas, in der prallen Mittagssonne alle zehn. Ein Schlupf dauert **95 bis 180 s**, danach vergehen 70 bis 140 s, bis überhaupt wieder gewürfelt wird. Im Winter schlüpft nichts.
+
+**Ein Fünftel mehr steigt – nicht alle.** Beim Start kommen rund 20 % der steigfähigen Fische zusätzlich hoch, in 1 bis 10 s; danach geht es in 12 bis 57 s wieder hinunter. Diese Zahl ist zugleich die **Obergrenze für den ganzen Schlupf**: Solange sie erreicht ist, schaltet kein weiterer Fisch nach oben, nach unten dagegen immer.
+
+Beides zusammen ist nötig, und beides fehlte in der ersten Fassung:
+
+- Ohne die Begrenzung beim Start stiegen **11 von 11** steigfähigen Fischen statt 5. Am Grund stand dann nichts mehr – und daran hängt der Fortschritt: Nymphen-Aufgaben, Standplatz-Aufgaben, die ganze erste Staffel.
+- Ohne die Obergrenze füllt sich die Oberfläche langsam von selbst. Steigende wurden festgehalten, während unten weiter umgeschaltet wurde; nach drei Minuten wären doch alle oben gewesen.
+
+Gemessen an 18 Fischen, 14 davon steigfähig: vorher 6 oben, im Schlupf 9, und diese 9 hielten über die ganzen 180 s. Zehn Fische standen durchgehend am Grund. Nach dem Schlupf waren es binnen 38 s wieder 7.
+
+Wer bis zum Ende nicht oben war, kommt auch nicht mehr – ohne diesen Nachsatz liefen die kurzen Fristen aus `startHatch` nach dem Schlupf weiter, und gemessen stiegen hinterher mehr Fische als mittendrin.
+
+**Und die Fliegenwahl kippt.** Im Schlupf zählt, was gerade fliegt: Eine Trockenfliege der richtigen Art bekommt +0,65, eine falsche −0,18, und die Nymphe am Grund −0,28. Gemessen an einem Steinfliegen-Schlupf:
+
+| Fliege | ohne Schlupf | im Schlupf |
+|---|---|---|
+| Stimulator (trocken, Steinfliege) | 1,26 | **1,60** (Anschlag) |
+| Pheasant Tail (Nymphe) | 1,20 | 0,92 |
+| Stone Nymph (Nymphe) | 1,21 | 0,93 |
+| Elk Hair Caddis (trocken, falsche Art) | 0,46 | 0,28 |
+
+Ohne Schlupf liegt die passende Trockenfliege knapp über der Nymphe – man kann so oder so fischen. Im Schlupf ist sie die einzige Antwort.
+
+**In Staffel 1 ändert ein Schlupf an der Fliegenwahl nichts.** Dort gibt es nur die Euro-Nymphe – Indikator und Trockenfliege kommen erst mit Staffel 2. Ein Abzug auf jede Fliege, die man überhaupt besitzt, wäre dann keine Entscheidung, sondern eine Strafe ohne Ausweg; und steigen tut dort ohnehin kein Fisch, weil `makeFish` das Steigen an die Trockenfliegen-Rute knüpft. Nachgemessen bleibt die Passung in Staffel 1 bei Schlupf auf den Hundertstel gleich. Zu sehen ist er trotzdem, und der Hinweis sagt, warum man gerade nicht herankommt – ein Vorgeschmack auf die zweite Staffel.
+
+**Zu sehen** ist er an der Insektenwolke über dem Wasser. Sie gab es schon, aber immer in derselben blassen Farbe und nur morgens und abends. Jetzt nimmt sie Farbe und Körpergröße der schlüpfenden Art an (eine Steinfliege ist doppelt so groß wie eine Eintagsfliege), rückt über die Flussmitte, und jedes Tier steigt auf einer Sägezahnbahn von der Oberfläche nach oben – das ist, was man am Wasser wirklich sieht, keine gleichmäßig schwirrende Wolke. Ein Schlupf macht sie auch dann sichtbar, wenn sonst nichts schwärmt; er *ist* ja das Ereignis.
+
+Zwei Dinge daran sind bewusst nicht maßstabsgetreu:
+
+- **Vier Mal so viele Tiere** (440 statt 110). Ein Schlupf, bei dem genauso viel fliegt wie an jedem anderen Abend, ist keiner. Außerhalb parken die übrigen unter der Welt.
+- **Gezeichnet wird mit Faktor 3,2.** Gemessen deckt eine 18 mm lange Köcherfliege auf sechs Meter knapp zwei Bildpunkte ab – das sieht niemand, und einen Schlupf, den man nicht sieht, gibt es nicht. Die Größen der Arten untereinander bleiben richtig.
+
+Dazu bekamen die Punkte eine **runde Marke** (32 × 32, im Code gezeichnet). Bei 12 mm fiel nicht auf, dass ein Punkt ohne Bild ein Quadrat ist; bei der Größe eines Schlupfs lagen lauter Kästchen über dem Wasser. Ein weicher Verlauf von der Mitte an war dann wieder zu wenig – deckend bleibt davon nur ein Kern von wenigen Bildpunkten. Deckend bis 56 % des Radius, dann ein weicher Rand.
+
+Gemessen kostet der ganze Schlupf nichts: 2,3 ms je Bild mit, 2,3 ms ohne (die Streuung zwischen zwei Durchgängen desselben Zustands war mit 0,3 ms größer als der Unterschied), 375 Zeichenaufrufe mit, 376 ohne.
+
+Ein laufender Schlupf **übersteht das Neuladen**: Gespeichert wird sein Ende als Zeitpunkt, nicht die Restdauer – sonst liefe er bei jedem Neuladen von vorn los.
 
 ### Wann ein Fisch beißt
 
@@ -390,6 +441,8 @@ Jede neu freigeschaltete Fliege liegt dreimal in der Dose. Aufgaben, die bestimm
 ## Sprachen
 
 Deutsch, Englisch und Italienisch – Auswahl auf dem Startbildschirm. Die Texte liegen in `js/i18n.js`, eine Zeile je Satz: `["deutsch", "english", "italiano"]`. `T('deutscher Text')` holt daraus die passende Spalte; Deutsch ist die Quellsprache und steht deshalb als Schlüssel in der Tabelle.
+
+**Dasselbe gilt für Datenfelder, die `loc()` nicht kennt.** `loc()` übersetzt benannte Felder eines Datenobjekts an Ort und Stelle – aber nur die, die man ihm nennt. `INSECTS[].adult` stand nicht in der Liste, also hießen die fliegenden Insekten in jeder Sprache „Köcherfliegen"; und `CLARITY` ist ein nacktes Feld aus Zeichenketten, an dem `loc()` gar nicht greift, also stand die Wassertrübung in der Revierzeile ebenfalls immer deutsch da. Beides ist behoben – `adult` steht jetzt in der Liste, `CLARITY` läuft an der Verwendungsstelle durch `T()`. Die Zeilen in der Tabelle gab es längst, sie wurden nur nie nachgeschlagen.
 
 **Was im HTML fest steht, übersetzt `applyLang()`** – Satz für Satz, von Hand gepflegt. Wer dort einen Knopf hinzufügt und ihn vergisst, bekommt kein Fehlersignal: Der Knopf bleibt einfach in jeder Sprache deutsch. Genau so war es beim Knopf „Zu zweit fischen" auf dem Startbildschirm, bei der kleinen Beschriftung „Rute" unter der Rute und bei allen sieben `aria-label` für Vorlesewerkzeuge, die seit jeher deutsch blieben.
 

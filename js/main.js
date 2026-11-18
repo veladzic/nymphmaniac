@@ -195,15 +195,23 @@ function enterRevier(i, keep) {
   const rv = REVIERE[i];
   // verlangt eine offene Aufgabe ein bestimmtes Licht, herrscht es bei jedem Besuch - sonst waere sie nur mit Glueck loesbar
   const ql = rv.quests.find(q => q.light && !save.quests[q.id]), lset = ql ? ql.light : rv.lights;
-  cond = { clarity: pick(rv.clarity), light: pick(lset ? LIGHTS.filter(l => lset.includes(l.id)) : LIGHTS), sampled: false };
+  cond = { clarity: pick(rv.clarity), light: pick(lset ? LIGHTS.filter(l => lset.includes(l.id)) : LIGHTS), sampled: false, hatch: null, hatchWait: 25 + Math.random() * 40 };
   const ins = [...rv.insects].sort(() => Math.random() - 0.5);
   if (cond.clarity === 2 && ins.includes('worm')) { ins.splice(ins.indexOf('worm'), 1); ins.unshift('worm'); }
   cond.i1 = ins[0]; cond.i2 = ins[1];
   // Beim Neuladen der Seite bleiben Wasser, Licht, Insekten und der umgedrehte Stein erhalten; nur ein neuer Besuch wuerfelt neu
   const sc = save.cond;
-  if (keep && sc && sc.revier === i && rv.insects.includes(sc.i1) && LIGHTS.some(l => l.id === sc.light)) cond = { clarity: sc.clarity, light: LIGHTS.find(l => l.id === sc.light), sampled: !!sc.sampled, i1: sc.i1, i2: sc.i2 };
-  save.cond = { revier: i, clarity: cond.clarity, light: cond.light.id, i1: cond.i1, i2: cond.i2, sampled: cond.sampled };
+  if (keep && sc && sc.revier === i && rv.insects.includes(sc.i1) && LIGHTS.some(l => l.id === sc.light)) {
+    cond = { clarity: sc.clarity, light: LIGHTS.find(l => l.id === sc.light), sampled: !!sc.sampled, i1: sc.i1, i2: sc.i2, hatch: null, hatchWait: 25 + Math.random() * 40 };
+    // Ein laufender Schlupf ueberlebt das Neuladen, solange er noch laeuft. Gespeichert
+    // wird sein Ende als Zeitpunkt, nicht die Restdauer - sonst liefe er beim Neuladen
+    // jedes Mal von vorn los.
+    const h = sc.hatch;
+    if (h && INSECTS[h.ins] && INSECTS[h.ins].adult && h.end > Date.now()) cond.hatch = { ins: h.ins, t: (h.end - Date.now()) / 1000 };
+  }
+  saveCond();
   river = world.buildRevier(rv, cond);
+  applyHatch();
   world.setPolar(save.level >= 2);
   S.px = LANE_X; S.pz = 0; world.camZ = 0; world.camX = LANE_X; S.wade = null; S.fight = null; S.bite = null; S.snag = false;
   fish = []; respawn = [];
@@ -265,10 +273,98 @@ function checkOld(announce) {
   if (announce) setTimeout(() => toast(T('Im tiefsten Teil des Gumpens bewegt sich ein großer Schatten …'), 5000), 1500);
 }
 
+// ---------- Der Schlupf ----------
+// Aus den Larven unter dem Stein werden fuer ein paar Minuten die Fliegen ueber dem
+// Wasser: Eine Art steigt auf, die Fische stellen sich um und fressen oben. Erst damit
+// bedeutet die Tageszeit etwas, erst damit hat die Steinprobe eine Antwort, und erst
+// damit gibt es einen Moment, in dem genau eine Fliege richtig ist.
+//
+// Gewicht nach Licht: Eintagsfliegen und Koecherfliegen schluepfen in der Daemmerung,
+// in der prallen Mittagssonne fast nie.
+const HATCH_LIGHT = { morgen: 1.0, abend: 1.35, bedeckt: 0.85, mittag: 0.3 };
+const HATCH_MEAN = 190;          // mittleres Warten in Sekunden bei Gewicht 1
+const hatchable = i => !!(i && INSECTS[i] && INSECTS[i].adult);
+function saveCond() {
+  const h = cond.hatch;
+  save.cond = { revier: save.revier, clarity: cond.clarity, light: cond.light.id, i1: cond.i1, i2: cond.i2, sampled: cond.sampled,
+    hatch: h ? { ins: h.ins, end: Date.now() + h.t * 1000 } : null };
+}
+// Welche Art schluepft: moeglichst die, die unter dem Stein sass - sonst waere die
+// Steinprobe ein Ratespiel. Nur wenn beide Fundstuecke unter Wasser bleiben
+// (Bachflohkrebse, Wuermer), kommt eine andere Art des Reviers dran.
+function hatchArt() {
+  if (hatchable(cond.i1)) return cond.i1;
+  if (hatchable(cond.i2)) return cond.i2;
+  const rest = REVIERE[save.revier].insects.filter(hatchable);
+  return rest.length ? pick(rest) : null;
+}
+function applyHatch() {
+  const h = cond && cond.hatch, k = h && INSECTS[h.ins];
+  world.setHatch(!!k, k && k.col, k && k.size);
+  const el = $('rvHatch');
+  if (el) { el.textContent = k ? '✦ ' + T('Schlupf: {0}', k.adult) : ''; el.classList.toggle('show', !!k); }
+}
+const rising = () => { let n = 0; for (const f of fish) if (f.rise) n++; return n; };
+function startHatch(ins) {
+  const dur = 95 + Math.random() * 85;
+  // Es kommen nicht alle hoch, sondern rund ein Fuenftel der steigfaehigen Fische
+  // zusaetzlich. Der Fortschritt haengt an Fischen, die am Grund stehen: Nymphen- und
+  // Standplatz-Aufgaben, die ganze erste Staffel. Ein Schlupf, der jeden Fisch an die
+  // Oberflaeche holt, nimmt dem Spiel die Haelfte seiner Aufgaben - in der ersten
+  // Fassung stiegen 11 von 11 statt 5, und am Grund stand nichts mehr.
+  const kann = fish.filter(f => f.riser), unten = kann.filter(f => !f.rise);
+  for (let i = unten.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; const t = unten[i]; unten[i] = unten[j]; unten[j] = t; }
+  const dazu = Math.min(unten.length, Math.max(1, Math.round(kann.length * 0.2)));
+  for (const f of unten.slice(0, dazu)) f.riseT = Math.min(f.riseT, 1 + Math.random() * 9);
+  // Diese Zahl ist zugleich die Obergrenze fuer den ganzen Schlupf. Ohne sie fuellt
+  // sich die Oberflaeche langsam von selbst: Steigende wurden festgehalten, waehrend
+  // unten weiter umgeschaltet wurde - nach drei Minuten waeren doch alle oben.
+  cond.hatch = { ins, t: dur, max: rising() + dazu };
+  applyHatch(); saveCond(); persist(); updateHUD();
+  const nm = INSECTS[ins].adult;
+  toast(hasDry() ? T('{0} schlüpfen – jetzt steigen die Fische. Jetzt die Trockenfliege!', nm)
+                 : T('{0} schlüpfen. Mit der Nymphenrute kommst du da nicht heran – die Trockenfliege gibt es ab Staffel 2.', nm), 5600);
+  sfx.rise(S.px, S.pz - 4);
+}
+function endHatch() {
+  cond.hatch = null; cond.hatchWait = 70 + Math.random() * 70;
+  // Oben stehende Fische gehen bald wieder tiefer - und wer noch gar nicht oben war,
+  // kommt jetzt auch nicht mehr: startHatch hatte ihm eine kurze Frist gesetzt, die
+  // sonst nach dem Schlupf ablaeuft. Gemessen stiegen so mehr Fische nach dem Schlupf
+  // als waehrenddessen.
+  for (const f of fish) f.riseT = f.rise ? Math.min(f.riseT, 12 + Math.random() * 45) : Math.max(f.riseT, 25 + Math.random() * 120);
+  applyHatch(); saveCond(); persist(); updateHUD();
+  toast(T('Der Schlupf ist vorbei – die Fische gehen wieder tiefer.'), 3600);
+}
+function updateHatch(dt) {
+  if (!cond) return;
+  if (cond.hatch) {
+    // Nach dem Neuladen fehlt die Obergrenze: Gespeichert werden nur Art und Ende, die
+    // Fische sind danach neu besetzt. Dann gilt, was gerade oben steht.
+    if (cond.hatch.max == null) cond.hatch.max = Math.max(1, rising());
+    cond.hatch.t -= dt; if (cond.hatch.t <= 0) endHatch(); return;
+  }
+  if (REVIERE[save.revier].season === 4) return;            // im Winter schluepft nichts
+  cond.hatchWait -= dt;
+  if (cond.hatchWait > 0) return;
+  const ins = hatchArt();
+  if (!ins) { cond.hatchWait = 120; return; }               // Revier ohne schluepfende Art
+  const w = (HATCH_LIGHT[cond.light.id] || 0.8) * (INSECTS[ins].hatch || 1);
+  if (Math.random() < dt * w / HATCH_MEAN) startHatch(ins);
+}
+
 function flyMatch(fly, f) {
   let m = 0.45;
   if (fly.imitates.includes(cond.i1)) m += 0.75; else if (fly.imitates.includes(cond.i2)) m += 0.4;
   m += fly.attractor * (cond.clarity - 0.6) * 0.35;
+  // Im Schlupf schauen die Fische nach oben und nehmen, was gerade fliegt. Eine
+  // Trockenfliege der richtigen Art ist dann unschlagbar, eine falsche faellt auf,
+  // und die Nymphe am Grund interessiert kaum noch jemanden.
+  //
+  // Aber erst ab Staffel 2: In Staffel 1 gibt es nur die Euro-Nymphe. Ein Abzug auf
+  // jede Fliege, die man besitzt, waere dann keine Entscheidung, sondern eine Strafe
+  // ohne Ausweg - und steigen tut dort ohnehin kein Fisch (siehe makeFish).
+  if (cond.hatch && hasDry()) m += fly.dry ? (fly.imitates.includes(cond.hatch.ins) ? 0.65 : -0.18) : -0.28;
   if (fly.loves && fly.loves.includes(f.species)) m += 0.3;
   if (f.len > 45) m += fly.big || 0;
   return clamp(m, 0.12, 1.6);
@@ -841,7 +937,8 @@ function kickSample() {
     <div class="sample minor"><b>${T('Vereinzelt {0}', b.name)}</b><br><i>${b.hint}</i></div>
     <p>${T("Passende Nymphen:")} <b>${good}</b>${hasDry() ? `<br>${T("Passende Trockenfliegen:")} <b>${goodDry}</b>` : ''}</p>
     ${hasDry() ? `<p class="small">${T("Aus den Larven unter dem Stein schlüpfen die Fliegen über dem Wasser. Steigende Fische fressen genau diese – nimm die Trockenfliege zur selben Insektenart.")}</p>` : ''}
-    <p class="small">${T('Wasser:')} ${CLARITY[cond.clarity]}. ${cond.clarity > 0 ? T('Bei angetrübtem Wasser dürfen Fliegen auffälliger sein (Hotspot).') : T('Bei klarem Wasser lieber natürlich und fein fischen.')}</p>
+    ${cond.hatch ? `<p><b>${T('Gerade schlüpfen {0}.', INSECTS[cond.hatch.ins].adult)}</b> ${hasDry() ? T('Die Fische fressen oben – jetzt zählt die Trockenfliege zu dieser Art, nicht die Nymphe am Grund.') : T('Oben wird gefressen, aber die Nymphenrute reicht nicht hinauf. Ab Staffel 2 gehört dieser Moment dir.')}</p>` : ''}
+    <p class="small">${T('Wasser:')} ${T(CLARITY[cond.clarity])}. ${cond.clarity > 0 ? T('Bei angetrübtem Wasser dürfen Fliegen auffälliger sein (Hotspot).') : T('Bei klarem Wasser lieber natürlich und fein fischen.')}</p>
     <button class="primary" data-act="close">${T('Stein zurücklegen')}</button>`);
   updateHUD();
 }
@@ -864,13 +961,14 @@ $('tip').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropag
 function updateHUD() {
   const rv = REVIERE[save.revier], fly = curFly();
   $('rvName').textContent = rv.name;
-  $('rvCond').textContent = `${CLARITY[cond.clarity]} · ${cond.light.name}` + (cond.sampled ? ` · ${INSECTS[cond.i1].name}` : '');
+  $('rvCond').textContent = `${T(CLARITY[cond.clarity])} · ${cond.light.name}` + (cond.sampled ? ` · ${INSECTS[cond.i1].name}` : '');   // CLARITY laeuft nicht ueber loc und stand bisher in jeder Sprache deutsch da
   $('xpfill').style.width = (save.level >= MAX_LEVEL ? 100 : save.xp / xpNeed(save.level) * 100) + '%';
   $('xptext').textContent = T('Stufe {0}', save.level) + (save.level >= MAX_LEVEL ? '' : ` · ${save.xp} / ${xpNeed(save.level)} XP`);
   const rm = rigMode();
   $('rig').innerHTML = `<b>${fly.name}</b> ×${save.flies[fly.id] || 0}<br>` + (rm === 'dry' ? `${T(RIGS[2].name)} · ${fmt(save.sel.tippet, 2)} mm` : rm === 'indi' ? `${T(curInd().name)} · ${fmt(save.rig.depth)} m · ${fmt(save.sel.bead)} mm` : `${fmt(save.sel.bead)} mm · ${fmt(save.sel.tippet, 2)} mm`);
   $('rig').innerHTML += `<br><i>${rigTag(rm)}</i>`;
   const sw = $('btnSwap'); sw.classList.toggle('hidden', !hasDry()); sw.querySelector('small').textContent = rigTag(swapTarget()).replace(' Rig', '');   // zeigt, wohin er wechselt
+  applyHatch();
   const open = rv.quests.filter(q => !save.quests[q.id]);
   $('quest').textContent = open.length ? '◦ ' + open[0].text : T('✓ Alle Aufgaben hier erfüllt');
 }
@@ -1469,6 +1567,7 @@ function frame(now) {
   const paused = modalOpen() && S.mode !== 'landed' && S.mode !== 'title';
   if (!paused) {
     S.walk = 0; updateMove(dt);
+    updateHatch(dt);
     if (S.mode === 'cast') updateCast(dt);
     else if (S.mode === 'drift') updateDrift(dt);
     else if (S.mode === 'fight') updateFight(dt);
@@ -1498,9 +1597,15 @@ function frame(now) {
       // Steigen: jeder Fisch kommt von Zeit zu Zeit an die Oberflaeche und frisst dort - dann nimmt er nur Trockenfliegen
       if (!f.old && f.riser) {
         // ein Fisch in deiner Naehe bleibt bei dem, was er gerade tut: wer sein Rig auf ihn abstimmt, soll ihn auch so antreffen
-        if (Math.hypot(f.x - S.px, f.z - S.pz) > 16) f.riseT -= dt;
+        // Sonst wechselt ein Fisch nur weit weg die Haltung - vor der Nase sieht ein
+        // Sprung von unten nach oben nach einem Fehler aus. Im Schlupf darf er naeher
+        // heran, sonst bliebe genau das Wasser vor einem leer, in dem es schwaermt;
+        // der Ring macht den Wechsel sichtbar und damit glaubhaft.
+        if (Math.hypot(f.x - S.px, f.z - S.pz) > (cond.hatch ? 9 : 16)) f.riseT -= dt;
         if (f.riseT <= 0) {
-          f.rise = !f.rise; f.riseT = f.rise ? 150 + Math.random() * 150 : (200 + Math.random() * 200) / cond.light.act; f.ringT = 0.6;
+          // Im Schlupf nur bis zur Obergrenze hochlassen - nach unten immer
+          if (cond.hatch && !f.rise && rising() >= cond.hatch.max) f.riseT = 20 + Math.random() * 50;
+          else { f.rise = !f.rise; f.riseT = f.rise ? 150 + Math.random() * 150 : (200 + Math.random() * 200) / cond.light.act; f.ringT = 0.6; }
           if (f.rise && !S.riseHint && !isDry() && S.mode === 'idle' && save.tut >= 4 && Math.hypot(f.x - S.px, f.z - S.pz) < 13) { S.riseHint = true; toast(T("Ein Fisch steigt! Steigende Fische nehmen nur die Trockenfliege – wechsle im Rig die Rute."), 5200); }
         }
         if (f.rise) {
@@ -1687,7 +1792,7 @@ function applyLang() {
   aria('#modalClose', 'Schließen');
   document.title = 'Nymphmaniac – ' + T('Das Erbe der Smaragda');
   for (const v of Object.values(SPECIES)) loc(v, 'name', 'note');
-  for (const v of Object.values(INSECTS)) loc(v, 'name', 'hint');
+  for (const v of Object.values(INSECTS)) loc(v, 'name', 'hint', 'adult');   // 'adult' fehlte: die Namen der fliegenden Insekten standen in jeder Sprache deutsch da
   for (const f of FLIES) loc(f, 'name', 'desc');
   for (const l of LIGHTS) loc(l, 'name');
   for (const r of REVIERE) { loc(r, 'name', 'sub'); for (const q of r.quests) loc(q, 'text'); }
@@ -1728,4 +1833,4 @@ showLoader(T('Ein Euro-Nymphing-Abenteuer'), '', T('Das Erbe der Smaragda'), T('
 
 enterRevier(Math.min(save.revier, save.unlocked - 1), true);
 requestAnimationFrame(frame);
-window.__nm = { S, world, sfx, net, castAim, aimStart, castBand, get netRevier() { return netRevier; }, get save() { return save; }, get fish() { return fish; }, get river() { return river; }, get cond() { return cond; }, doCast, strike, startFight, landed, enterRevier, hand, fleeFish, startBite, kickSample, closeModal, makeFish, flyMatch, get respawn() { return respawn; } };
+window.__nm = { S, world, sfx, net, castAim, aimStart, castBand, get netRevier() { return netRevier; }, get save() { return save; }, get fish() { return fish; }, get river() { return river; }, get cond() { return cond; }, doCast, strike, startFight, landed, enterRevier, hand, fleeFish, startBite, kickSample, startHatch, endHatch, closeModal, makeFish, flyMatch, get respawn() { return respawn; } };

@@ -19,10 +19,15 @@ export const SPECIES = {
     note: "Der Donaulachs. Kupferrot, einzelgängerisch, frisst Forellen – und nimmt nur einen großen Happen tief am Grund." },
 };
 
+// adult, col, size und hatch hat nur, was auch schlüpft: Aus der Larve unter dem Stein
+// wird die Fliege über dem Wasser. Bachflohkrebse und Würmer bleiben unten – darum
+// können sie keinen Schlupf auslösen.
+//   col/size  Farbe und Körpergröße in Weltmaß, für die Insektenwolke über dem Wasser
+//   hatch     wie oft die Art schlüpft, relativ zueinander
 export const INSECTS = {
-  baetis: { adult: "Eintagsfliegen", name: 'Eintagsfliegenlarven', hint: 'schlank, olivbraun, drei Schwanzfäden' },
-  caddis: { adult: "Köcherfliegen", name: 'Köcherfliegenlarven', hint: 'im Köcher aus Steinchen, grüner Kopf schaut heraus' },
-  stone: { adult: "Steinfliegen", name: 'Steinfliegenlarven', hint: 'groß, flach, zwei Schwanzfäden' },
+  baetis: { adult: "Eintagsfliegen", name: 'Eintagsfliegenlarven', hint: 'schlank, olivbraun, drei Schwanzfäden', col: '#d7dba4', size: 0.013, hatch: 1.0 },
+  caddis: { adult: "Köcherfliegen", name: 'Köcherfliegenlarven', hint: 'im Köcher aus Steinchen, grüner Kopf schaut heraus', col: '#e3b47a', size: 0.018, hatch: 1.1 },
+  stone: { adult: "Steinfliegen", name: 'Steinfliegenlarven', hint: 'groß, flach, zwei Schwanzfäden', col: '#b09571', size: 0.026, hatch: 0.65 },
   gammarus: { name: 'Bachflohkrebse', hint: 'grau-oliv, gekrümmt, wuseln seitlich davon' },
   worm: { name: 'Würmer', hint: 'vom Regen ausgespült' },
 };

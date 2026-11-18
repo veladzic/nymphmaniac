@@ -18,6 +18,10 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; touch-action
 #revierInfo { background: var(--panel); backdrop-filter: blur(6px); border: 1px solid var(--line); border-radius: 12px; padding: 7px 11px 8px; min-width: 0; max-width: 56vw; }
 #rvName { display: block; font-size: 14px; letter-spacing: .02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #rvCond { display: block; font-size: 11px; opacity: .8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Der Schlupf bekommt eine eigene Zeile: In #rvCond haette er die Zustandszeile
+   abgeschnitten, die dort schon auf eine Zeile gekuerzt wird. */
+#rvHatch { display: none; font-size: 11px; font-weight: 700; color: #e6b84a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#rvHatch.show { display: block; }
 #xpbar { height: 4px; background: rgba(255, 255, 255, .18); border-radius: 2px; margin-top: 5px; overflow: hidden; }
 #xpfill { height: 100%; background: var(--gold); width: 0; transition: width .5s; }
 #xptext { font-size: 10px; opacity: .75; text-transform: uppercase; letter-spacing: .08em; }

@@ -1352,11 +1352,29 @@ export class World {
     // 35 mm - das sah aus der Naehe nach Hummeln aus. Weil sie jetzt so klein sind, schwaermen
     // sie enger um den Angler: weiter draussen faellt ein Punkt unter einen Bildpunkt und
     // funkelt nur noch, statt zu fliegen. Dafuer sind es mehr.
-    const IN = 110, ig = new THREE.BufferGeometry(), ip = new Float32Array(IN * 3);
+    // Vier Mal so viele, wie im Leerlauf gebraucht werden: Beim Schlupf schwaermen alle,
+    // sonst nur die ersten 110 (der Rest parkt unter der Welt). Ein Schlupf, bei dem
+    // genauso viel fliegt wie an jedem anderen Abend, ist kein Ereignis.
+    const IN = 440, ig = new THREE.BufferGeometry(), ip = new Float32Array(IN * 3);
+    this.bugIdle = 110;
     this.bugSeed = Array.from({ length: IN }, () => [Math.random() * 11 - 7, 0.3 + Math.random() * 2.0, Math.random() * 15 - 11, Math.random() * 6, 0.5 + Math.random()]);
     ig.setAttribute('position', new THREE.BufferAttribute(ip, 3));
-    this.bugs = new THREE.Points(ig, new THREE.PointsMaterial({ color: 0xfff6d8, size: 0.012, transparent: true, opacity: 0.75, depthWrite: false }));
+    // Ein Punkt ohne Bild ist ein Quadrat. Bei 12 mm faellt das niemandem auf, im Schlupf
+    // schon: Dort deckt ein Tier mehrere Bildpunkte ab, und dann liegen lauter kleine
+    // Kaestchen ueber dem Wasser. Darum eine weiche runde Marke, im Code gezeichnet -
+    // keine Datei, 32 x 32.
+    const bugCv = document.createElement('canvas'); bugCv.width = bugCv.height = 32;
+    const bugCx = bugCv.getContext('2d'), bugGr = bugCx.createRadialGradient(16, 16, 0, 16, 16, 16);
+    // Deckend bis gut zur Haelfte, dann ein weicher Rand. Ein weiches Verlaufen von der
+    // Mitte an sah aus wie gar nichts mehr: Deckend bleibt dabei nur ein Kern von wenigen
+    // Bildpunkten, und das Tier verschwindet wieder.
+    bugGr.addColorStop(0, 'rgba(255,255,255,1)'); bugGr.addColorStop(0.56, 'rgba(255,255,255,1)');
+    bugGr.addColorStop(0.78, 'rgba(255,255,255,0.55)'); bugGr.addColorStop(1, 'rgba(255,255,255,0)');
+    bugCx.fillStyle = bugGr; bugCx.fillRect(0, 0, 32, 32);
+    const bugTex = new THREE.CanvasTexture(bugCv); bugTex.colorSpace = THREE.SRGBColorSpace;
+    this.bugs = new THREE.Points(ig, new THREE.PointsMaterial({ color: 0xfff6d8, size: 0.012, map: bugTex, transparent: true, opacity: 0.75, depthWrite: false }));
     this.bugs.frustumCulled = false; this.scene.add(this.bugs);
+    this.hatchOn = 0; this.bugsBase = false;
     // Schneefall: eine Wolke um den Angler, die mit ihm mitwandert. Jede Flocke faellt,
     // driftet seitlich und setzt oben wieder an, sobald sie unten ankommt - so reichen 900.
     const SN = 900, flakeG = new THREE.BufferGeometry(), flakeP = new Float32Array(SN * 3);
@@ -1541,10 +1559,12 @@ export class World {
     this.scene.fog.color.copy(fog);
     this.scene.fog.near = lid === 'morgen' ? 10 : 30; this.scene.fog.far = lid === 'morgen' ? 190 : 330;
     if (rv.fog) { this.scene.fog.near = rv.fog[0]; this.scene.fog.far = rv.fog[1]; }   // Revier mit eigenem, dichterem Nebel
-    this.bugs.visible = lid === 'morgen' || lid === 'abend';
+    // Grundzustand der Wolke: morgens und abends schwirrt etwas, im Winter nichts. Ein
+    // Schlupf hebelt das aus - er ist ja gerade das Ereignis, bei dem es schwaermt.
+    this.bugsBase = (lid === 'morgen' || lid === 'abend') && !win;
+    this.bugs.visible = this.bugsBase || !!this.hatchOn;
     this.snowU.value = win ? 1 : 0;
     this.snow.visible = win && lid !== 'mittag';
-    this.bugs.visible = this.bugs.visible && !win;   // im Winter schwaermt nichts
 
     // Gelände
     const NX = 124, NZ = 262, W = 96, Z0 = -150, Z1 = 72;
@@ -2342,6 +2362,22 @@ export class World {
   }
 
   setClearView(on) { this.waterU.uNoRefl.value = on ? 1 : 0; }   // Spiegelung ausblenden (Sichthilfe)
+  // Schlupf an oder aus. Die Wolke bekommt Farbe und Koerpergroesse der schluepfenden
+  // Art - eine Steinfliege ist doppelt so gross wie eine Eintagsfliege, und genau daran
+  // erkennt man am Wasser, was da fliegt. Ohne Schlupf bleibt es beim blassen Funkeln.
+  setHatch(on, col, size) {
+    this.hatchOn = on ? 1 : 0;
+    const m = this.bugs.material;
+    // Gezeichnet wird groesser als die Art wirklich ist (Faktor 3,2). Gemessen deckt eine
+    // 18 mm lange Koecherfliege auf sechs Meter knapp zwei Bildpunkte ab - das sieht man
+    // schlicht nicht, und ein Schlupf, den man nicht sieht, ist keiner. Die Groessen der
+    // Arten untereinander bleiben richtig: Eine Steinfliege ist doppelt so gross wie eine
+    // Eintagsfliege, vorher wie nachher.
+    if (on) { m.color.set(col); m.size = size * 3.2; m.opacity = 1; }
+    else { m.color.setHex(0xfff6d8); m.size = 0.012; m.opacity = 0.75; }
+    this.bugs.visible = this.bugsBase || !!this.hatchOn;
+  }
+
   setPolar(on) { this.waterU.uClear.value = on ? 1 : 0; }
 
   makeFish(len, species) {
@@ -2533,9 +2569,17 @@ export class World {
     this.drops.geometry.attributes.position.needsUpdate = true;
     if (this.bugs.visible) {
       const b = this.bugs.geometry.attributes.position.array;
+      // Im Schlupf schwaermt es nicht um den Angler, sondern ueber dem Wasser, und die
+      // Tiere steigen: Jedes laeuft eine Saegezahnbahn von der Oberflaeche nach oben und
+      // setzt unten wieder an. Genau das sieht man am Fluss - eine Saeule, die aufsteigt,
+      // kein gleichmaessiges Gewimmel.
+      const h = this.hatchOn, mid = h && this.river ? this.river.cx(cz) : cxp;
+      const n = h ? this.bugSeed.length : this.bugIdle;
       this.bugSeed.forEach((s, i) => {
-        b[i * 3] = cxp + s[0] + Math.sin(t * s[4] + s[3]) * 0.8 + Math.sin(t * 3.1 * s[4] + i) * 0.15;
-        b[i * 3 + 1] = s[1] + Math.sin(t * 1.7 * s[4] + s[3] * 2) * 0.35;
+        if (i >= n) { b[i * 3 + 1] = -1000; return; }            // geparkt, bis es schwaermt
+        b[i * 3] = mid + s[0] * (h ? 0.7 : 1) + Math.sin(t * s[4] + s[3]) * 0.8 + Math.sin(t * 3.1 * s[4] + i) * 0.15;
+        b[i * 3 + 1] = h ? 0.04 + ((t * 0.21 * s[4] + s[3] * 0.16) % 1) * 2.1 + Math.sin(t * 2.4 * s[4] + i) * 0.06
+                         : s[1] + Math.sin(t * 1.7 * s[4] + s[3] * 2) * 0.35;
         b[i * 3 + 2] = cz + s[2] + Math.cos(t * 0.8 * s[4] + s[3]) * 0.9;
       });
       this.bugs.geometry.attributes.position.needsUpdate = true;
