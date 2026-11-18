@@ -47,6 +47,7 @@ export class Net {
     this.cid = 'nm_' + Math.random().toString(36).slice(2, 10);
     this.via = 'direkt';           // direkt | vermittler - siehe _toRelay
     this._out = 0; this._in = 0; this._watch = 0;
+    this._flap = 0;              // Wachhund fuer eine kurz stille Leitung, siehe _pc
     this.peer = null;              // letzter empfangener Zustand der Gegenseite
     this.onEvent = () => {};       // Ereignisse ans Spiel
     this.onState = () => {};       // Zustandswechsel ans Menue
@@ -183,6 +184,7 @@ export class Net {
   close(quiet) {
     clearInterval(this._beat); this._beat = 0;
     clearTimeout(this._watch); this._watch = 0;
+    clearTimeout(this._flap); this._flap = 0;
     if (this.ws) { try { this.ws.onclose = null; this.ws.close(); } catch (e) { /* egal */ } }
     if (this.pc) { try { this.pc.close(); } catch (e) { /* egal */ } }
     this.ws = null; this.dst = null; this.code = null; this.via = 'direkt';
@@ -197,8 +199,21 @@ export class Net {
       const s = this.pc && this.pc.connectionState;
       // 'connected' heisst nur, dass die Leitung steht - die Datenkanaele gehen erst danach
       // auf. Wer hier schon sendet, dessen Begruessung faellt ins Leere.
-      if (s === 'failed') { if (!this._toRelay()) this._lost(); }
-      else if (s === 'disconnected' || s === 'closed') { if (this.state === 'verbunden' && this.via === 'direkt') this._lost(); }
+      const auf = () => { clearTimeout(this._flap); this._flap = 0; };
+      if (s === 'failed') { auf(); if (!this._toRelay()) this._lost(); }
+      else if (s === 'closed') { auf(); if (this.state === 'verbunden' && this.via === 'direkt') this._lost(); }
+      else if (s === 'connected') auf();
+      // 'disconnected' heisst nicht weg, sondern still: ein paar verlorene Pakete reichen
+      // dafuer, und die Leitung kommt meist von selbst zurueck. Vorher galt die Runde damit
+      // sofort als beendet - ein Funkloch von zwei Sekunden warf beide auseinander. Jetzt
+      // sechs Sekunden Geduld, und erst wenn sie dann noch still ist, der Vermittler.
+      else if (s === 'disconnected' && !this._flap) {
+        this._flap = setTimeout(() => {
+          this._flap = 0;
+          if (!this.pc || this.pc.connectionState !== 'disconnected') return;
+          if (this.state === 'verbunden' && this.via === 'direkt' && !this._toRelay()) this._lost();
+        }, 6000);
+      }
     };
   }
 
@@ -288,7 +303,12 @@ export class Net {
     // zeichnet dann fuer alle drei dasselbe.
     b.setUint8(o++, Math.max(0, MODES.indexOf(S.mode)) | (Math.max(0, RIGS_N.indexOf(S.rig || 'euro')) << 4));
     p16(tip.x); p16(tip.y); p16(tip.z);
-    p16(S.nymph.x); p16(S.nymph.z); k8(Math.min(2.55, S.nymph.d || 0) / 2.55);
+    // Im Wurf traegt dasselbe Feld nicht die Fliege im Wasser, sondern das Ende der
+    // fliegenden Schnur - eine Hoehe statt einer Tiefe, darum der groessere Massstab.
+    // Ohne das sieht die Gegenseite vom ganzen Wurf nichts als eine stehende Rute.
+    const air = S.mode === 'cast' && S.air && S.air.on ? S.air : null;
+    if (air) { p16(air.x); p16(air.z); k8(Math.min(5.1, Math.max(0, air.y)) / 5.1); }
+    else { p16(S.nymph.x); p16(S.nymph.z); k8(Math.min(2.55, S.nymph.d || 0) / 2.55); }
     k8(Math.min(1, S.walk || 0));
     // Spannung: ohne sie weiss die Gegenseite nicht, wie tief die Schnur durchhaengt,
     // und zeichnet einen schnurgeraden Strang, wo in Wirklichkeit ein Bogen liegt.
@@ -307,7 +327,7 @@ export class Net {
     const mr = b.getUint8(o++);
     const mode = MODES[mr & 15] || 'idle', rig = RIGS_N[mr >> 4] || 'euro';
     const tip = { x: p16(), y: p16(), z: p16() };
-    const fly = { x: p16(), z: p16(), d: k8() * 2.55 };
+    const fly = { x: p16(), z: p16(), d: k8() * (mode === 'cast' ? 5.1 : 2.55) };   // im Wurf eine Hoehe, sonst eine Tiefe
     const walk = k8();
     const s = o < b.byteLength ? k8() : 1;
     const now = performance.now();
@@ -353,7 +373,7 @@ export class Net {
     return {
       px: l(a.px, c.px), pz: l(a.pz, c.pz), face: a.face + da * k,
       tip: { x: l(a.tip.x, c.tip.x), y: l(a.tip.y, c.tip.y), z: l(a.tip.z, c.tip.z) },
-      fly: { x: l(a.fly.x, c.fly.x), z: l(a.fly.z, c.fly.z), d: l(a.fly.d, c.fly.d) },
+      fly: { x: l(a.fly.x, c.fly.x), z: l(a.fly.z, c.fly.z), d: a.mode === c.mode ? l(a.fly.d, c.fly.d) : a.fly.d },
       mode: a.mode, rig: a.rig, walk: l(a.walk, c.walk), s: l(a.s, c.s),
     };
   }

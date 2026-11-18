@@ -62,7 +62,9 @@ Also übernimmt der Vermittler. Er leitet nur die Nachrichten seines eigenen Pro
 
 Umgeschaltet wird, sobald der Browser `failed` meldet — oder nach 12 Sekunden ohne Verbindung, denn mit abgeriegelten Netzen meldet er gar nichts und bleibt ewig auf `new` stehen. Geht die direkte Leitung später doch noch auf, wird sie wieder benutzt. Ein Lebenszeichen alle fünf Sekunden hängt nicht am Spiel, sondern am Herzschlag der Vermittlerverbindung: Wer das Fenster weglegt, zeichnet nicht mehr und würde sonst fälschlich als weg gelten.
 
-**Reißt die Verbindung ab**, holt der Dialog von selbst eine neue Kennung und sagt darüber, was passiert ist. Vorher blieb er auf „Kennung wird geholt …" stehen und es ging nie mehr weiter.
+**Reißt die Verbindung ab**, holt der Dialog von selbst eine neue Kennung und sagt darüber, was passiert ist — *sofern er offen ist*. Dieser Nachsatz war der Kern eines Fehlers, der den zweiten Spieler mitten im Spiel lahmlegte: Ob der Dialog offen sei, wurde im DOM nachgesehen („liegt irgendwo ein Knopf von ihm herum?"). `closeModal()` versteckt die Karte aber nur und räumt nichts weg, also lag der Knopf auch Stunden später noch da. Ein Abriss riss den Dialog damit von selbst auf — und **solange ein Dialog steht, ruht das Spiel**: kein Wurf, kein Anhieb, kein Drill, und ein laufender Wurf bleibt auf halbem Weg stehen, weil seine Uhr nicht weiterläuft. Nachgemessen blieb der Spieler dauerhaft im Zustand `cast` hängen. Jetzt sagt der Dialog beim Öffnen selbst, wer er ist (`openModal(h, { kind: 'multi' })`), und `closeModal()` leert die Karte.
+
+**Eine kurz stille Leitung ist noch kein Abriss.** WebRTC meldet `disconnected` schon bei ein paar verlorenen Paketen und kommt meist von selbst zurück. Vorher galt die Runde damit sofort als beendet — ein Funkloch von zwei Sekunden warf beide auseinander. Jetzt: sechs Sekunden Geduld, und erst wenn es dann noch still ist, geht es über den Vermittler weiter oder die Runde endet.
 
 Die Verbindung läuft danach direkt zwischen den beiden Rechnern (WebRTC).
 
@@ -71,9 +73,13 @@ Die Verbindung läuft danach direkt zwischen den beiden Rechnern (WebRTC).
 | | |
 |---|---|
 | Bewegung | 20 Byte, 15-mal je Sekunde = **2,9 kbit/s je Spieler**; gezeichnet wird 120 ms verzögert (siehe unten) |
-| Im Paket | Ort, Blickrichtung, Zustand, Montage, Rutenspitze, Fliege mit Tiefe, Watschritt, **Spannung** |
+| Im Paket | Ort, Blickrichtung, Zustand, Montage, Rutenspitze, Fliege mit Tiefe (**im Wurf: das Ende der fliegenden Schnur mit Höhe**), Watschritt, **Spannung** |
 | Ereignisse | Begrüßung, Revierwechsel, Wurf, Fang, Abschied — über einen zuverlässigen Kanal |
 | Nicht übertragen | der Fluss (beide bauen ihn aus `rv.seed` identisch), die Fische, der Spielstand |
+
+**Der Wurf war auf der anderen Seite unsichtbar.** Die Rute stand still, und dann lag die Fliege plötzlich auf dem Wasser. Der Grund: Während des Wurfs kommt die Rutenspitze aus der Wurfrechnung (`castPose`), nicht aus `S.tip` — und der Netzblock holte sie sich mit `tip3()` noch einmal selbst, was die *Drifthaltung* liefert. Gemessen über einen ganzen Wurf: 25 Pakete, 25-mal exakt derselbe Punkt. Jetzt merkt sich die Zeichenschleife die Spitze, die sie wirklich gezeichnet hat, und genau die geht raus.
+
+Dazu reist das Ende der fliegenden Schnur mit — im selben Feld, in dem sonst die Fliege im Wasser steht. Der Zustand im Paket sagt ja schon, dass gerade geworfen wird, also heißt die Zahl dort eine **Höhe** statt einer Tiefe und bekommt den größeren Maßstab (0–5,1 m statt 0–2,55 m). Kein Byte mehr als vorher. Gemessen steigt das Ende auf 4,98 m und kommt auf 0,56 m herunter; die gezeichnete Schnur der Gegenseite folgt bis 4,75 m. Beim Euro-Nymphing wird dabei nur Vorfach mit Sighter gezeichnet, sonst die dicke Flugschnur mit etwas Durchhang — geworfen wird schließlich, was man fischt.
 
 **Der zweite Spieler ist dieselbe Figur**, nur im grünen Hemd. Eine Figur mit Skelett lässt sich nicht einfach klonen – `clone()` hängt beide Kopien an dieselben Knochen, und dann bewegen sie sich im Gleichschritt. `cloneSkinned` klont den Knochenbaum mit und bindet die Kopie an ihre eigenen Knochen (wie `SkeletonUtils` aus den Three.js-Beispielen, hier in zwanzig Zeilen, damit keine weitere Datei nötig ist).
 

@@ -2224,10 +2224,19 @@ export class World {
     Mt.fly = Mt[r.rig] || Mt.euro;
     this.remoteInd.visible = this.remoteFly.visible = this.remoteBead.visible = false;
 
+    // Im Wurf fliegt die Schnur. Das Ende der Schlaufe kommt mit dem Paket; gezeichnet
+    // wird von der Rutenspitze dorthin. Vorher fiel der Wurf hier unter "Leerlauf" - die
+    // Montage haengte still unter der Spitze, und vom Wurf war nichts zu sehen.
+    if (r.mode === 'cast') {
+      const E = _rl2.set(r.fly.x, Math.max(0.05, r.fly.d), r.fly.z);
+      // Euro wirft nur Vorfach, die anderen beiden die dicke Flugschnur mit etwas Durchhang
+      if (r.rig === 'euro') { this._remoteEuro(T, E, plan, Mt); this._remoteNymph(E); }
+      else { this._remoteSag(T, E, 0.14, plan, Mt); this.remoteFly.position.copy(E); this.remoteFly.visible = true; }
+    }
     // Im Leerlauf haengt dieselbe Montage unter der Rutenspitze, wie bei der eigenen Figur
     // auch - vorher war dort nur ein nackter Strang bis zum Wasser, an dem man nicht
     // erkennen konnte, womit der andere ueberhaupt fischt.
-    if (!wet) {
+    else if (!wet) {
       // eigener Vektor, nicht _rl1: _remoteEuro rechnet darin weiter und wuerde den
       // Endpunkt ueberschreiben - die Nymphe haengt dann auf Hoehe der Rutenspitze
       const E = new THREE.Vector3(r.tip.x + (r.tip.x - r.px) * 0.06, Math.max(0.1, r.tip.y - 1.9), r.tip.z + (r.tip.z - r.pz) * 0.06);

@@ -143,8 +143,12 @@ net.onState = st => {
   // Steht der Dialog offen, soll er den neuen Zustand zeigen. Bei 'weg' bleibt er sonst
   // auf "Kennung wird geholt" stehen und es geht nie mehr weiter - darum wird dort eine
   // neue Kennung geholt. Bei 'warten' wird nichts angefasst: das waere eine Schleife.
-  if ((st === 'verbunden' || st === 'weg')
-    && ($('netStep') || document.querySelector('#modalBody [data-act="netoff"]'))) showMulti(st === 'verbunden');
+  // Nur wenn der Mehrspieler-Dialog wirklich offen ist. Vorher wurde im DOM nachgesehen,
+  // ob ein Knopf von ihm herumliegt - und weil closeModal nur versteckt und nichts raeumt,
+  // lag er dort auch eine Stunde spaeter noch. Ein Abriss mitten im Spiel riss den Dialog
+  // dann von selbst auf, und solange einer steht, ruht das Spiel: kein Wurf, kein Anhieb,
+  // kein Drill. Genau das war "auf einmal ging nichts mehr".
+  if ((st === 'verbunden' || st === 'weg') && modalOpen() && modalOpts && modalOpts.kind === 'multi') showMulti(st === 'verbunden');
 };
 world.setGfxMode(save.set.gq); world.setAo(save.set.ao);
 world.setClearView(save.set.clear);
@@ -154,6 +158,9 @@ const S = {
   kick: 0, driftT: 0, onBottom: false, tickT: 0, bite: null, snag: false, snagT: 0, fight: null, hold: false, wade: null,
   cast: null, maxFrac: 0, swingT: 0, sinkRate: 0.2, snagHint: false, aim: null, press: 0, rodX: -0.5,
   sndT: 0, stepD: 0.55, sx: LANE_X, sz: 0, aimU: null, aimP0: null, aimBase: 0, netT: 0,
+  // was die Gegenseite zu sehen bekommt: die Rutenspitze, wie sie wirklich steht,
+  // und im Wurf das Ende der fliegenden Schnur
+  wire: { x: 0, y: 0, z: 0 }, wired: 0, air: { x: 0, y: 0, z: 0, on: 0 },
 };
 function gaugeLabels() {
   const q = (s, v) => { const e = document.querySelector(s); if (e) e.textContent = v; };
@@ -878,7 +885,7 @@ function openModal(html, opts = {}) {
   $('modalBody').scrollTop = 0;
 }
 function askSure(text, yes, act, back) { openModal(`<h2>${yes}</h2><p>${text}</p><button class="ghost danger" data-act="${act}">${yes}</button><button class="primary" data-act="${back}">${T('Abbrechen')}</button>`); }
-function closeModal() { $('modal').classList.add('hidden'); modalOpts = null; }
+function closeModal() { $('modal').classList.add('hidden'); modalOpts = null; $('modalBody').innerHTML = ''; }
 const modalOpen = () => !$('modal').classList.contains('hidden');
 
 function showPage(key, fresh) {
@@ -1087,7 +1094,7 @@ function showMulti(skipOffer) {
     h += `<div id="netStep"><p class="small">${T('Kennung wird geholt …')}</p></div>`;
   }
   h += `<button class="primary" data-act="close">${T('Schließen')}</button>`;
-  openModal(h);
+  openModal(h, { kind: 'multi' });
   if (st !== 'verbunden' && !skipOffer) netOffer();
 }
 
@@ -1567,6 +1574,13 @@ function frame(now) {
   }
   world.setRig(h, TP, target, s, bend);
   if (linePath) world.setLinePath(linePath);
+  // Dieselbe Spitze, die hier gezeichnet wird, geht auch an die Gegenseite. Vorher holte
+  // der Netzblock sie sich mit tip3() noch einmal selbst - und tip3() kennt den Wurf nicht,
+  // es liefert die Drifthaltung. Darum stand die fremde Rute waehrend des ganzen Wurfs
+  // still: gemessen 25 Pakete, 25 mal genau derselbe Punkt.
+  S.wire.x = TP.x; S.wire.y = TP.y; S.wire.z = TP.z; S.wired = 1;
+  if (S.mode === 'cast' && linePath) { const e = linePath[linePath.length - 1]; S.air.x = e.x; S.air.y = e.y; S.air.z = e.z; S.air.on = 1; }
+  else S.air.on = 0;
   { const ind = rigMode() === 'indi' && S.mode === 'drift';
     if (ind) world.nymph.position.set(S.nymph.x, -S.nymph.d, S.nymph.z);
     world.dryFly.visible = isDry() && !(S.mode === 'drift' && S.bite) && S.mode !== 'fight';   // genommen: die Fliege ist von der Oberflaeche verschwunden
@@ -1604,7 +1618,7 @@ function frame(now) {
   // zeichnen - aber nur, wenn die Gegenseite im selben Revier steht.
   if (net.on) {
     S.netT -= dt;
-    if (S.netT <= 0) { S.netT = 1 / 15; S.rig = rigMode(); net.sendMove(S, tip3()); }
+    if (S.netT <= 0) { S.netT = 1 / 15; S.rig = rigMode(); net.sendMove(S, S.wired ? S.wire : tip3()); }
   }
   {
     const r = net.on && netRevier === save.revier ? net.lerped() : null;
