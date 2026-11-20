@@ -410,7 +410,7 @@ export class Fauna {
     // Der Kormoran ist kein Tier zum Anschauen, sondern eine Konkurrenz: Wo er taucht,
     // steht nichts mehr. Wie oft er kommt, bestimmt das Revier (o.korm) - im Winter und
     // im Herbst am Unterlauf ist er das echte Problem, am Quellbach im Sommer nie.
-    // o.korm teilt alle Wartezeiten: 1 heisst Herbst und Winter am Unterlauf, 0,12 die
+    // o.korm teilt alle Wartezeiten: 0,5 heisst Herbst und Winter am Unterlauf, 0,06 die
     // erste Staffel - dort wartet er also achtmal so lange. Vorher war der Wert nur ein
     // Ein-Aus-Schalter, und der Vogel kam am sommerlichen Quellbach genauso oft wie im
     // Winterzug; die Zahl stand da und tat nichts.

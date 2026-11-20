@@ -526,7 +526,9 @@ Er ist das einzige Tier im Spiel, das etwas von dir will. Alle anderen sind Kuli
 
 **Er sucht die Standplätze, nicht irgendein tiefes Wasser.** `_platz` greift auf `river.lies` zu, und unter Wasser schwimmt er zum nächsten Fisch im Umkreis von 25 m. Ohne beides landete er gemessen 35 m unterhalb des letzten Fisches und tauchte zweimal ins Leere – der Besatz steht auf seinen Plätzen, und die trifft man nicht aus Versehen.
 
-**Wie viel er kostet:** gemessen über eine halbe Stunde – 8 Besuche, 33 Tauchgänge, 6 Fische, also **null bis drei je Besuch**, meist einer. Die erste Fassung war deutlich schärfer: kürzere Pausen und eine höhere Quote, gemessen fünf Fische in anderthalb Minuten und damit gut ein Viertel des Besatzes auf einen Besuch. Das ist keine Konkurrenz mehr, das ist eine Abrissbirne.
+**Wie viel er kostet:** gemessen über eine Stunde – 8 Besuche, 38 Tauchgänge, 9 Fische, also **null bis drei je Besuch**, meist einer. Die erste Fassung war deutlich schärfer: kürzere Pausen und eine höhere Quote, gemessen fünf Fische in anderthalb Minuten und damit gut ein Viertel des Besatzes auf einen Besuch. Das ist keine Konkurrenz mehr, das ist eine Abrissbirne.
+
+**In allen 19 Revieren nachgemessen** – mit künstlich hochgesetzter Rate, damit in einer Viertelstunde genug Besuche zusammenkommen: Überall findet der Vogel einen Platz über den Standplätzen, landet, taucht und fängt; überall findet der Otter die Uferkante und frisst an Land (den Notfall „frisst im Wasser treibend" brauchte kein einziges Revier). Auch das engste Wasser – Mühlbach, Eisrinne – und das flachste – die Kiesbank – reichen dafür.
 
 Kommst du auf 12 m heran, fliegt er von selbst ab. Das ist der Ausweg ohne Schuss – er kommt nur in ein paar Minuten wieder.
 
@@ -534,9 +536,11 @@ Kommst du auf 12 m heran, fliegt er von selbst ab. Das ist der Ausweg ohne Schus
 
 | Staffel | Wert | Pause zwischen zwei Besuchen |
 |---|---|---|
-| 3 und 4 (Herbst, Winter) | 1 | 1,5 bis 4 min |
-| 2 | 0,35 | 4 bis 11 min |
-| 1 | 0,12 | 12 bis 33 min |
+| 3 und 4 (Herbst, Winter) | 0,5 | 3 bis 8 min |
+| 2 | 0,18 | 8 bis 22 min |
+| 1 | 0,06 | 25 bis 67 min |
+
+Diese Werte sind **halbiert** gegenüber der ersten Fassung, und zwar nach dem Spielen: An der Mündung standen über eine halbe Stunde achtmal ein Kormoran und viermal ein Otter auf der Strecke – zusammen 16 der 30 Minuten, also die halbe Zeit. Ein Raubtier soll ein Ereignis sein und kein Dauerzustand. Nachgemessen sind es jetzt 8 Vogel- und 5 Otterbesuche je **Stunde** und 17 von 60 Minuten, in denen eines der beiden zu sehen ist.
 
 Die erste Pause nach dem Betreten eines Reviers ist kürzer (20 bis 70 s, ebenfalls geteilt), nach einem Abschuss länger (240 bis 480 s). Das ist nicht gewürfelte Abwechslung, sondern das echte Muster – Kormorane ziehen im Winter ins Binnenland, wenn die Seen zufrieren.
 
@@ -593,7 +597,7 @@ Der Kormoran nimmt, was am nächsten steht. **Der Otter nimmt den größten Fisc
 
 Wo er jagt, steht im Umkreis von **12 m** kein Fisch ruhig (beim Kormoran sind es 8 m) und alles im Umkreis von 4,5 m eines Tauchgangs flüchtet. Ein Otter räumt den Zug auf, nicht nur die Stelle.
 
-**Gemessen** über eine halbe Stunde: 3 Besuche, 13 Tauchgänge, 5 Fische – **ein bis drei je Besuch**, und immer die größten in Reichweite. Er kommt dafür viel seltener als der Vogel.
+**Gemessen** über eine Stunde: 5 Besuche, 21 Tauchgänge, 4 Fische – **ein bis drei je Besuch**, und immer die größten in Reichweite. Er kommt dafür viel seltener als der Vogel.
 
 **Er ist scheuer:** auf 15 m ist er weg (Kormoran 12 m).
 
@@ -611,7 +615,7 @@ Dazu endet ein Besuch jetzt nur noch *zwischen* zwei Tauchgängen – die Besuch
 
 **Am Modell** tragen drei Dinge die Erkennbarkeit: der **walzenförmige Körper**, der **dicke Schwanz**, der sich zur Spitze auf ein Viertel verjüngt, und dass im Wasser nur Kopf, ein Stück Rücken und die Schwanzspitze herausschauen – diese drei Punkte in einer Linie. Ein ganz sichtbarer Körper wäre ein Biber, ein spitzer Kopf ein Marder.
 
-**Wie oft er kommt**, steht in `otter` (sonst aus der Staffel): Staffel 4 → 0,9, Staffel 2 und 3 → 0,65, Staffel 1 → 0,45. Flacher als beim Kormoran, denn der Otter ist überall und das ganze Jahr da – er ist nur selten zu sehen, weil er in der Dämmerung und nachts jagt.
+**Wie oft er kommt**, steht in `otter` (sonst aus der Staffel): Staffel 4 → 0,45 (6 bis 16 min Pause), Staffel 2 und 3 → 0,32 (9 bis 22 min), Staffel 1 → 0,22 (13 bis 32 min). Auch diese Werte sind halbiert. Flacher als beim Kormoran, denn der Otter ist überall und das ganze Jahr da – er ist nur selten zu sehen, weil er in der Dämmerung und nachts jagt.
 
 ## Tiere am Fluss
 

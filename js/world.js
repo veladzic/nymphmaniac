@@ -1903,11 +1903,15 @@ export class World {
     // korm: wie oft ein Kormoran kommt. Im Herbst und Winter am Unterlauf ist er das
     // echte Problem der Fischerei, am sommerlichen Quellbach sieht man ihn nicht.
     // splash: die Ringe beim Tauchen und Auftauchen gehoeren der Welt, nicht der Fauna.
-    const korm = rv.kormoran != null ? rv.kormoran : (rv.season >= 3 ? 1 : rv.season === 2 ? 0.35 : 0.12);
+    //
+    // Halbiert gegenueber der ersten Fassung. Gemessen stand an der Muendung ueber eine
+    // halbe Stunde achtmal ein Kormoran und viermal ein Otter auf der Strecke - zusammen
+    // 16 der 30 Minuten. Ein Raubtier soll ein Ereignis sein, kein Dauerzustand.
+    const korm = rv.kormoran != null ? rv.kormoran : (rv.season >= 3 ? 0.5 : rv.season === 2 ? 0.18 : 0.06);
     // Der Otter ist ueberall, aber selten zu sehen: Er jagt in der Daemmerung und nachts.
     // Darum liegt sein Wert flacher als der des Kormorans - kein Winterzug, sondern
     // gleichmaessige Seltenheit, im Oberlauf sogar eher als unten.
-    const otter = rv.otter != null ? rv.otter : (rv.season === 4 ? 0.9 : rv.season === 1 ? 0.45 : 0.65);
+    const otter = rv.otter != null ? rv.otter : (rv.season === 4 ? 0.45 : rv.season === 1 ? 0.22 : 0.32);
     this.fauna = new Fauna(this.env, { rnd, river, trees: treeSpots, C, win, mobile: this.mobile, korm, otter,
       splash: (x, z, k) => this.splash(x, z, k) });
     inst(crownGeo(rnd, 0.72, 0.5, 18, 0.9), leafMat, block(spots(Math.floor(190 * clamp(rv.trees + 0.3, 0.4, 1.2) * vk * forest * (win ? 0.35 : 1)), () => {
